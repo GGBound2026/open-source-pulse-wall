@@ -3750,6 +3750,21 @@ button.wall-drawer-badge.is-clickable:focus-visible {
   line-height: 1.6;
 }
 
+.guide-page :not(pre) > code {
+  padding: 1px 6px;
+  border: 1px solid rgba(48, 52, 49, .16);
+  border-radius: 4px;
+  background: rgba(255, 250, 240, .88);
+  color: var(--sage-dark);
+  font-size: .88em;
+}
+
+.guide-mistakes a {
+  color: #315e86;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+
 .guide-note {
   padding: 10px 12px;
   border-left: 3px solid rgba(96, 122, 100, .55);

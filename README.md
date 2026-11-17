@@ -2,7 +2,7 @@
 
 一个一节课就能跑通完整开源闭环的 Git 协作实践项目。从 **Fork** 出发，亲手走完 **Clone → Branch → Validate → Commit → Push → Pull Request → Review → Merge** 全流程；每一次合并与互动都会实时点亮课堂展示墙。
 
-- **在线协作展示墙（课堂大屏直达）**：<https://pulse-wall.yoryon.com/>
+- **在线协作展示墙**（课堂大屏直达）：<https://pulse-wall.yoryon.com/>
 - **零基础图文教学页**：<https://pulse-wall.yoryon.com/guide.html>
 - **拓展阅读 · 从零理解 Git 底层原理**：<https://yoryon.com/c/git-from-scratch/>
 
@@ -11,7 +11,7 @@
 ## 课堂四项任务
 
 1. **上墙个人卡片**：在 `data/profiles/` 下创建自己的 JSON 卡片，完成人生第一个开源 PR。
-2. **给同学写寄语（Cheers）**：在 `data/cheers/<同学用户名>/` 下留下一句鼓励，互相点亮寄语角标。
+2. **给同学写寄语**（Cheers）：在 `data/cheers/<同学用户名>/` 下留下一句鼓励，互相点亮寄语角标。
 3. **提一个 Issue**：用仓库内置模板提问、报 Bug 或提改进想法。
 4. **参与 PR Review**：邀请至少一位同学 Review 你的 PR，并给同学的 PR 留下一条 Review 评论。
 
@@ -21,7 +21,7 @@
 
 ### 1. Git 开源协作拓扑（三仓联动）
 
-开源协作和个人单机 Git 最大的区别，是同时存在**主仓库（`upstream`）**、**你的云端 Fork（`origin`）**和**你的本地仓库（`local`）**三个节点：
+开源协作和个人单机 Git 最大的区别，是同时存在 **主仓库**（`upstream`）、**你的云端 Fork**（`origin`）和 **你的本地仓库**（`local`）三个节点：
 
 ```mermaid
 flowchart LR
@@ -41,18 +41,18 @@ flowchart LR
 提交并合并 PR 后，展示墙如何自动识别你的头像、`@用户名` 并点亮大屏：
 
 ```mermaid
-flowchart TB
-  PR["同学发起 PR · profiles/*.json 与 cheers/**/*.json"]
-  CI["GitHub Actions · validate.yml 自动格式校验"]
-  Main["主分支 main · 合并入库并记录 Commit / PR / Issue"]
-  Pages["GitHub Pages · 自动构建静态展示墙"]
-  Worker["Cloudflare Worker · 3 分钟聚合缓冲 + GraphQL 自动识别贡献者"]
-  Wall["课堂展示墙 pulse-wall.yoryon.com · 卡片大厅 / PR 看板 / Git 时间线"]
+flowchart LR
+  PR["提交 PR · profiles / cheers"]
+  CI["GitHub Actions · 自动校验"]
+  Main["主分支 main · 合入记录"]
+  Pages["GitHub Pages · 静态构建"]
+  Worker["Cloudflare Worker · 3 分钟缓冲 + 自动识别贡献者"]
+  Wall["展示墙 pulse-wall.yoryon.com"]
 
   PR --> CI --> Main
   Main --> Pages --> Wall
   Main --> Worker
-  Wall -- "加载快照 / 点击时间线「立即拉取」" --> Worker
+  Wall -- "加载快照 / 立即拉取" --> Worker
 ```
 
 ---
@@ -146,7 +146,7 @@ git push origin cheer/octocat
 - **提一个 Issue**：打开仓库 [Issues 页面](../../issues/new/choose)，选择对应模板（提问 / 报 Bug / 改进想法 / 求救卡住）提交。
 - **邀请同学 Review**：在你的 PR 页面右侧栏点击 `Reviewers` 齿轮图标，选择至少 1 位同学（也可在 PR 描述里 `@同学用户名` 请对方帮忙看）。
 - **给同学做 Review**：点进任意同学的开放 PR，切到 `Files changed` 查看改动，留下一条友好的评论或 `Approve`。
-- **修改后重新通知 Reviewer**：如果你根据意见更新了代码，记得点右侧 Reviewer 头像旁的**循环箭头（Re-request review）**，对方才会再次收到通知。
+- **修改后重新通知 Reviewer**：如果你根据意见更新了代码，记得点右侧 Reviewer 头像旁的 **循环箭头**（Re-request review），对方才会再次收到通知。
 
 ---
 

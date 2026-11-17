@@ -23,7 +23,7 @@ test('guide page teaches the profile and pull request flow with screenshots', ()
   assert.match(html, /npm run validate/);
   assert.match(html, /git push origin add-your-profile/);
   assert.match(html, /Pull Request/);
-  assert.match(html, /`cheers`/);
+  assert.match(html, /data\/cheers/);
   assert.match(html, /guide-assets\/01-repo-home\.png/);
   assert.match(html, /guide-assets\/08-review-docs\.png/);
 });
