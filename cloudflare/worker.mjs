@@ -14,10 +14,6 @@ const RECENT_CHEERS_LIMIT = 12;
 
 const CHEERS_MAX_PER_PROFILE = 50;
 const CHEER_MESSAGE_MAX_LENGTH = 80;
-const ALLOWED_AVATARS = new Set(
-  Array.from({ length: 11 }, (_, index) => `avatars/avatar-${String(index + 1).padStart(2, '0')}.png`)
-);
-
 const REPO_OWNER_NAME = /^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/;
 
 const CORS_HEADERS = {
@@ -211,7 +207,8 @@ function validateCheers(profile, filename, errors) {
     errors.push(`${filename}: cheers 最多 ${CHEERS_MAX_PER_PROFILE} 条，请合并或删减`);
   }
 
-  const owner = String(profile.github || '').trim().toLowerCase();
+  const stem = String(filename || '').replace(/\.json$/i, '').trim().toLowerCase();
+  const owner = String(profile.github || stem).trim().toLowerCase();
   const seen = new Set();
 
   profile.cheers.forEach((entry, index) => {
@@ -262,27 +259,14 @@ function validateProfile(profile, filename) {
   }
 
   requiredString(profile, 'name', 'name', errors, filename, 40);
-  requiredString(profile, 'github', 'github', errors, filename, 39);
-  requiredString(profile, 'motto', 'motto', errors, filename, 120);
-
-  const githubProblem = validateGithubHandle(profile.github);
-  if (githubProblem) {
-    errors.push(`${filename}: ${githubProblem}`);
+  if (typeof profile.name === 'string' && profile.name.trim() === '你的名字' && !String(filename).startsWith('_')) {
+    errors.push(`${filename}: 请将 name 从模板默认值「你的名字」改成你自己的名字或昵称`);
   }
+
+  requiredString(profile, 'motto', 'motto', errors, filename, 120);
 
   if (profile.city !== undefined && (typeof profile.city !== 'string' || profile.city.trim().length > 40)) {
     errors.push(`${filename}: city 必须是 40 个字符以内的字符串`);
-  }
-
-  if (profile.avatar !== undefined) {
-    if (typeof profile.avatar !== 'string') {
-      errors.push(`${filename}: avatar 必须是字符串`);
-    } else {
-      const avatar = profile.avatar.trim();
-      if (!ALLOWED_AVATARS.has(avatar) && !isHttpsUrl(avatar)) {
-        errors.push(`${filename}: avatar 只能使用 ${Array.from(ALLOWED_AVATARS).join(', ')} 中的一个，或 https:// 开头的图片 URL`);
-      }
-    }
   }
 
   if (profile.homepage !== undefined) {
@@ -294,11 +278,6 @@ function validateProfile(profile, filename) {
   }
 
   validateCheers(profile, filename, errors);
-
-  const expectedName = `${String(profile.github || '').trim().toLowerCase()}.json`;
-  if (profile.github && filename.toLowerCase() !== expectedName) {
-    warnings.push(`${filename}: 建议文件名改成 ${expectedName}，这样维护者更容易定位贡献者`);
-  }
 
   return { errors, warnings };
 }
@@ -321,18 +300,30 @@ function normalizeCheers(rawCheers) {
     .filter(Boolean);
 }
 
-function normalizeContributors(contributors) {
+function normalizeContributors(contributors, fileContributors = {}) {
   return contributors
-    .map((item) => ({
-      name: String(item.name || '').trim(),
-      github: String(item.github || '').trim(),
-      motto: String(item.motto || '').trim(),
-      city: String(item.city || '').trim(),
-      avatar: String(item.avatar || '').trim(),
-      homepage: String(item.homepage || '').trim(),
-      cheers: normalizeCheers(item.cheers),
-      file: item.file
-    }))
+    .map((item) => {
+      const file = String(item.file || '').trim();
+      const stem = file.replace(/\.json$/i, '').trim();
+      const resolved = (file && fileContributors[file]) || {};
+      const github = String(resolved.github || item.github || stem).trim();
+      const avatar = String(
+        resolved.avatar ||
+        item.avatar ||
+        (/^[A-Za-z0-9-]+$/.test(github) ? `https://github.com/${encodeURIComponent(github)}.png?size=160` : '')
+      ).trim();
+
+      return {
+        name: String(item.name || '').trim(),
+        github,
+        motto: String(item.motto || '').trim(),
+        city: String(item.city || '').trim(),
+        avatar,
+        homepage: String(item.homepage || '').trim(),
+        cheers: normalizeCheers(item.cheers),
+        file
+      };
+    })
     .filter((item) => item.name || item.github);
 }
 
@@ -445,23 +436,99 @@ async function fetchProfileEntriesViaContents(encodedRepo, token) {
   );
 }
 
-async function fetchProfileEntries(repository, encodedRepo, token) {
-  const [owner, name] = repository.split('/');
-  if (token) {
-    try {
-      return await fetchProfileEntriesViaGraphql(owner, name, token);
-    } catch {
-      // Fall back to REST contents API if GraphQL fails or lacks scope.
+function pickEarliestGithubUser(nodes) {
+  if (!Array.isArray(nodes) || !nodes.length) return null;
+
+  for (let i = nodes.length - 1; i >= 0; i -= 1) {
+    const user = nodes[i]?.author?.user;
+    if (user?.login) {
+      return { github: String(user.login).trim(), avatar: String(user.avatarUrl || '').trim() };
     }
   }
-  return fetchProfileEntriesViaContents(encodedRepo, token);
+
+  for (let i = nodes.length - 1; i >= 0; i -= 1) {
+    const user = nodes[i]?.committer?.user;
+    if (user?.login && user.login !== 'web-flow') {
+      return { github: String(user.login).trim(), avatar: String(user.avatarUrl || '').trim() };
+    }
+  }
+
+  return null;
 }
 
-function validateAndNormalizeProfileEntries(profileEntries) {
+async function fetchFileContributorsViaGraphql(owner, name, filenames, token) {
+  if (!token || !Array.isArray(filenames) || !filenames.length) return {};
+
+  const resolved = {};
+  const chunkSize = 40;
+
+  for (let offset = 0; offset < filenames.length; offset += chunkSize) {
+    const chunk = filenames.slice(offset, offset + chunkSize);
+    const fields = chunk
+      .map(
+        (file, idx) =>
+          `f${idx}: history(first: 60, path: ${JSON.stringify(`data/profiles/${file}`)}) { nodes { author { user { login avatarUrl(size: 160) } } committer { user { login avatarUrl(size: 160) } } } }`
+      )
+      .join('\n');
+
+    const query = `
+      query($owner: String!, $name: String!) {
+        repository(owner: $owner, name: $name) {
+          defaultBranchRef {
+            target {
+              ... on Commit {
+                ${fields}
+              }
+            }
+          }
+        }
+      }
+    `;
+
+    const response = await fetch(GITHUB_GRAPHQL_URL, {
+      method: 'POST',
+      headers: buildGithubHeaders(token, { 'Content-Type': 'application/json' }),
+      body: JSON.stringify({ query, variables: { owner, name } })
+    });
+
+    if (!response.ok) break;
+    const payload = await response.json();
+    const target = payload?.data?.repository?.defaultBranchRef?.target;
+    if (!target) break;
+
+    chunk.forEach((file, idx) => {
+      const picked = pickEarliestGithubUser(target[`f${idx}`]?.nodes);
+      if (picked) {
+        resolved[file] = picked;
+      }
+    });
+  }
+
+  return resolved;
+}
+
+async function fetchProfilesBundle(repository, encodedRepo, token) {
+  const [owner, name] = repository.split('/');
+  let entries = [];
+  if (token) {
+    try {
+      entries = await fetchProfileEntriesViaGraphql(owner, name, token);
+    } catch {
+      entries = await fetchProfileEntriesViaContents(encodedRepo, token);
+    }
+  } else {
+    entries = await fetchProfileEntriesViaContents(encodedRepo, token);
+  }
+
+  const filenames = entries.map((entry) => entry.file);
+  const fileContributors = await fetchFileContributorsViaGraphql(owner, name, filenames, token).catch(() => ({}));
+  return { entries, fileContributors };
+}
+
+function validateAndNormalizeProfileEntries(profileEntries, fileContributors = {}) {
   const errors = [];
   const warnings = [];
   const rawContributors = [];
-  const seenGithub = new Map();
 
   for (const entry of profileEntries) {
     let profile;
@@ -476,20 +543,11 @@ function validateAndNormalizeProfileEntries(profileEntries) {
     errors.push(...result.errors);
     warnings.push(...result.warnings);
 
-    if (profile && profile.github) {
-      const key = String(profile.github).trim().toLowerCase();
-      if (seenGithub.has(key)) {
-        errors.push(`${entry.file}: github ${profile.github} 已经在 ${seenGithub.get(key)} 中出现过`);
-      } else {
-        seenGithub.set(key, entry.file);
-      }
-    }
-
     rawContributors.push({ ...profile, file: entry.file });
   }
 
   return {
-    contributors: normalizeContributors(rawContributors),
+    contributors: normalizeContributors(rawContributors, fileContributors),
     errors,
     warnings
   };
@@ -651,8 +709,8 @@ async function fetchPackedWallState({ repository, token = '' }) {
 
   const encodedRepo = repository.split('/').map(encodeURIComponent).join('/');
 
-  const [profileEntries, repo, contributorsResult, commits, issuesResult, pullsResult] = await Promise.all([
-    fetchProfileEntries(repository, encodedRepo, token),
+  const [profilesBundle, repo, contributorsResult, commits, issuesResult, pullsResult] = await Promise.all([
+    fetchProfilesBundle(repository, encodedRepo, token),
     fetchGithubJson(`/repos/${encodedRepo}`, token),
     fetchGithubCollection(
       `/repos/${encodedRepo}/contributors?per_page=100`,
@@ -672,8 +730,12 @@ async function fetchPackedWallState({ repository, token = '' }) {
     )
   ]);
 
+  const profileEntries = profilesBundle.entries;
   const fingerprint = await computeFingerprint(profileEntries);
-  const { contributors: normalized, errors, warnings } = validateAndNormalizeProfileEntries(profileEntries);
+  const { contributors: normalized, errors, warnings } = validateAndNormalizeProfileEntries(
+    profileEntries,
+    profilesBundle.fileContributors
+  );
   const ok = errors.length === 0;
   const contributors = ok ? normalized : [];
   const cheersTotal = contributors.reduce((sum, profile) => sum + profile.cheers.length, 0);
@@ -751,7 +813,7 @@ async function fetchPackedWallState({ repository, token = '' }) {
 }
 
 function cacheRequestFor(repository) {
-  return new Request(`https://pulse-wall-cache.internal/__v1/${encodeURIComponent(repository)}`, {
+  return new Request(`https://pulse-wall-cache.internal/__v2/${encodeURIComponent(repository)}`, {
     method: 'GET'
   });
 }

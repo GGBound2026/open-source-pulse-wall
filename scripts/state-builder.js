@@ -4,7 +4,7 @@ const fs = require('fs');
 const path = require('path');
 const crypto = require('crypto');
 const { execFileSync } = require('child_process');
-const { readAndValidateAll } = require('./validate-contributors');
+const { listProfileFiles, readAndValidateAll } = require('./validate-contributors');
 
 const ROOT = path.resolve(__dirname, '..');
 const PROFILES_DIR = path.join(ROOT, 'data', 'profiles');
@@ -473,18 +473,95 @@ async function fetchOptionalCollection(pathname, token, options = {}) {
   }
 }
 
+function pickEarliestGithubUser(nodes) {
+  if (!Array.isArray(nodes) || !nodes.length) return null;
+
+  for (let i = nodes.length - 1; i >= 0; i -= 1) {
+    const user = nodes[i]?.author?.user;
+    if (user?.login) {
+      return { github: String(user.login).trim(), avatar: String(user.avatarUrl || '').trim() };
+    }
+  }
+
+  for (let i = nodes.length - 1; i >= 0; i -= 1) {
+    const user = nodes[i]?.committer?.user;
+    if (user?.login && user.login !== 'web-flow') {
+      return { github: String(user.login).trim(), avatar: String(user.avatarUrl || '').trim() };
+    }
+  }
+
+  return null;
+}
+
+async function fetchFileContributorsViaGraphql(repository, filenames, token) {
+  if (!token || !Array.isArray(filenames) || !filenames.length) return {};
+
+  const [owner, name] = repository.split('/');
+  const resolved = {};
+  const chunkSize = 40;
+
+  for (let offset = 0; offset < filenames.length; offset += chunkSize) {
+    const chunk = filenames.slice(offset, offset + chunkSize);
+    const fields = chunk
+      .map(
+        (file, idx) =>
+          `f${idx}: history(first: 60, path: ${JSON.stringify(`data/profiles/${file}`)}) { nodes { author { user { login avatarUrl(size: 160) } } committer { user { login avatarUrl(size: 160) } } } }`
+      )
+      .join('\n');
+
+    const query = `
+      query($owner: String!, $name: String!) {
+        repository(owner: $owner, name: $name) {
+          defaultBranchRef {
+            target {
+              ... on Commit {
+                ${fields}
+              }
+            }
+          }
+        }
+      }
+    `;
+
+    const response = await fetch(`${GITHUB_API_BASE}/graphql`, {
+      method: 'POST',
+      headers: {
+        ...buildGithubHeaders(token),
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({ query, variables: { owner, name } })
+    });
+
+    if (!response.ok) break;
+    const payload = await response.json();
+    const target = payload?.data?.repository?.defaultBranchRef?.target;
+    if (!target) break;
+
+    chunk.forEach((file, idx) => {
+      const picked = pickEarliestGithubUser(target[`f${idx}`]?.nodes);
+      if (picked) {
+        resolved[file] = picked;
+      }
+    });
+  }
+
+  return resolved;
+}
+
 async function fetchGithubState({ repository, token = '' }) {
   assertGithubRepository(repository);
 
   const encodedRepo = repository.split('/').map(encodeURIComponent).join('/');
-  const [repo, contributorsResult, commits] = await Promise.all([
+  const profileFiles = token ? listProfileFiles() : [];
+  const [repo, contributorsResult, commits, fileContributors] = await Promise.all([
     fetchGithubJson(`/repos/${encodedRepo}`, token),
     fetchGithubCollection(
       `/repos/${encodedRepo}/contributors?per_page=100`,
       token,
       { maxItems: CONTRIBUTORS_FETCH_LIMIT }
     ),
-    fetchGithubJson(`/repos/${encodedRepo}/commits?per_page=${COMMIT_GRAPH_LIMIT}`, token)
+    fetchGithubJson(`/repos/${encodedRepo}/commits?per_page=${COMMIT_GRAPH_LIMIT}`, token),
+    fetchFileContributorsViaGraphql(repository, profileFiles, token).catch(() => ({}))
   ]);
 
   const [issuesResult, pullsResult] = await Promise.all([
@@ -530,6 +607,7 @@ async function fetchGithubState({ repository, token = '' }) {
     commits: commitNodes,
     issues: pureIssues.slice(0, ISSUES_DISPLAY_LIMIT),
     pullRequests: pullNodes.slice(0, PULLS_DISPLAY_LIMIT),
+    fileContributors,
     issuesTotal: pureIssues.length,
     openIssuesTotal,
     pullRequestsTotal: pullNodes.length,
@@ -582,18 +660,30 @@ function normalizeCheers(rawCheers) {
     .filter(Boolean);
 }
 
-function normalizeContributors(contributors) {
+function normalizeContributors(contributors, fileContributors = {}) {
   return contributors
-    .map((item) => ({
-      name: String(item.name || '').trim(),
-      github: String(item.github || '').trim(),
-      motto: String(item.motto || '').trim(),
-      city: String(item.city || '').trim(),
-      avatar: String(item.avatar || '').trim(),
-      homepage: String(item.homepage || '').trim(),
-      cheers: normalizeCheers(item.cheers),
-      file: item.file
-    }))
+    .map((item) => {
+      const file = String(item.file || '').trim();
+      const stem = file.replace(/\.json$/i, '').trim();
+      const resolved = (file && fileContributors[file]) || {};
+      const github = String(resolved.github || item.github || stem).trim();
+      const avatar = String(
+        resolved.avatar ||
+        item.avatar ||
+        (/^[A-Za-z0-9-]+$/.test(github) ? `https://github.com/${encodeURIComponent(github)}.png?size=160` : '')
+      ).trim();
+
+      return {
+        name: String(item.name || '').trim(),
+        github,
+        motto: String(item.motto || '').trim(),
+        city: String(item.city || '').trim(),
+        avatar,
+        homepage: String(item.homepage || '').trim(),
+        cheers: normalizeCheers(item.cheers),
+        file
+      };
+    })
     .filter((item) => item.name || item.github);
 }
 
@@ -626,7 +716,7 @@ function buildContributorState({ githubState = buildUnconfiguredGithubState(), f
   const generatedAt = new Date().toISOString();
   const fingerprint = computeProfilesFingerprint();
   const result = readAndValidateAll();
-  const normalized = normalizeContributors(result.contributors);
+  const normalized = normalizeContributors(result.contributors, githubState?.fileContributors || {});
   const ok = result.errors.length === 0;
   const contributors = ok ? normalized : fallbackContributors;
   const cheersTotal = contributors.reduce((sum, profile) => sum + profile.cheers.length, 0);

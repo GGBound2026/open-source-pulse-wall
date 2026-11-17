@@ -285,11 +285,12 @@ function avatarForProfile(profile) {
   const avatarUrl = safeHttpsUrl(explicitAvatar);
   if (avatarUrl) return avatarUrl;
 
-  const seed = String(profile.github || profile.name || '').trim();
-  if (!seed) return AVATARS[0];
+  const handle = String(profile.github || '').trim();
+  if (/^[A-Za-z0-9-]+$/.test(handle)) {
+    return `https://github.com/${encodeURIComponent(handle)}.png?size=160`;
+  }
 
-  const sum = Array.from(seed).reduce((total, character) => total + character.charCodeAt(0), 0);
-  return AVATARS[sum % AVATARS.length];
+  return AVATARS[0];
 }
 
 function cheersMarkup(profile, options = {}) {
@@ -307,9 +308,9 @@ function cheersMarkup(profile, options = {}) {
   }
 
   const ordered = cheers.slice().reverse();
-  const handle = String(profile.github || profile.name || '').trim();
-  const triggerAttr = !options.preview && handle
-    ? ` data-cheers-trigger="${htmlEscape(handle)}"`
+  const triggerKey = String(profile.file || profile.github || profile.name || '').trim();
+  const triggerAttr = !options.preview && triggerKey
+    ? ` data-cheers-trigger="${htmlEscape(triggerKey)}"`
     : '';
   const previewItems = ordered.slice(0, options.preview ? 4 : 1);
   const moreCount = ordered.length - previewItems.length;
@@ -322,7 +323,7 @@ function cheersMarkup(profile, options = {}) {
     `)
     .join('');
   const moreLine = moreCount > 0
-    ? (!options.preview && handle
+    ? (!options.preview && triggerKey
       ? `<li class="cheers-more"><button type="button" class="cheers-more-button"${triggerAttr}>还有 ${moreCount} 条寄语 · 查看全部</button></li>`
       : `<li class="cheers-more">还有 ${moreCount} 条寄语</li>`)
     : '';
@@ -358,10 +359,10 @@ function cardMarkup(profile, options = {}) {
     : '<span>GitHub</span>';
   const avatar = htmlEscape(avatarForProfile(profile));
   const cheerCount = Array.isArray(profile.cheers) ? profile.cheers.length : 0;
-  const cheerHandle = String(profile.github || profile.name || '').trim();
+  const cheerKey = String(profile.file || profile.github || profile.name || '').trim();
   const cheerBadge = cheerCount > 0
-    ? (!options.preview && cheerHandle
-      ? `<button type="button" class="cheer-badge" data-cheers-trigger="${htmlEscape(cheerHandle)}" title="查看全部 ${cheerCount} 条寄语">寄语 ${cheerCount}</button>`
+    ? (!options.preview && cheerKey
+      ? `<button type="button" class="cheer-badge" data-cheers-trigger="${htmlEscape(cheerKey)}" title="查看全部 ${cheerCount} 条寄语">寄语 ${cheerCount}</button>`
       : `<span class="cheer-badge" title="收到 ${cheerCount} 条同学寄语">寄语 ${cheerCount}</span>`)
     : '';
 
@@ -697,12 +698,12 @@ function renderWallDrawer() {
 }
 
 function detectNewContributors(payload) {
-  const incoming = new Set((payload.contributors || []).map((person) => String(person.github || person.name).toLowerCase()));
+  const incoming = new Set((payload.contributors || []).map((person) => String(person.file || person.github || person.name).toLowerCase()));
   const newHandles = [];
 
   for (const handle of incoming) {
     if (handle && !state.knownHandles.has(handle)) {
-      newHandles.push(handle);
+      newHandles.push(handle.replace(/\.json$/i, ''));
     }
   }
 
@@ -716,7 +717,7 @@ function detectNewContributors(payload) {
 function detectNewCheers(payload) {
   const allCheers = [];
   (payload.contributors || []).forEach((profile) => {
-    const owner = String(profile.github || profile.name || '').toLowerCase();
+    const owner = String(profile.file || profile.github || profile.name || '').toLowerCase();
     (profile.cheers || []).forEach((cheer) => {
       const key = `${owner}|${String(cheer.from || '').toLowerCase()}|${String(cheer.message || '').trim()}`;
       allCheers.push({ key, profile, cheer });
@@ -1529,8 +1530,14 @@ function findContributorByHandle(handle) {
   if (!handle) return null;
   const target = String(handle).toLowerCase();
   return state.wallContributors.find((profile) =>
+    String(profile.file || '').toLowerCase() === target ||
     String(profile.github || profile.name || '').toLowerCase() === target
   ) || null;
+}
+
+function openCheersTitleText(profile) {
+  const display = profile.name || profile.github || 'unknown';
+  return profile.github ? `${display} (@${profile.github}) 收到的寄语` : `${display} 收到的寄语`;
 }
 
 function cheersFullMarkup(cheers) {
@@ -1565,10 +1572,9 @@ function openCheersOverlay(profile) {
   state.cheersReturnFocus = document.activeElement;
 
   const cheers = Array.isArray(profile.cheers) ? profile.cheers : [];
-  const owner = profile.github || profile.name || 'unknown';
 
   if (elements.cheersTitle) {
-    elements.cheersTitle.textContent = `@${owner} 收到的寄语`;
+    elements.cheersTitle.textContent = openCheersTitleText(profile);
   }
   if (elements.cheersSubtitle) {
     elements.cheersSubtitle.textContent = cheers.length

@@ -1,5 +1,6 @@
 #!/usr/bin/env node
 
+const crypto = require('crypto');
 const fs = require('fs');
 const path = require('path');
 const { loadEnvFile } = require('./load-env');
@@ -44,16 +45,30 @@ function copyDirectory(source, target) {
   }
 }
 
-function markStaticIndex() {
-  const indexPath = path.join(DIST_DIR, 'index.html');
-  const html = fs.readFileSync(indexPath, 'utf8');
-  fs.writeFileSync(
-    indexPath,
-    html.replace(
-      '<meta name="app-data-source" content="auto" />',
-      '<meta name="app-data-source" content="static" />'
-    )
-  );
+function shortFileHash(filePath) {
+  const bytes = fs.readFileSync(filePath);
+  return crypto.createHash('sha1').update(bytes).digest('hex').slice(0, 10);
+}
+
+function markStaticHtmlAssets() {
+  const cssHash = shortFileHash(path.join(DIST_DIR, 'styles.css'));
+  const jsHash = shortFileHash(path.join(DIST_DIR, 'app.js'));
+
+  for (const htmlFile of ['index.html', 'guide.html']) {
+    const htmlPath = path.join(DIST_DIR, htmlFile);
+    if (!fs.existsSync(htmlPath)) continue;
+
+    let html = fs.readFileSync(htmlPath, 'utf8');
+    html = html
+      .replace(
+        '<meta name="app-data-source" content="auto" />',
+        '<meta name="app-data-source" content="static" />'
+      )
+      .replace('href="styles.css"', `href="styles.css?v=${cssHash}"`)
+      .replace('src="app.js"', `src="app.js?v=${jsHash}"`);
+
+    fs.writeFileSync(htmlPath, html);
+  }
 }
 
 async function buildStaticSite() {
@@ -72,7 +87,7 @@ async function buildStaticSite() {
 
   fs.rmSync(DIST_DIR, { recursive: true, force: true });
   copyDirectory(PUBLIC_DIR, DIST_DIR);
-  markStaticIndex();
+  markStaticHtmlAssets();
   fs.writeFileSync(
     path.join(DIST_DIR, 'contributors.json'),
     JSON.stringify({

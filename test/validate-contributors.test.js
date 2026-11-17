@@ -6,14 +6,18 @@ const { validateProfile } = require('../scripts/validate-contributors');
 function validProfile(overrides = {}) {
   return {
     name: 'Safe User',
-    github: 'safe-user',
     motto: 'Ship carefully',
     ...overrides
   };
 }
 
-test('accepts simplified profile without role, stack, or style', () => {
+test('accepts minimal profile without github, avatar, role, stack, or style', () => {
   assert.equal(validateProfile(validProfile(), 'safe-user.json').errors.length, 0);
+});
+
+test('rejects unedited template placeholder name on non-template files', () => {
+  const result = validateProfile(validProfile({ name: '你的名字' }), 'octocat.json');
+  assert.match(result.errors.join('\n'), /你的名字/);
 });
 
 test('rejects non-http homepage URLs', () => {
@@ -39,34 +43,4 @@ test('accepts http and https homepage URLs', () => {
     validateProfile(validProfile({ homepage: 'http://example.com/me' }), 'safe-user.json').errors.length,
     0
   );
-});
-
-test('accepts preset avatars and https avatar URLs', () => {
-  assert.equal(
-    validateProfile(validProfile({ avatar: 'avatars/avatar-01.png' }), 'safe-user.json').errors.length,
-    0
-  );
-  assert.equal(
-    validateProfile(validProfile({ avatar: 'https://example.com/avatar.png' }), 'safe-user.json').errors.length,
-    0
-  );
-});
-
-test('rejects unsafe avatar URLs', () => {
-  const httpResult = validateProfile(
-    validProfile({ avatar: 'http://example.com/avatar.png' }),
-    'safe-user.json'
-  );
-  const scriptResult = validateProfile(
-    validProfile({ avatar: 'javascript:alert(1)' }),
-    'safe-user.json'
-  );
-  const dataResult = validateProfile(
-    validProfile({ avatar: 'data:image/svg+xml,<svg></svg>' }),
-    'safe-user.json'
-  );
-
-  assert.match(httpResult.errors.join('\n'), /avatar/);
-  assert.match(scriptResult.errors.join('\n'), /avatar/);
-  assert.match(dataResult.errors.join('\n'), /avatar/);
 });

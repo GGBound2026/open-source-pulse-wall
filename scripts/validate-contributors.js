@@ -5,10 +5,6 @@ const path = require('path');
 
 const ROOT = path.resolve(__dirname, '..');
 const PROFILES_DIR = path.join(ROOT, 'data', 'profiles');
-const ALLOWED_AVATARS = new Set(Array.from({ length: 11 }, (_, index) => {
-  const number = String(index + 1).padStart(2, '0');
-  return `avatars/avatar-${number}.png`;
-}));
 
 const CHEERS_MAX_PER_PROFILE = 50;
 const CHEER_MESSAGE_MAX_LENGTH = 80;
@@ -87,7 +83,8 @@ function validateCheers(profile, filename, errors) {
     errors.push(`${filename}: cheers 最多 ${CHEERS_MAX_PER_PROFILE} 条，请合并或删减`);
   }
 
-  const owner = String(profile.github || '').trim().toLowerCase();
+  const stem = String(filename || '').replace(/\.json$/i, '').trim().toLowerCase();
+  const owner = String(profile.github || stem).trim().toLowerCase();
   const seen = new Set();
 
   profile.cheers.forEach((entry, index) => {
@@ -138,27 +135,14 @@ function validateProfile(profile, filename) {
   }
 
   requiredString(profile, 'name', 'name', errors, filename, 40);
-  requiredString(profile, 'github', 'github', errors, filename, 39);
-  requiredString(profile, 'motto', 'motto', errors, filename, 120);
-
-  const githubProblem = validateGithubHandle(profile.github);
-  if (githubProblem) {
-    errors.push(`${filename}: ${githubProblem}`);
+  if (typeof profile.name === 'string' && profile.name.trim() === '你的名字' && !String(filename).startsWith('_')) {
+    errors.push(`${filename}: 请将 name 从模板默认值「你的名字」改成你自己的名字或昵称`);
   }
+
+  requiredString(profile, 'motto', 'motto', errors, filename, 120);
 
   if (profile.city !== undefined && (typeof profile.city !== 'string' || profile.city.trim().length > 40)) {
     errors.push(`${filename}: city 必须是 40 个字符以内的字符串`);
-  }
-
-  if (profile.avatar !== undefined) {
-    if (typeof profile.avatar !== 'string') {
-      errors.push(`${filename}: avatar 必须是字符串`);
-    } else {
-      const avatar = profile.avatar.trim();
-      if (!ALLOWED_AVATARS.has(avatar) && !isHttpsUrl(avatar)) {
-        errors.push(`${filename}: avatar 只能使用 ${Array.from(ALLOWED_AVATARS).join(', ')} 中的一个，或 https:// 开头的图片 URL`);
-      }
-    }
   }
 
   if (profile.homepage !== undefined) {
@@ -171,11 +155,6 @@ function validateProfile(profile, filename) {
 
   validateCheers(profile, filename, errors);
 
-  const expectedName = `${String(profile.github || '').trim().toLowerCase()}.json`;
-  if (profile.github && filename.toLowerCase() !== expectedName) {
-    warnings.push(`${filename}: 建议文件名改成 ${expectedName}，这样维护者更容易定位贡献者`);
-  }
-
   return { errors, warnings };
 }
 
@@ -184,7 +163,6 @@ function readAndValidateAll() {
   const errors = [];
   const warnings = [];
   const contributors = [];
-  const seenGithub = new Map();
 
   for (const file of files) {
     const filePath = path.join(PROFILES_DIR, file);
@@ -201,15 +179,6 @@ function readAndValidateAll() {
     errors.push(...result.errors);
     warnings.push(...result.warnings);
 
-    if (profile && profile.github) {
-      const key = String(profile.github).trim().toLowerCase();
-      if (seenGithub.has(key)) {
-        errors.push(`${file}: github ${profile.github} 已经在 ${seenGithub.get(key)} 中出现过`);
-      } else {
-        seenGithub.set(key, file);
-      }
-    }
-
     contributors.push({ ...profile, file });
   }
 
@@ -223,7 +192,7 @@ function readAndValidateAll() {
 if (require.main === module) {
   const { contributors, errors, warnings } = readAndValidateAll();
 
-  console.log(`\nOpen Source Pulse Wall validation`);
+  console.log('\nOpen Source Pulse Wall validation');
   console.log(`Profiles: ${contributors.length}`);
 
   if (warnings.length) {
@@ -242,12 +211,12 @@ if (require.main === module) {
 }
 
 module.exports = {
+  listProfileFiles,
   readAndValidateAll,
   validateProfile,
   validateGithubHandle,
   isHttpUrl,
   isHttpsUrl,
-  ALLOWED_AVATARS,
   CHEERS_MAX_PER_PROFILE,
   CHEER_MESSAGE_MAX_LENGTH
 };
