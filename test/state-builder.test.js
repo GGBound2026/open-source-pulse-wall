@@ -184,6 +184,42 @@ test('builds community lanes from real GitHub issues instead of placeholders', a
           closed_at: null,
           comments: 0,
           labels: [{ name: 'enhancement', color: 'a2eeef' }]
+        },
+        {
+          number: 15,
+          title: '[Question] 已关闭的问题',
+          state: 'closed',
+          user: { login: 'eve', avatar_url: '', html_url: '' },
+          html_url: 'https://github.com/acme/wall/issues/15',
+          created_at: '2026-05-09T00:00:00Z',
+          updated_at: '2026-05-10T00:00:00Z',
+          closed_at: '2026-05-10T00:00:00Z',
+          comments: 1,
+          labels: [{ name: 'question', color: 'd876e3' }]
+        },
+        {
+          number: 16,
+          title: '[Idea] 已关闭的想法',
+          state: 'closed',
+          user: { login: 'frank', avatar_url: '', html_url: '' },
+          html_url: 'https://github.com/acme/wall/issues/16',
+          created_at: '2026-05-09T00:00:00Z',
+          updated_at: '2026-05-10T00:00:00Z',
+          closed_at: '2026-05-10T00:00:00Z',
+          comments: 99,
+          labels: [{ name: 'enhancement', color: 'a2eeef' }]
+        },
+        {
+          number: 17,
+          title: '[Bug] 已关闭的 Bug',
+          state: 'closed',
+          user: { login: 'grace', avatar_url: '', html_url: '' },
+          html_url: 'https://github.com/acme/wall/issues/17',
+          created_at: '2026-05-09T00:00:00Z',
+          updated_at: '2026-05-10T00:00:00Z',
+          closed_at: '2026-05-10T00:00:00Z',
+          comments: 3,
+          labels: [{ name: 'bug', color: 'd73a4a' }]
         }
       ]);
     }
@@ -195,7 +231,9 @@ test('builds community lanes from real GitHub issues instead of placeholders', a
     const state = await fetchGithubState({ repository: 'acme/wall' });
 
     assert.equal(state.communityLanes.questions[0].title, '[Question] Windows 下 npm start 失败');
+    assert.equal(state.communityLanes.questions.length, 1);
     assert.equal(state.communityLanes.ideas[0].title, '[Idea] 支持头像裁剪');
+    assert.equal(state.communityLanes.ideas.length, 2);
     assert.equal(state.communityLanes.bugs[0].title, '[Bug] 提交后页面没有更新');
     assert.equal(state.communityLanes.bugs.length, 1);
     assert.equal(state.communityLanes.questions[0].source, 'issue');

@@ -9,6 +9,7 @@
     "test": "node --test",
     "validate": "node scripts/validate-contributors.js",
     "build:pages": "node scripts/build-static-site.js",
+    "deploy:worker": "node scripts/deploy-worker.js",
     "dev": "node server.js"
   },
   "keywords": [

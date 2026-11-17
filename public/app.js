@@ -102,6 +102,8 @@ const elements = {
   historyCount: $('#historyCount'),
   refreshHistory: $('#refreshHistory'),
   refreshHistoryLabel: $('#refreshHistoryLabel'),
+  refreshBoard: $('#refreshBoard'),
+  refreshBoardLabel: $('#refreshBoardLabel'),
   openHistoryRepo: $('#openHistoryRepo'),
   toggleHistoryMode: $('#toggleHistoryMode'),
   boardSummary: $('#boardSummary'),
@@ -952,7 +954,7 @@ function updateHistorySection(payload) {
   }
 
   if (elements.refreshHistory) {
-    elements.refreshHistory.hidden = state.dataMode === 'static';
+    elements.refreshHistory.hidden = !canManualRefresh();
   }
 
   if (!github.configured) {
@@ -1041,11 +1043,23 @@ function detectNewCommits(commits, generatedAt) {
   }
 }
 
-function setRefreshButtonState(label, disabled) {
-  if (!elements.refreshHistory) return;
-  elements.refreshHistory.disabled = disabled;
-  elements.refreshHistory.classList.toggle('is-busy', disabled);
-  if (elements.refreshHistoryLabel) elements.refreshHistoryLabel.textContent = label;
+function setRefreshButtonState(label, disabled, { busy = false } = {}) {
+  [elements.refreshHistory, elements.refreshBoard].forEach((button) => {
+    if (!button) return;
+    button.disabled = disabled;
+    button.classList.toggle('is-busy', Boolean(busy));
+  });
+  [elements.refreshHistoryLabel, elements.refreshBoardLabel].forEach((el) => {
+    if (el) el.textContent = label;
+  });
+}
+
+function formatCooldownDuration(seconds) {
+  const total = Math.max(1, Math.ceil(seconds));
+  const mins = Math.floor(total / 60);
+  const secs = total % 60;
+  if (mins <= 0) return `${secs}s `;
+  return secs > 0 ? `${mins}分${String(secs).padStart(2, '0')}秒` : `${mins}分钟`;
 }
 
 function startRefreshCooldown(seconds) {
@@ -1055,7 +1069,7 @@ function startRefreshCooldown(seconds) {
   }
 
   let remaining = Math.max(1, Math.floor(seconds));
-  setRefreshButtonState(`${remaining}s 后可再拉取`, true);
+  setRefreshButtonState(`${formatCooldownDuration(remaining)}后可再拉取`, true, { busy: false });
   state.refreshCooldownTimer = window.setInterval(() => {
     remaining -= 1;
     if (remaining <= 0) {
@@ -1064,7 +1078,7 @@ function startRefreshCooldown(seconds) {
       setRefreshButtonState(REFRESH_LABEL_DEFAULT, false);
       return;
     }
-    setRefreshButtonState(`${remaining}s 后可再拉取`, true);
+    setRefreshButtonState(`${formatCooldownDuration(remaining)}后可再拉取`, true, { busy: false });
   }, 1000);
 }
 
@@ -1095,22 +1109,29 @@ function buildRefreshToastMessage(data) {
 }
 
 async function manuallyRefreshHistory() {
-  if (state.refreshing || state.dataMode === 'static') return;
+  if (state.refreshing || !canManualRefresh()) return;
+
+  const endpoint = state.dataMode === 'api'
+    ? 'api/refresh'
+    : `${refreshApiBase()}/api/refresh`;
 
   state.refreshing = true;
-  setRefreshButtonState('正在拉取…', true);
+  setRefreshButtonState('正在拉取…', true, { busy: true });
 
   try {
-    const response = await fetch('api/refresh', {
+    const response = await fetch(endpoint, {
       method: 'POST',
       headers: { 'Accept': 'application/json' }
     });
 
     if (response.status === 429) {
       const data = await response.json().catch(() => ({}));
-      const retrySeconds = Math.max(1, Math.ceil((data.retryInMs || 5000) / 1000));
+      if (data?.state) {
+        applyState(data.state);
+      }
+      const retrySeconds = Math.max(1, Math.ceil((data.retryInMs || 180000) / 1000));
       startRefreshCooldown(retrySeconds);
-      toast(data.message || '刷新太频繁，稍后再试');
+      toast(data.message || `刷新限流中（3 分钟 1 次）：${formatCooldownDuration(retrySeconds)}后可再拉取`);
       return;
     }
 
@@ -1119,8 +1140,17 @@ async function manuallyRefreshHistory() {
     }
 
     const data = await response.json();
-    toast(buildRefreshToastMessage(data));
-    setRefreshButtonState(REFRESH_LABEL_DEFAULT, false);
+    if (data?.state) {
+      applyState(data.state);
+    }
+    toast(data.message || buildRefreshToastMessage(data));
+
+    const cooldownMs = Number(data.retryInMs || data.cooldownMs || 0);
+    if (cooldownMs > 0) {
+      startRefreshCooldown(Math.ceil(cooldownMs / 1000));
+    } else {
+      setRefreshButtonState(REFRESH_LABEL_DEFAULT, false);
+    }
   } catch (error) {
     toast(`拉取失败: ${error.message || '未知错误'}`);
     setRefreshButtonState(REFRESH_LABEL_DEFAULT, false);
@@ -1132,6 +1162,10 @@ async function manuallyRefreshHistory() {
 function bindHistoryControls() {
   if (elements.refreshHistory) {
     elements.refreshHistory.addEventListener('click', manuallyRefreshHistory);
+  }
+
+  if (elements.refreshBoard) {
+    elements.refreshBoard.addEventListener('click', manuallyRefreshHistory);
   }
 
   if (elements.toggleHistoryMode) {
@@ -1303,15 +1337,19 @@ function updateCommunityLanes(github) {
   renderCommunityLane(elements.communityBugsList, Array.isArray(lanes.bugs) ? lanes.bugs : [], emptyText);
 
   const base = github.htmlUrl || '';
-  setCommunityLink(elements.openQuestionsLink, base ? `${base}/issues?q=is%3Aissue%20label%3Aquestion` : '');
-  setCommunityLink(elements.openIdeasLink, base ? `${base}/issues?q=is%3Aissue%20label%3Aenhancement` : '');
-  setCommunityLink(elements.openBugsLink, base ? `${base}/issues?q=is%3Aissue%20label%3Abug` : '');
+  setCommunityLink(elements.openQuestionsLink, base ? `${base}/issues?q=is%3Aissue%20is%3Aopen%20label%3Aquestion` : '');
+  setCommunityLink(elements.openIdeasLink, base ? `${base}/issues?q=is%3Aissue%20is%3Aopen%20label%3Aenhancement` : '');
+  setCommunityLink(elements.openBugsLink, base ? `${base}/issues?q=is%3Aissue%20is%3Aopen%20label%3Abug` : '');
 }
 
 function updateBoardSection(payload) {
   const github = payload.github || {};
   const issues = Array.isArray(github.issues) ? github.issues : [];
   const pullRequests = Array.isArray(github.pullRequests) ? github.pullRequests : [];
+
+  if (elements.refreshBoard) {
+    elements.refreshBoard.hidden = !canManualRefresh();
+  }
 
   if (elements.openBoardRepo) {
     if (github.htmlUrl) {
@@ -1401,11 +1439,25 @@ function dataSourceMode() {
   return document.querySelector('meta[name="app-data-source"]')?.getAttribute('content') || 'auto';
 }
 
+function refreshApiBase() {
+  return String(document.querySelector('meta[name="app-refresh-api"]')?.getAttribute('content') || '')
+    .trim()
+    .replace(/\/+$/, '');
+}
+
+function canManualRefresh() {
+  return state.dataMode === 'api' || Boolean(refreshApiBase());
+}
+
 async function fetchState() {
+  const workerBase = refreshApiBase();
+  const workerEndpoint = workerBase ? [{ url: `${workerBase}/api/state`, mode: 'worker' }] : [];
   const endpoints = dataSourceMode() === 'static' ? [
+    ...workerEndpoint,
     { url: 'contributors.json', mode: 'static' }
   ] : [
     { url: 'api/contributors', mode: 'api' },
+    ...workerEndpoint,
     { url: 'contributors.json', mode: 'static' }
   ];
   let lastError = null;
@@ -1425,7 +1477,7 @@ async function fetchState() {
 }
 
 function startFallbackPolling() {
-  if (state.dataMode === 'static') return;
+  if (state.dataMode === 'static' || state.dataMode === 'worker') return;
   if (state.fallbackTimer) return;
   state.fallbackTimer = window.setInterval(async () => {
     try {
@@ -1438,6 +1490,12 @@ function startFallbackPolling() {
 }
 
 function connectEvents() {
+  if (state.dataMode === 'worker') {
+    setConnection('online', '聚合缓存已连接 · 支持手动拉取（限流 3 分钟/次）');
+    addFeed('已加载云端聚合快照，点击「立即拉取」可按需同步（限流 3 分钟/次）', new Date().toISOString(), 'pulse');
+    return;
+  }
+
   if (state.dataMode === 'static') {
     setConnection('online', '静态页面已加载，随 GitHub Pages 构建更新');
     addFeed('静态页面已加载，合并 main 后自动发布', new Date().toISOString(), 'pulse');

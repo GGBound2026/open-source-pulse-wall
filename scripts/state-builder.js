@@ -441,6 +441,8 @@ function buildCommunityLanes(issues) {
   const bugs = [];
 
   issues.forEach((issue) => {
+    if (issue.state !== 'open') return;
+
     const labels = labelNames(issue);
     const isQuestion = labels.some((name) => QUESTION_LABELS.has(name)) ||
       titleMatches(issue, QUESTION_TITLE_PATTERN);
@@ -449,7 +451,7 @@ function buildCommunityLanes(issues) {
     const isBug = labels.some((name) => BUG_LABELS.has(name)) ||
       titleMatches(issue, BUG_TITLE_PATTERN);
 
-    if (issue.state === 'open' && isQuestion) {
+    if (isQuestion) {
       questions.push(communityItemFromIssue(issue));
     }
     if (isIdea) {
