@@ -24,13 +24,14 @@ test('home page is a display-first collaboration wall with bounded detail entry 
 test('home page presents the contribution guide as a separate page action', () => {
   const html = fs.readFileSync(INDEX_PATH, 'utf8');
   const guideHtml = fs.readFileSync(GUIDE_PATH, 'utf8');
-  const nav = html.match(/<nav class="topnav"[\s\S]*?<\/nav>/);
 
-  assert.ok(nav);
-  assert.doesNotMatch(nav[0], /guide\.html|开始贡献/);
+  assert.doesNotMatch(html, /<nav class="topnav"/);
+  assert.doesNotMatch(guideHtml, /<nav class="topnav"/);
   assert.match(html, /class="[^"]*guide-entry[^"]*"/);
+  assert.match(html, /<strong>开始贡献<\/strong>/);
   assert.match(html, /<small>教学页<\/small>/);
   assert.match(guideHtml, /class="[^"]*guide-entry[^"]*guide-back[^"]*"/);
+  assert.match(guideHtml, /<strong>返回展示墙<\/strong>/);
 });
 
 test('display wall keeps expanding data surfaces bounded by default', () => {

@@ -116,7 +116,7 @@ svg { fill: none; stroke: currentColor; stroke-linecap: round; stroke-linejoin: 
 
 .topbar {
   display: grid;
-  grid-template-columns: minmax(260px, 1fr) auto auto;
+  grid-template-columns: minmax(260px, 1fr) auto;
   align-items: center;
   gap: 28px;
   min-height: 58px;
@@ -2631,7 +2631,7 @@ body::after {
 .about { order: 8; }
 
 .topbar {
-  grid-template-columns: minmax(280px, 1fr) auto auto;
+  grid-template-columns: minmax(280px, 1fr) auto;
   margin-bottom: 0;
   padding: 0 8px 4px;
 }
@@ -3410,7 +3410,7 @@ body::after {
 }
 
 .guide-topbar {
-  grid-template-columns: minmax(260px, 1fr) auto auto;
+  grid-template-columns: minmax(260px, 1fr) auto;
 }
 
 .guide-actions {
