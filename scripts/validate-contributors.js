@@ -5,6 +5,7 @@ const path = require('path');
 
 const ROOT = path.resolve(__dirname, '..');
 const PROFILES_DIR = path.join(ROOT, 'data', 'profiles');
+const CHEERS_DIR = path.join(ROOT, 'data', 'cheers');
 
 const CHEERS_MAX_PER_PROFILE = 50;
 const CHEER_MESSAGE_MAX_LENGTH = 80;
@@ -18,6 +19,36 @@ function listProfileFiles() {
     .filter((file) => file.endsWith('.json'))
     .filter((file) => !file.startsWith('_'))
     .sort();
+}
+
+function listCheerFiles() {
+  if (!fs.existsSync(CHEERS_DIR)) {
+    return [];
+  }
+
+  const items = [];
+  const entries = fs.readdirSync(CHEERS_DIR, { withFileTypes: true })
+    .filter((entry) => entry.isDirectory() && !entry.name.startsWith('_'))
+    .sort((a, b) => a.name.localeCompare(b.name));
+
+  for (const dirEntry of entries) {
+    const target = dirEntry.name;
+    const targetDir = path.join(CHEERS_DIR, target);
+    const files = fs.readdirSync(targetDir, { withFileTypes: true })
+      .filter((entry) => entry.isFile() && entry.name.endsWith('.json') && !entry.name.startsWith('_'))
+      .map((entry) => entry.name)
+      .sort((a, b) => a.localeCompare(b));
+
+    for (const file of files) {
+      items.push({
+        target,
+        file,
+        relPath: `data/cheers/${target}/${file}`
+      });
+    }
+  }
+
+  return items;
 }
 
 function isPlainObject(value) {
@@ -71,59 +102,43 @@ function requiredString(profile, key, label, errors, filename, maxLength = 80) {
   }
 }
 
-function validateCheers(profile, filename, errors) {
-  if (profile.cheers === undefined) return;
+function validateCheerEntry(entry, relPath, { targetOwner = '' } = {}) {
+  const errors = [];
+  const warnings = [];
 
-  if (!Array.isArray(profile.cheers)) {
-    errors.push(`${filename}: cheers 必须是数组，例如 [{ "from": "octocat", "message": "加油!" }]`);
-    return;
+  if (!isPlainObject(entry)) {
+    return {
+      errors: [`${relPath}: 文件内容必须是一个 JSON 对象，例如 { "message": "加油！" }`],
+      warnings
+    };
   }
 
-  if (profile.cheers.length > CHEERS_MAX_PER_PROFILE) {
-    errors.push(`${filename}: cheers 最多 ${CHEERS_MAX_PER_PROFILE} 条，请合并或删减`);
+  if (typeof entry.message !== 'string' || entry.message.trim().length === 0) {
+    errors.push(`${relPath}: message 必须填写`);
+  } else if (entry.message.trim().length > CHEER_MESSAGE_MAX_LENGTH) {
+    errors.push(`${relPath}: message 过长，最多 ${CHEER_MESSAGE_MAX_LENGTH} 个字符`);
   }
 
-  const stem = String(filename || '').replace(/\.json$/i, '').trim().toLowerCase();
-  const owner = String(profile.github || stem).trim().toLowerCase();
-  const seen = new Set();
-
-  profile.cheers.forEach((entry, index) => {
-    const label = `cheers[${index}]`;
-
-    if (!isPlainObject(entry)) {
-      errors.push(`${filename}: ${label} 必须是对象 { from, message }`);
-      return;
-    }
-
+  if (entry.from !== undefined) {
     const fromProblem = validateGithubHandle(entry.from);
     if (fromProblem) {
-      errors.push(`${filename}: ${label}.from ${fromProblem}`);
-    }
-
-    const fromHandle = String(entry.from || '').trim().toLowerCase();
-    if (owner && fromHandle && fromHandle === owner) {
-      errors.push(`${filename}: ${label}.from 不能是 profile 主人自己（请让别的同学给你加油）`);
-    }
-
-    if (typeof entry.message !== 'string' || entry.message.trim().length === 0) {
-      errors.push(`${filename}: ${label}.message 必须填写`);
-    } else if (entry.message.trim().length > CHEER_MESSAGE_MAX_LENGTH) {
-      errors.push(`${filename}: ${label}.message 过长，最多 ${CHEER_MESSAGE_MAX_LENGTH} 个字符`);
-    }
-
-    if (entry.ts !== undefined) {
-      if (typeof entry.ts !== 'string' || Number.isNaN(Date.parse(entry.ts))) {
-        errors.push(`${filename}: ${label}.ts 必须是 ISO 时间字符串，例如 2026-05-09`);
+      errors.push(`${relPath}: from ${fromProblem}`);
+    } else {
+      const owner = String(targetOwner || '').trim().toLowerCase();
+      const fromHandle = String(entry.from || '').trim().toLowerCase();
+      if (owner && fromHandle && fromHandle === owner) {
+        errors.push(`${relPath}: 不能是 profile 主人自己给自己写寄语`);
       }
     }
+  }
 
-    const dedupeKey = `${fromHandle}|${String(entry.message || '').trim()}`;
-    if (fromHandle && seen.has(dedupeKey)) {
-      errors.push(`${filename}: ${label} 与之前同一作者的同样内容重复，请合并`);
-    } else if (fromHandle) {
-      seen.add(dedupeKey);
+  if (entry.ts !== undefined) {
+    if (typeof entry.ts !== 'string' || Number.isNaN(Date.parse(entry.ts))) {
+      errors.push(`${relPath}: ts 必须是 ISO 时间字符串，例如 2026-05-09`);
     }
-  });
+  }
+
+  return { errors, warnings };
 }
 
 function validateProfile(profile, filename) {
@@ -145,7 +160,13 @@ function validateProfile(profile, filename) {
     errors.push(`${filename}: city 必须是 40 个字符以内的字符串`);
   }
 
-  validateCheers(profile, filename, errors);
+  if (profile.cheers !== undefined) {
+    if (!Array.isArray(profile.cheers) || profile.cheers.length > 0) {
+      errors.push(
+        `${filename}: 寄语已改为独立文件，请创建 data/cheers/<目标用户名>/<任意文件名>.json（仅需填写 { "message": "..." }）`
+      );
+    }
+  }
 
   return { errors, warnings };
 }
@@ -155,11 +176,14 @@ function readAndValidateAll() {
   const errors = [];
   const warnings = [];
   const contributors = [];
+  const validTargets = new Set();
 
   for (const file of files) {
     const filePath = path.join(PROFILES_DIR, file);
-    let profile;
+    const stem = file.replace(/\.json$/i, '').trim().toLowerCase();
+    if (stem) validTargets.add(stem);
 
+    let profile;
     try {
       profile = JSON.parse(fs.readFileSync(filePath, 'utf8'));
     } catch (error) {
@@ -178,14 +202,54 @@ function readAndValidateAll() {
     warnings.push('当前还没有贡献者文件。课堂上每位同学可以从 data/profiles/_template.json 复制一份。');
   }
 
-  return { contributors, errors, warnings };
+  const cheerFiles = listCheerFiles();
+  const cheerEntries = [];
+  const cheersCountByTarget = new Map();
+
+  for (const item of cheerFiles) {
+    const targetKey = item.target.trim().toLowerCase();
+    if (!validTargets.has(targetKey)) {
+      errors.push(`${item.relPath}: 未找到目标贡献者 "${item.target}" 对应的 data/profiles/${item.target}.json`);
+    }
+
+    const nextCount = (cheersCountByTarget.get(targetKey) || 0) + 1;
+    cheersCountByTarget.set(targetKey, nextCount);
+    if (nextCount === CHEERS_MAX_PER_PROFILE + 1) {
+      errors.push(`data/cheers/${item.target}: 寄语最多 ${CHEERS_MAX_PER_PROFILE} 条，请删减`);
+    }
+
+    const fullPath = path.join(ROOT, item.relPath);
+    let parsed;
+    try {
+      parsed = JSON.parse(fs.readFileSync(fullPath, 'utf8'));
+    } catch (error) {
+      errors.push(`${item.relPath}: JSON 解析失败，${error.message}`);
+      continue;
+    }
+
+    const result = validateCheerEntry(parsed, item.relPath, { targetOwner: targetKey });
+    errors.push(...result.errors);
+    warnings.push(...result.warnings);
+
+    cheerEntries.push({
+      target: item.target,
+      file: item.file,
+      relPath: item.relPath,
+      message: typeof parsed?.message === 'string' ? parsed.message.trim() : '',
+      ...(typeof parsed?.from === 'string' ? { from: parsed.from.trim() } : {}),
+      ...(typeof parsed?.ts === 'string' ? { ts: parsed.ts.trim() } : {})
+    });
+  }
+
+  return { contributors, cheerEntries, errors, warnings };
 }
 
 if (require.main === module) {
-  const { contributors, errors, warnings } = readAndValidateAll();
+  const { contributors, cheerEntries, errors, warnings } = readAndValidateAll();
 
   console.log('\nOpen Source Pulse Wall validation');
   console.log(`Profiles: ${contributors.length}`);
+  console.log(`Cheers: ${cheerEntries.length}`);
 
   if (warnings.length) {
     console.log('\nWarnings:');
@@ -195,7 +259,7 @@ if (require.main === module) {
   if (errors.length) {
     console.log('\nErrors:');
     errors.forEach((error) => console.log(`  ✗ ${error}`));
-    console.log('\nValidation failed. Fix the profile file and run npm run validate again.\n');
+    console.log('\nValidation failed. Fix the file and run npm run validate again.\n');
     process.exit(1);
   }
 
@@ -204,8 +268,10 @@ if (require.main === module) {
 
 module.exports = {
   listProfileFiles,
+  listCheerFiles,
   readAndValidateAll,
   validateProfile,
+  validateCheerEntry,
   validateGithubHandle,
   isHttpUrl,
   isHttpsUrl,

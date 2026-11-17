@@ -146,14 +146,13 @@ git remote add upstream https://github.com/nanzhi84/open-source-pulse-wall.git</
           <pre><code>{
   "name": "你的名字",
   "motto": "今天完成我的第一个开源 PR",
-  "city": "Beijing",
-  "cheers": []
+  "city": "Beijing"
 }</code></pre>
           <div class="guide-field-grid">
             <article><h3>`name`</h3><p>你的名字或昵称（必填）。</p></article>
             <article><h3>`motto`</h3><p>一句话介绍自己，页面会展示（必填）。</p></article>
             <article><h3>`city`</h3><p>城市或课堂位置，可以写中文。</p></article>
-            <article><h3>`cheers`</h3><p>先保持空数组。这个字段留给其他同学给你写寄语。</p></article>
+            <article><h3>独立寄语目录 `data/cheers`</h3><p>想给同学写 `cheers` 寄语时，新建 `data/cheers/对方用户名/任意文件名.json`，只需写 `{ "message": "加油！" }`，系统会通过 PR 自动识别你的 `@用户名`。</p></article>
             <article><h3>自动识别头像与 `@用户名`</h3><p>无需手填 `github` 和 `avatar`——系统会自动读取提交该 JSON 的 PR 贡献者账号与 GitHub 头像。</p></article>
           </div>
         </section>
@@ -245,8 +244,8 @@ git push origin add-your-profile</code></pre>
               <p>提交前运行 `npm run validate`，能提前发现大多数格式问题。</p>
             </article>
             <article>
-              <h3>自己填写了 `cheers`</h3>
-              <p>第一次添加 profile 时保持 `cheers: []`。寄语留给同学来写。</p>
+              <h3>给同学写寄语的位置</h3>
+              <p>寄语不写在 `data/profiles` 里，请放到 `data/cheers/对方用户名/任意文件名.json`，只填 `message` 即可。</p>
             </article>
           </div>
           <div class="guide-next-actions">

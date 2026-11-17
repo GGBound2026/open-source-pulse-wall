@@ -30,22 +30,49 @@ function createGithubMockFetch(callLog) {
                   f0: {
                     nodes: [
                       {
+                        committedDate: '2026-05-12T06:00:00Z',
                         author: {
                           user: {
-                            login: 'bob-cheerer',
-                            avatarUrl: 'https://avatars.githubusercontent.com/u/2002?s=160'
+                            login: 'nanzhi84',
+                            avatarUrl: 'https://avatars.githubusercontent.com/u/999?s=160'
                           }
                         },
-                        committer: { user: { login: 'web-flow', avatarUrl: '' } }
+                        committer: { user: { login: 'web-flow', avatarUrl: '' } },
+                        associatedPullRequests: { nodes: [] }
                       },
                       {
-                        author: {
-                          user: {
-                            login: 'alice-pr-author',
-                            avatarUrl: 'https://avatars.githubusercontent.com/u/1001?s=160'
-                          }
-                        },
-                        committer: { user: { login: 'web-flow', avatarUrl: '' } }
+                        committedDate: '2026-05-10T08:00:00Z',
+                        author: { user: null },
+                        committer: { user: { login: 'web-flow', avatarUrl: '' } },
+                        associatedPullRequests: {
+                          nodes: [
+                            {
+                              author: {
+                                login: 'alice-pr-author',
+                                avatarUrl: 'https://avatars.githubusercontent.com/u/1001?s=160'
+                              }
+                            }
+                          ]
+                        }
+                      }
+                    ]
+                  },
+                  f1: {
+                    nodes: [
+                      {
+                        committedDate: '2026-05-12T06:30:00Z',
+                        author: { user: null },
+                        committer: { user: { login: 'web-flow', avatarUrl: '' } },
+                        associatedPullRequests: {
+                          nodes: [
+                            {
+                              author: {
+                                login: 'bob-cheerer',
+                                avatarUrl: 'https://avatars.githubusercontent.com/u/2002?s=160'
+                              }
+                            }
+                          ]
+                        }
                       }
                     ]
                   }
@@ -59,7 +86,7 @@ function createGithubMockFetch(callLog) {
       return jsonResponse({
         data: {
           repository: {
-            object: {
+            profiles: {
               entries: [
                 {
                   name: '_template.json',
@@ -72,9 +99,34 @@ function createGithubMockFetch(callLog) {
                   object: {
                     text: JSON.stringify({
                       name: 'Alice',
-                      motto: 'Hello OSS',
-                      cheers: []
+                      motto: 'Hello OSS'
                     })
+                  }
+                }
+              ]
+            },
+            cheers: {
+              entries: [
+                {
+                  name: '_template.json',
+                  type: 'blob',
+                  object: {}
+                },
+                {
+                  name: 'custom-card',
+                  type: 'tree',
+                  object: {
+                    entries: [
+                      {
+                        name: 'random-note.json',
+                        type: 'blob',
+                        object: {
+                          text: JSON.stringify({
+                            message: 'Awesome first PR!'
+                          })
+                        }
+                      }
+                    ]
                   }
                 }
               ]
@@ -230,6 +282,11 @@ test('worker packs state in one shot, filters closed community issues, and enfor
     assert.equal(firstData.state.count, 1);
     assert.equal(firstData.state.contributors[0].github, 'alice-pr-author');
     assert.equal(firstData.state.contributors[0].avatar, 'https://avatars.githubusercontent.com/u/1001?s=160');
+    assert.equal(firstData.state.contributors[0].cheers.length, 1);
+    assert.equal(firstData.state.contributors[0].cheers[0].from, 'bob-cheerer');
+    assert.equal(firstData.state.contributors[0].cheers[0].message, 'Awesome first PR!');
+    assert.equal(firstData.state.contributors[0].cheers[0].ts, '2026-05-12T06:30:00Z');
+    assert.equal(firstData.state.cheersTotal, 1);
     assert.equal(Object.hasOwn(firstData.state.contributors[0], 'role'), false);
     assert.equal(Object.hasOwn(firstData.state.contributors[0], 'stack'), false);
     assert.equal(Object.hasOwn(firstData.state.contributors[0], 'style'), false);

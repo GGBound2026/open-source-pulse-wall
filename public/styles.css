@@ -2344,6 +2344,8 @@ body.activity-open {
 }
 
 .board-column-link {
+  flex-shrink: 0;
+  white-space: nowrap;
   font-size: .8rem;
   color: var(--muted);
   text-decoration: none;
@@ -2863,24 +2865,24 @@ body::after {
 
 .wall-section,
 .board-section {
-  height: clamp(500px, 60vh, 580px);
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
+  row-gap: 20px;
+  height: clamp(518px, 61vh, 592px);
   min-height: 0;
   overflow: hidden;
-}
-
-.wall-section {
-  display: grid;
-  grid-template-rows: auto auto minmax(0, 1fr) auto;
-}
-
-.board-section {
-  grid-template-rows: auto minmax(0, 1fr);
 }
 
 .section-head.inline-head {
   margin-bottom: 12px;
   padding-bottom: 8px;
   border-bottom: 1px solid rgba(48, 52, 49, .12);
+}
+
+.wall-section > .section-head.inline-head,
+.board-section > .section-head.inline-head {
+  min-height: 62px;
+  margin-bottom: 0;
 }
 
 .section-title h2 {
@@ -3030,11 +3032,6 @@ body::after {
   overflow: hidden;
 }
 
-.board-section {
-  display: grid;
-  gap: 12px;
-}
-
 .board-grid {
   grid-template-columns: 1.05fr .95fr;
   gap: 10px;
@@ -3061,19 +3058,52 @@ body::after {
 }
 
 .board-list {
+  --scrollbar-thumb: transparent;
+  --scrollbar-track: transparent;
+  flex: 1 1 0%;
   gap: 8px;
   min-height: 0;
-  overflow: hidden;
+  padding-right: 4px;
+  overflow-y: auto;
+  overflow-x: hidden;
+  overscroll-behavior: contain;
+  scrollbar-gutter: stable;
+  scrollbar-width: thin;
+  scrollbar-color: var(--scrollbar-thumb) var(--scrollbar-track);
+}
+
+.board-column:hover .board-list,
+.board-list:hover,
+.board-list:focus-within {
+  --scrollbar-thumb: #6c726c;
+  --scrollbar-track: rgba(48, 52, 49, .08);
+}
+
+@supports not (scrollbar-color: auto) {
+  .board-list {
+    scrollbar-width: auto;
+  }
+
+  .board-list::-webkit-scrollbar {
+    width: 8px;
+    height: 8px;
+  }
+
+  .board-list::-webkit-scrollbar-thumb {
+    border-radius: 999px;
+    background: var(--scrollbar-thumb);
+  }
+
+  .board-list::-webkit-scrollbar-track {
+    border-radius: 999px;
+    background: var(--scrollbar-track);
+  }
 }
 
 .board-item-link {
   padding: 8px;
   border-radius: 7px;
   background: rgba(255, 250, 240, .7);
-}
-
-.board-item:nth-child(n+7) {
-  display: none;
 }
 
 .discussion-lanes {

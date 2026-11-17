@@ -11,11 +11,11 @@
 
 ## 自检清单
 
-- [ ] 我的文件在 `data/profiles` 目录下
-- [ ] 文件名是 GitHub 用户名小写，例如 `octocat.json`
+- [ ] 我的 profile 在 `data/profiles` 目录下（寄语文件在 `data/cheers/<目标用户名>/` 下）
+- [ ] profile 文件名是 GitHub 用户名小写，例如 `octocat.json`
 - [ ] 我运行过 `npm run validate` 并通过
-- [ ] 我没有修改其他同学的非 `cheers` 字段
-- [ ] 如果是 cheer：`from` 是我的 GitHub 用户名，`message` 不超过 80 字
+- [ ] 我没有修改其他同学的 profile 文件
+- [ ] 如果是 cheer：放在 `data/cheers/<目标用户名>/<任意文件名>.json`，`message` 不超过 80 字（无需填 `from`）
 - [ ] 如果做过 `git rebase`，我用的是 `git push --force-with-lease`，不是 `-f`
 
 ## 我希望谁来 review

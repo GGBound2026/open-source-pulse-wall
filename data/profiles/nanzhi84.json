@@ -1,17 +1,5 @@
 {
   "name": "周烊羊",
   "motto": "做任何事情都会有人比你厉害，除了“做你自己”这件事",
-  "city": "深圳",
-  "cheers": [
-    {
-      "from": "Devillord6321",
-      "message": "Not only the life makes us to live",
-      "ts": "2026-05-10"
-    },
-    {
-      "from": "itamannafeiyang-svg",
-      "message": "感谢老师的开源课堂，第一次提 PR 学到了很多！",
-      "ts": "2026-05-10"
-    }
-  ]
+  "city": "深圳"
 }

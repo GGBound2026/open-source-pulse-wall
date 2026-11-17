@@ -14,6 +14,7 @@
 # leave cheers without needing the teacher's approval. The teacher will
 # still be auto-requested as reviewer.
 data/profiles/*.json    @TEACHER_HANDLE
+data/cheers/**          @TEACHER_HANDLE
 
 # Anything that touches validation, server, or workflows should be reviewed
 # carefully by the teacher.

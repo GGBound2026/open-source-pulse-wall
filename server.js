@@ -286,7 +286,7 @@ server.listen(PORT, () => {
   console.log(`Local:   http://localhost:${PORT}`);
   console.log(`API:     http://localhost:${PORT}/api/contributors`);
   console.log('');
-  console.log('Edit or add files in data/profiles and the page will update automatically.');
+  console.log('Edit or add files in data/profiles or data/cheers and the page will update automatically.');
   console.log('Press Ctrl+C to stop.');
   console.log('');
 });

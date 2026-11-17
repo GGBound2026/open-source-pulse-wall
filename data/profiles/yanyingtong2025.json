@@ -1,17 +1,5 @@
 {
   "name": "鄢应彤",
   "motto": "今天完成我的第一个开源 PR",
-  "city": "湖北",
-  "cheers": [
-    {
-      "from": "YZ730",
-      "message": "你的 commit message 写得很清楚，加油！",
-      "ts": "2026-05-10"
-    },
-    {
-      "from": "Divine-Ashes",
-      "message": "你的 commit message 写得很清楚，赞！",
-      "ts": "2026-05-10"
-    }
-  ]
+  "city": "湖北"
 }

@@ -89,8 +89,7 @@ git push origin add-your-profile
 {
   "name": "你的名字",
   "motto": "今天完成我的第一个开源 PR",
-  "city": "Beijing",
-  "cheers": []
+  "city": "Beijing"
 }
 ```
 
@@ -99,7 +98,6 @@ git push origin add-your-profile
 | `name` | 是 | 你的名字或昵称，最多 40 个字符 |
 | `motto` | 是 | 一句话宣言，最多 120 个字符 |
 | `city` | 否 | 城市或课堂位置 |
-| `cheers` | 否 | 别人写给你的寄语数组，**自己不要往里面加内容** |
 
 > `@GitHub用户名` 与头像无需填写：系统会自动根据创建该 JSON 文件的 PR 贡献者读取其 GitHub 账号与头像。
 
@@ -115,7 +113,7 @@ git push origin add-your-profile
 
 ### 第三步：给同学写寄语 Cheers
 
-合并完自己的 profile 后，给至少一位同学的卡片留一句寄语。
+合并完自己的 profile 后，给至少一位同学的卡片留一句寄语。每条寄语是一个独立 JSON 小文件，无需填写 `from` 或时间——系统会自动识别提交该文件的 PR 贡献者与提交时间，且多人同时给同一位同学写寄语完全不会产生 Git 冲突。
 
 #### 工作流
 
@@ -124,15 +122,15 @@ git fetch upstream
 git checkout main
 git merge upstream/main
 git checkout -b cheer/octocat
+mkdir -p data/cheers/octocat
+cp data/cheers/_template.json data/cheers/octocat/your-github-id.json
 ```
 
-打开 `data/profiles/octocat.json`，在 `cheers` 数组里追加一项：
+打开 `data/cheers/octocat/your-github-id.json`（文件名可任意命名），只需填写一行 `message`：
 
 ```json
 {
-  "from": "your-github-id",
-  "message": "你的 commit message 写得很清楚，赞！",
-  "ts": "2026-05-09"
+  "message": "你的 commit message 写得很清楚，赞！"
 }
 ```
 
@@ -140,23 +138,17 @@ git checkout -b cheer/octocat
 
 ```bash
 npm run validate
-git add data/profiles/octocat.json
+git add data/cheers/octocat/your-github-id.json
 git commit -m "Cheer @octocat for clear commit messages"
 git push origin cheer/octocat
 ```
 
 #### 校验规则
 
-- `from` 必须是合法的 GitHub 用户名格式。
-- `from` 不能等于 profile 主人自己的 `github`（你不能给自己加油）。
+- 目标目录 `data/cheers/<目标用户名>/` 必须对应 `data/profiles/<目标用户名>.json` 中已存在的贡献者。
 - `message` 必填，不超过 80 个字符。
-- `ts` 可选，必须是 ISO 时间字符串（`2026-05-09` 或 `2026-05-09T20:00:00Z`）。
-- 同一个作者写给同一个人的同样内容只能出现一次。
-- 单个 profile 最多 50 条寄语。
-
-#### 为什么这样设计
-
-多个同学同时给同一个人加油 = 多个 PR 改同一个 JSON 文件 = **真实的合并冲突**。这是下一节冲突处理章节的现成练习场景。
+- 系统自动通过 PR 识别寄语作者（`@你的GitHub用户名`），给自己写的寄语会被自动忽略。
+- 单个贡献者最多展示 50 条寄语。
 
 ### 第四步：处理冲突（Conflict Handling）
 

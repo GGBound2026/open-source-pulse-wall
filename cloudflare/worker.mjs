@@ -195,59 +195,43 @@ function requiredString(profile, key, label, errors, filename, maxLength = 80) {
   }
 }
 
-function validateCheers(profile, filename, errors) {
-  if (profile.cheers === undefined) return;
+function validateCheerEntry(entry, relPath, { targetOwner = '' } = {}) {
+  const errors = [];
+  const warnings = [];
 
-  if (!Array.isArray(profile.cheers)) {
-    errors.push(`${filename}: cheers 必须是数组，例如 [{ "from": "octocat", "message": "加油!" }]`);
-    return;
+  if (!isPlainObject(entry)) {
+    return {
+      errors: [`${relPath}: 文件内容必须是一个 JSON 对象，例如 { "message": "加油！" }`],
+      warnings
+    };
   }
 
-  if (profile.cheers.length > CHEERS_MAX_PER_PROFILE) {
-    errors.push(`${filename}: cheers 最多 ${CHEERS_MAX_PER_PROFILE} 条，请合并或删减`);
+  if (typeof entry.message !== 'string' || entry.message.trim().length === 0) {
+    errors.push(`${relPath}: message 必须填写`);
+  } else if (entry.message.trim().length > CHEER_MESSAGE_MAX_LENGTH) {
+    errors.push(`${relPath}: message 过长，最多 ${CHEER_MESSAGE_MAX_LENGTH} 个字符`);
   }
 
-  const stem = String(filename || '').replace(/\.json$/i, '').trim().toLowerCase();
-  const owner = String(profile.github || stem).trim().toLowerCase();
-  const seen = new Set();
-
-  profile.cheers.forEach((entry, index) => {
-    const label = `cheers[${index}]`;
-
-    if (!isPlainObject(entry)) {
-      errors.push(`${filename}: ${label} 必须是对象 { from, message }`);
-      return;
-    }
-
+  if (entry.from !== undefined) {
     const fromProblem = validateGithubHandle(entry.from);
     if (fromProblem) {
-      errors.push(`${filename}: ${label}.from ${fromProblem}`);
-    }
-
-    const fromHandle = String(entry.from || '').trim().toLowerCase();
-    if (owner && fromHandle && fromHandle === owner) {
-      errors.push(`${filename}: ${label}.from 不能是 profile 主人自己（请让别的同学给你加油）`);
-    }
-
-    if (typeof entry.message !== 'string' || entry.message.trim().length === 0) {
-      errors.push(`${filename}: ${label}.message 必须填写`);
-    } else if (entry.message.trim().length > CHEER_MESSAGE_MAX_LENGTH) {
-      errors.push(`${filename}: ${label}.message 过长，最多 ${CHEER_MESSAGE_MAX_LENGTH} 个字符`);
-    }
-
-    if (entry.ts !== undefined) {
-      if (typeof entry.ts !== 'string' || Number.isNaN(Date.parse(entry.ts))) {
-        errors.push(`${filename}: ${label}.ts 必须是 ISO 时间字符串，例如 2026-05-09`);
+      errors.push(`${relPath}: from ${fromProblem}`);
+    } else {
+      const owner = String(targetOwner || '').trim().toLowerCase();
+      const fromHandle = String(entry.from || '').trim().toLowerCase();
+      if (owner && fromHandle && fromHandle === owner) {
+        errors.push(`${relPath}: 不能是 profile 主人自己给自己写寄语`);
       }
     }
+  }
 
-    const dedupeKey = `${fromHandle}|${String(entry.message || '').trim()}`;
-    if (fromHandle && seen.has(dedupeKey)) {
-      errors.push(`${filename}: ${label} 与之前同一作者的同样内容重复，请合并`);
-    } else if (fromHandle) {
-      seen.add(dedupeKey);
+  if (entry.ts !== undefined) {
+    if (typeof entry.ts !== 'string' || Number.isNaN(Date.parse(entry.ts))) {
+      errors.push(`${relPath}: ts 必须是 ISO 时间字符串，例如 2026-05-09`);
     }
-  });
+  }
+
+  return { errors, warnings };
 }
 
 function validateProfile(profile, filename) {
@@ -269,7 +253,13 @@ function validateProfile(profile, filename) {
     errors.push(`${filename}: city 必须是 40 个字符以内的字符串`);
   }
 
-  validateCheers(profile, filename, errors);
+  if (profile.cheers !== undefined) {
+    if (!Array.isArray(profile.cheers) || profile.cheers.length > 0) {
+      errors.push(
+        `${filename}: 寄语已改为独立文件，请创建 data/cheers/<目标用户名>/<任意文件名>.json（仅需填写 { "message": "..." }）`
+      );
+    }
+  }
 
   return { errors, warnings };
 }
@@ -292,12 +282,96 @@ function normalizeCheers(rawCheers) {
     .filter(Boolean);
 }
 
-function normalizeContributors(contributors, fileContributors = {}) {
-  return contributors
+function attachCheerEntries(profiles, cheerEntries = [], fileContributors = {}) {
+  if (!Array.isArray(cheerEntries) || !cheerEntries.length) return profiles;
+
+  const knownHandles = new Map();
+  const profileByKey = new Map();
+
+  profiles.forEach((profile) => {
+    const stem = String(profile.file || '').replace(/\.json$/i, '').trim().toLowerCase();
+    const handle = String(profile.github || '').trim();
+    if (handle) {
+      knownHandles.set(handle.toLowerCase(), handle);
+      profileByKey.set(handle.toLowerCase(), profile);
+    }
+    if (stem) {
+      if (handle && !knownHandles.has(stem)) knownHandles.set(stem, handle);
+      profileByKey.set(stem, profile);
+    }
+  });
+
+  const buckets = new Map();
+  for (const item of cheerEntries) {
+    const targetKey = String(item.target || '').trim().toLowerCase();
+    const targetProfile = profileByKey.get(targetKey);
+    const message = String(item.message || '').trim();
+    if (!targetProfile || !message) continue;
+
+    const resolvedMeta = fileContributors[item.relPath] || {};
+    const stem = String(item.file || '').replace(/\.json$/i, '').trim();
+    let from = '';
+    let ts = '';
+
+    if (item.from) {
+      from = String(item.from).trim();
+      ts = String(item.ts || resolvedMeta.ts || '').trim();
+    } else if (resolvedMeta.viaPr && resolvedMeta.github) {
+      from = resolvedMeta.github;
+      ts = String(item.ts || resolvedMeta.ts || '').trim();
+    } else if (stem && knownHandles.has(stem.toLowerCase())) {
+      from = knownHandles.get(stem.toLowerCase());
+      ts = String(item.ts || resolvedMeta.ts || '').trim();
+    } else if (resolvedMeta.github) {
+      from = resolvedMeta.github;
+      ts = String(item.ts || resolvedMeta.ts || '').trim();
+    } else {
+      from = stem || 'contributor';
+      ts = String(item.ts || '').trim();
+    }
+
+    if (!from) continue;
+    if (from.toLowerCase() === String(targetProfile.github || '').trim().toLowerCase()) continue;
+
+    if (!buckets.has(targetProfile)) buckets.set(targetProfile, []);
+    buckets.get(targetProfile).push({
+      from,
+      message,
+      ts,
+      _orderKey: String(item.file || '')
+    });
+  }
+
+  for (const [profile, entries] of buckets.entries()) {
+    entries.sort((a, b) => {
+      const at = Date.parse(a.ts || '') || 0;
+      const bt = Date.parse(b.ts || '') || 0;
+      if (at !== bt) return at - bt;
+      return a._orderKey.localeCompare(b._orderKey);
+    });
+
+    const seen = new Set(profile.cheers.map((c) => `${c.from.toLowerCase()}|${c.message}`));
+    for (const entry of entries) {
+      const dedupeKey = `${entry.from.toLowerCase()}|${entry.message}`;
+      if (seen.has(dedupeKey)) continue;
+      seen.add(dedupeKey);
+      profile.cheers.push({
+        from: entry.from,
+        message: entry.message,
+        ts: entry.ts
+      });
+    }
+  }
+
+  return profiles;
+}
+
+function normalizeContributors(contributors, fileContributors = {}, cheerEntries = []) {
+  const normalized = contributors
     .map((item) => {
       const file = String(item.file || '').trim();
       const stem = file.replace(/\.json$/i, '').trim();
-      const resolved = (file && fileContributors[file]) || {};
+      const resolved = (file && (fileContributors[`data/profiles/${file}`] || fileContributors[file])) || {};
       const github = String(resolved.github || item.github || stem).trim();
       const avatar = String(
         resolved.avatar ||
@@ -316,6 +390,8 @@ function normalizeContributors(contributors, fileContributors = {}) {
       };
     })
     .filter((item) => item.name || item.github);
+
+  return attachCheerEntries(normalized, cheerEntries, fileContributors);
 }
 
 function collectRecentCheers(contributors) {
@@ -341,10 +417,12 @@ function collectRecentCheers(contributors) {
   return items.slice(0, RECENT_CHEERS_LIMIT);
 }
 
-async function computeFingerprint(profileEntries) {
-  const summary = profileEntries
-    .map((entry) => `${entry.file}:${entry.text.length}`)
-    .join('|');
+async function computeFingerprint(profileEntries, cheerFiles = []) {
+  const parts = [
+    ...profileEntries.map((entry) => `p:${entry.file}:${entry.text.length}`),
+    ...cheerFiles.map((entry) => `c:${entry.relPath}:${entry.text.length}`)
+  ];
+  const summary = parts.join('|');
   const bytes = new TextEncoder().encode(summary);
   const digest = await crypto.subtle.digest('SHA-1', bytes);
   return Array.from(new Uint8Array(digest))
@@ -352,11 +430,11 @@ async function computeFingerprint(profileEntries) {
     .join('');
 }
 
-async function fetchProfileEntriesViaGraphql(owner, name, token) {
+async function fetchWallEntriesViaGraphql(owner, name, token) {
   const query = `
     query($owner: String!, $name: String!) {
       repository(owner: $owner, name: $name) {
-        object(expression: "HEAD:data/profiles") {
+        profiles: object(expression: "HEAD:data/profiles") {
           ... on Tree {
             entries {
               name
@@ -364,6 +442,27 @@ async function fetchProfileEntriesViaGraphql(owner, name, token) {
               object {
                 ... on Blob {
                   text
+                }
+              }
+            }
+          }
+        }
+        cheers: object(expression: "HEAD:data/cheers") {
+          ... on Tree {
+            entries {
+              name
+              type
+              object {
+                ... on Tree {
+                  entries {
+                    name
+                    type
+                    object {
+                      ... on Blob {
+                        text
+                      }
+                    }
+                  }
                 }
               }
             }
@@ -389,18 +488,37 @@ async function fetchProfileEntriesViaGraphql(owner, name, token) {
     throw new Error(`GitHub GraphQL error: ${payload.errors[0].message || 'unknown error'}`);
   }
 
-  const entries = payload?.data?.repository?.object?.entries;
-  if (!Array.isArray(entries)) {
-    return [];
-  }
+  const repoNode = payload?.data?.repository || {};
+  const rawProfileEntries = repoNode.profiles?.entries || repoNode.object?.entries;
+  const profileEntries = Array.isArray(rawProfileEntries)
+    ? rawProfileEntries
+        .filter((entry) => entry.type === 'blob' && entry.name.endsWith('.json') && !entry.name.startsWith('_'))
+        .map((entry) => ({
+          file: entry.name,
+          text: String(entry.object?.text ?? '')
+        }))
+        .sort((a, b) => a.file.localeCompare(b.file))
+    : [];
 
-  return entries
-    .filter((entry) => entry.type === 'blob' && entry.name.endsWith('.json') && !entry.name.startsWith('_'))
-    .map((entry) => ({
-      file: entry.name,
-      text: String(entry.object?.text ?? '')
-    }))
-    .sort((a, b) => a.file.localeCompare(b.file));
+  const cheerFiles = [];
+  const rawCheerDirs = Array.isArray(repoNode.cheers?.entries) ? repoNode.cheers.entries : [];
+  for (const dirEntry of rawCheerDirs) {
+    if (dirEntry.type !== 'tree' || dirEntry.name.startsWith('_')) continue;
+    const target = dirEntry.name;
+    const subEntries = Array.isArray(dirEntry.object?.entries) ? dirEntry.object.entries : [];
+    for (const fileEntry of subEntries) {
+      if (fileEntry.type !== 'blob' || !fileEntry.name.endsWith('.json') || fileEntry.name.startsWith('_')) continue;
+      cheerFiles.push({
+        target,
+        file: fileEntry.name,
+        relPath: `data/cheers/${target}/${fileEntry.name}`,
+        text: String(fileEntry.object?.text ?? '')
+      });
+    }
+  }
+  cheerFiles.sort((a, b) => a.relPath.localeCompare(b.relPath));
+
+  return { entries: profileEntries, cheerFiles };
 }
 
 async function fetchProfileEntriesViaContents(encodedRepo, token) {
@@ -431,34 +549,56 @@ function pickEarliestGithubUser(nodes) {
   if (!Array.isArray(nodes) || !nodes.length) return null;
 
   for (let i = nodes.length - 1; i >= 0; i -= 1) {
+    const prAuthor = nodes[i]?.associatedPullRequests?.nodes?.[0]?.author;
+    if (prAuthor?.login) {
+      return {
+        github: String(prAuthor.login).trim(),
+        avatar: String(prAuthor.avatarUrl || '').trim(),
+        ts: String(nodes[i]?.committedDate || '').trim(),
+        viaPr: true
+      };
+    }
+  }
+
+  for (let i = nodes.length - 1; i >= 0; i -= 1) {
     const user = nodes[i]?.author?.user;
     if (user?.login) {
-      return { github: String(user.login).trim(), avatar: String(user.avatarUrl || '').trim() };
+      return {
+        github: String(user.login).trim(),
+        avatar: String(user.avatarUrl || '').trim(),
+        ts: String(nodes[i]?.committedDate || '').trim(),
+        viaPr: false
+      };
     }
   }
 
   for (let i = nodes.length - 1; i >= 0; i -= 1) {
     const user = nodes[i]?.committer?.user;
     if (user?.login && user.login !== 'web-flow') {
-      return { github: String(user.login).trim(), avatar: String(user.avatarUrl || '').trim() };
+      return {
+        github: String(user.login).trim(),
+        avatar: String(user.avatarUrl || '').trim(),
+        ts: String(nodes[i]?.committedDate || '').trim(),
+        viaPr: false
+      };
     }
   }
 
   return null;
 }
 
-async function fetchFileContributorsViaGraphql(owner, name, filenames, token) {
-  if (!token || !Array.isArray(filenames) || !filenames.length) return {};
+async function fetchFileContributorsViaGraphql(owner, name, repoPaths, token) {
+  if (!token || !Array.isArray(repoPaths) || !repoPaths.length) return {};
 
   const resolved = {};
   const chunkSize = 40;
 
-  for (let offset = 0; offset < filenames.length; offset += chunkSize) {
-    const chunk = filenames.slice(offset, offset + chunkSize);
+  for (let offset = 0; offset < repoPaths.length; offset += chunkSize) {
+    const chunk = repoPaths.slice(offset, offset + chunkSize);
     const fields = chunk
       .map(
-        (file, idx) =>
-          `f${idx}: history(first: 60, path: ${JSON.stringify(`data/profiles/${file}`)}) { nodes { author { user { login avatarUrl(size: 160) } } committer { user { login avatarUrl(size: 160) } } } }`
+        (repoPath, idx) =>
+          `f${idx}: history(first: 20, path: ${JSON.stringify(repoPath)}) { nodes { committedDate author { user { login avatarUrl(size: 160) } } committer { user { login avatarUrl(size: 160) } } associatedPullRequests(first: 1) { nodes { author { login avatarUrl(size: 160) } } } } }`
       )
       .join('\n');
 
@@ -487,10 +627,13 @@ async function fetchFileContributorsViaGraphql(owner, name, filenames, token) {
     const target = payload?.data?.repository?.defaultBranchRef?.target;
     if (!target) break;
 
-    chunk.forEach((file, idx) => {
+    chunk.forEach((repoPath, idx) => {
       const picked = pickEarliestGithubUser(target[`f${idx}`]?.nodes);
       if (picked) {
-        resolved[file] = picked;
+        resolved[repoPath] = picked;
+        if (repoPath.startsWith('data/profiles/')) {
+          resolved[repoPath.slice('data/profiles/'.length)] = picked;
+        }
       }
     });
   }
@@ -501,9 +644,12 @@ async function fetchFileContributorsViaGraphql(owner, name, filenames, token) {
 async function fetchProfilesBundle(repository, encodedRepo, token) {
   const [owner, name] = repository.split('/');
   let entries = [];
+  let cheerFiles = [];
   if (token) {
     try {
-      entries = await fetchProfileEntriesViaGraphql(owner, name, token);
+      const wallData = await fetchWallEntriesViaGraphql(owner, name, token);
+      entries = wallData.entries;
+      cheerFiles = wallData.cheerFiles;
     } catch {
       entries = await fetchProfileEntriesViaContents(encodedRepo, token);
     }
@@ -511,17 +657,24 @@ async function fetchProfilesBundle(repository, encodedRepo, token) {
     entries = await fetchProfileEntriesViaContents(encodedRepo, token);
   }
 
-  const filenames = entries.map((entry) => entry.file);
-  const fileContributors = await fetchFileContributorsViaGraphql(owner, name, filenames, token).catch(() => ({}));
-  return { entries, fileContributors };
+  const trackedPaths = [
+    ...entries.map((entry) => `data/profiles/${entry.file}`),
+    ...cheerFiles.map((item) => item.relPath)
+  ];
+  const fileContributors = await fetchFileContributorsViaGraphql(owner, name, trackedPaths, token).catch(() => ({}));
+  return { entries, cheerFiles, fileContributors };
 }
 
-function validateAndNormalizeProfileEntries(profileEntries, fileContributors = {}) {
+function validateAndNormalizeProfileEntries(profileEntries, fileContributors = {}, cheerFiles = []) {
   const errors = [];
   const warnings = [];
   const rawContributors = [];
+  const validTargets = new Set();
 
   for (const entry of profileEntries) {
+    const stem = entry.file.replace(/\.json$/i, '').trim().toLowerCase();
+    if (stem) validTargets.add(stem);
+
     let profile;
     try {
       profile = JSON.parse(entry.text);
@@ -537,8 +690,45 @@ function validateAndNormalizeProfileEntries(profileEntries, fileContributors = {
     rawContributors.push({ ...profile, file: entry.file });
   }
 
+  const cheerEntries = [];
+  const cheersCountByTarget = new Map();
+
+  for (const item of cheerFiles) {
+    const targetKey = item.target.trim().toLowerCase();
+    if (!validTargets.has(targetKey)) {
+      errors.push(`${item.relPath}: 未找到目标贡献者 "${item.target}" 对应的 data/profiles/${item.target}.json`);
+    }
+
+    const nextCount = (cheersCountByTarget.get(targetKey) || 0) + 1;
+    cheersCountByTarget.set(targetKey, nextCount);
+    if (nextCount === CHEERS_MAX_PER_PROFILE + 1) {
+      errors.push(`data/cheers/${item.target}: 寄语最多 ${CHEERS_MAX_PER_PROFILE} 条，请删减`);
+    }
+
+    let parsed;
+    try {
+      parsed = JSON.parse(item.text);
+    } catch (error) {
+      errors.push(`${item.relPath}: JSON 解析失败，${error.message}`);
+      continue;
+    }
+
+    const result = validateCheerEntry(parsed, item.relPath, { targetOwner: targetKey });
+    errors.push(...result.errors);
+    warnings.push(...result.warnings);
+
+    cheerEntries.push({
+      target: item.target,
+      file: item.file,
+      relPath: item.relPath,
+      message: typeof parsed?.message === 'string' ? parsed.message.trim() : '',
+      ...(typeof parsed?.from === 'string' ? { from: parsed.from.trim() } : {}),
+      ...(typeof parsed?.ts === 'string' ? { ts: parsed.ts.trim() } : {})
+    });
+  }
+
   return {
-    contributors: normalizeContributors(rawContributors, fileContributors),
+    contributors: normalizeContributors(rawContributors, fileContributors, cheerEntries),
     errors,
     warnings
   };
@@ -722,10 +912,12 @@ async function fetchPackedWallState({ repository, token = '' }) {
   ]);
 
   const profileEntries = profilesBundle.entries;
-  const fingerprint = await computeFingerprint(profileEntries);
+  const cheerFiles = profilesBundle.cheerFiles || [];
+  const fingerprint = await computeFingerprint(profileEntries, cheerFiles);
   const { contributors: normalized, errors, warnings } = validateAndNormalizeProfileEntries(
     profileEntries,
-    profilesBundle.fileContributors
+    profilesBundle.fileContributors,
+    cheerFiles
   );
   const ok = errors.length === 0;
   const contributors = ok ? normalized : [];
@@ -804,7 +996,7 @@ async function fetchPackedWallState({ repository, token = '' }) {
 }
 
 function cacheRequestFor(repository) {
-  return new Request(`https://pulse-wall-cache.internal/__v3/${encodeURIComponent(repository)}`, {
+  return new Request(`https://pulse-wall-cache.internal/__v4/${encodeURIComponent(repository)}`, {
     method: 'GET'
   });
 }

@@ -1,7 +1,7 @@
 const assert = require('node:assert/strict');
 const test = require('node:test');
 
-const { validateProfile } = require('../scripts/validate-contributors');
+const { validateProfile, validateCheerEntry } = require('../scripts/validate-contributors');
 
 function validProfile(overrides = {}) {
   return {
@@ -11,7 +11,7 @@ function validProfile(overrides = {}) {
   };
 }
 
-test('accepts minimal profile without github, avatar, homepage, role, stack, or style', () => {
+test('accepts minimal profile without github, avatar, homepage, cheers, role, stack, or style', () => {
   assert.equal(validateProfile(validProfile(), 'safe-user.json').errors.length, 0);
 });
 
@@ -20,12 +20,21 @@ test('rejects unedited template placeholder name on non-template files', () => {
   assert.match(result.errors.join('\n'), /你的名字/);
 });
 
-test('rejects self-cheers matching file owner stem', () => {
+test('rejects non-empty inline cheers on profile files and directs to data/cheers', () => {
   const result = validateProfile(
     validProfile({
-      cheers: [{ from: 'safe-user', message: 'Self cheer' }]
+      cheers: [{ message: 'Inline cheer' }]
     }),
     'safe-user.json'
   );
-  assert.match(result.errors.join('\n'), /不能是 profile 主人自己/);
+  assert.match(result.errors.join('\n'), /data\/cheers/);
+});
+
+test('accepts standalone cheer file with only message and no from or ts', () => {
+  const result = validateCheerEntry(
+    { message: '加油，写得很清晰！' },
+    'data/cheers/devillord6321/arbitrary-name.json',
+    { targetOwner: 'devillord6321' }
+  );
+  assert.equal(result.errors.length, 0);
 });
