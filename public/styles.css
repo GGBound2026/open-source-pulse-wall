@@ -289,27 +289,6 @@ svg { fill: none; stroke: currentColor; stroke-linecap: round; stroke-linejoin: 
   border-radius: 12px 9px 13px 10px;
 }
 
-.topbar-actions .topbar-refresh {
-  min-height: 34px;
-  padding: 0 13px;
-  border: 1px dashed rgba(48, 52, 49, .26);
-  border-radius: 999px;
-  background: rgba(255, 250, 240, .62);
-  color: #315e86;
-  box-shadow: var(--shadow-soft);
-  font-size: .85rem;
-  white-space: nowrap;
-  text-decoration: none;
-}
-
-.topbar-actions .topbar-refresh:hover:not(:disabled),
-.topbar-actions .topbar-refresh:focus-visible:not(:disabled) {
-  border-color: var(--sage);
-  background: var(--sage-soft);
-  color: var(--charcoal);
-  text-decoration: none;
-}
-
 .github-repo-link {
   display: inline-grid;
   place-items: center;

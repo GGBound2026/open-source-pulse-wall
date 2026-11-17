@@ -101,8 +101,6 @@ const elements = {
   historyCount: $('#historyCount'),
   refreshHistory: $('#refreshHistory'),
   refreshHistoryLabel: $('#refreshHistoryLabel'),
-  refreshTop: $('#refreshTop'),
-  refreshTopLabel: $('#refreshTopLabel'),
   openTopRepo: $('#openTopRepo'),
   openHistoryRepo: $('#openHistoryRepo'),
   toggleHistoryMode: $('#toggleHistoryMode'),
@@ -243,10 +241,6 @@ function updateGithubSync(github) {
 
   if (elements.openTopRepo && state.githubHtmlUrl) {
     elements.openTopRepo.href = state.githubHtmlUrl;
-  }
-
-  if (elements.refreshTop) {
-    elements.refreshTop.hidden = !canManualRefresh();
   }
 
 }
@@ -1040,14 +1034,13 @@ function detectNewCommits(commits, generatedAt) {
 }
 
 function setRefreshButtonState(label, disabled, { busy = false } = {}) {
-  [elements.refreshHistory, elements.refreshTop].forEach((button) => {
-    if (!button) return;
-    button.disabled = disabled;
-    button.classList.toggle('is-busy', Boolean(busy));
-  });
-  [elements.refreshHistoryLabel, elements.refreshTopLabel].forEach((el) => {
-    if (el) el.textContent = label;
-  });
+  if (elements.refreshHistory) {
+    elements.refreshHistory.disabled = disabled;
+    elements.refreshHistory.classList.toggle('is-busy', Boolean(busy));
+  }
+  if (elements.refreshHistoryLabel) {
+    elements.refreshHistoryLabel.textContent = label;
+  }
 }
 
 function formatCooldownDuration(seconds) {
@@ -1158,10 +1151,6 @@ async function manuallyRefreshHistory() {
 function bindHistoryControls() {
   if (elements.refreshHistory) {
     elements.refreshHistory.addEventListener('click', manuallyRefreshHistory);
-  }
-
-  if (elements.refreshTop) {
-    elements.refreshTop.addEventListener('click', manuallyRefreshHistory);
   }
 
   if (elements.toggleHistoryMode) {

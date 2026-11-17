@@ -1,89 +1,87 @@
 # Open Source Pulse Wall
 
-一个一节课能跑完的 Git 开源贡献项目。学生从 Fork 开始，走完 Clone、Branch、Commit、Push、Pull Request、Review、Merge 这一整条路；老师投影实时贡献墙，看着同学的 profile 卡片一张张被点亮。
+一个一节课就能跑通完整开源闭环的 Git 协作实践项目。从 **Fork** 出发，亲手走完 **Clone → Branch → Validate → Commit → Push → Pull Request → Review → Merge** 全流程；每一次合并与互动都会实时点亮课堂展示墙。
 
-新版前端是手绘纸面风格：贡献者卡片墙、实时活动流、Profile Builder + JSON 预览、Issue 与 PR 公告板、Git 历史图，全部由 `data/profiles/*.json` 驱动。
-
-```text
-Fork → Clone → Branch → Edit → Validate → Commit → Push → Pull Request → Review → Merge → Pull
-```
-
-## 这个仓库能教什么
-
-学生在这里要做四件事：
-
-1. 提交一份**自己的 profile**（必做，完成第一次开源贡献）。
-2. 给**别的同学**写寄语 cheer，互相加油，并自然遇到 PR 合并冲突。
-3. 提一个 **Issue**（提问 / 报 bug / 提想法 / 求救卡住）。
-4. 帮**至少一位同学**做 PR review，并在自己的 PR 里 request reviewer。
-
-每一步都有即时反馈：浏览器 Profile Builder 实时生成 JSON、本地 `npm run validate` 校验、GitHub Actions 在 PR 上自动检查、老师投影实时刷新贡献墙和公告板。
+- **在线协作展示墙（课堂大屏直达）**：<https://pulse-wall.yoryon.com/>
+- **零基础图文教学页**：<https://pulse-wall.yoryon.com/guide.html>
+- **拓展阅读 · 从零理解 Git 底层原理**：<https://yoryon.com/c/git-from-scratch/>
 
 ---
 
-## 老师 3 分钟开课
+## 课堂四项任务
 
-进入仓库目录：
+1. **上墙个人卡片**：在 `data/profiles/` 下创建自己的 JSON 卡片，完成人生第一个开源 PR。
+2. **给同学写寄语（Cheers）**：在 `data/cheers/<同学用户名>/` 下留下一句鼓励，互相点亮寄语角标。
+3. **提一个 Issue**：用仓库内置模板提问、报 Bug 或提改进想法。
+4. **参与 PR Review**：邀请至少一位同学 Review 你的 PR，并给同学的 PR 留下一条 Review 评论。
 
-```bash
-cd open-source-pulse-wall
-npm start
+---
+
+## 拓扑结构
+
+### 1. Git 开源协作拓扑（三仓联动）
+
+开源协作和个人单机 Git 最大的区别，是同时存在**主仓库（`upstream`）**、**你的云端 Fork（`origin`）**和**你的本地仓库（`local`）**三个节点：
+
+```mermaid
+flowchart LR
+  Upstream["主仓库 upstream · nanzhi84/open-source-pulse-wall"]
+  Origin["你的云端 Fork origin · your-id/open-source-pulse-wall"]
+  Local["你的本地仓库 local · 分支开发与本地校验"]
+
+  Upstream -- "1. GitHub 点击 Fork" --> Origin
+  Origin -- "2. git clone" --> Local
+  Local -- "3. git push origin 分支" --> Origin
+  Origin -- "4. 发起 Pull Request 与 Review" --> Upstream
+  Upstream -. "5. git fetch upstream && git merge" .-> Local
 ```
 
-浏览器打开：
+### 2. 展示墙实时同步拓扑
 
-```text
-http://localhost:3008
-```
+提交并合并 PR 后，展示墙如何自动识别你的头像、`@用户名` 并点亮大屏：
 
-没有运行时依赖，不需要 `npm install`。只要 Node.js 18 或更高即可。
+```mermaid
+flowchart TB
+  PR["同学发起 PR · profiles/*.json 与 cheers/**/*.json"]
+  CI["GitHub Actions · validate.yml 自动格式校验"]
+  Main["主分支 main · 合并入库并记录 Commit / PR / Issue"]
+  Pages["GitHub Pages · 自动构建静态展示墙"]
+  Worker["Cloudflare Worker · 3 分钟聚合缓冲 + GraphQL 自动识别贡献者"]
+  Wall["课堂展示墙 pulse-wall.yoryon.com · 卡片大厅 / PR 看板 / Git 时间线"]
 
-要把它发布成你自己的课堂仓库：
-
-```bash
-git init
-git add .
-git commit -m "Initial classroom project"
-git branch -M main
-git remote add origin https://github.com/YOUR_NAME/open-source-pulse-wall.git
-git push -u origin main
+  PR --> CI --> Main
+  Main --> Pages --> Wall
+  Main --> Worker
+  Wall -- "加载快照 / 点击时间线「立即拉取」" --> Worker
 ```
 
 ---
 
-## 学生贡献流程
+## 贡献步骤指南
+
+> 想要看每一步带 GitHub 网页截图的手把手指引？直接打开 **[图文教学页](https://pulse-wall.yoryon.com/guide.html)**。
 
 ### 第一步：Fork & Clone
 
-先在 GitHub 把老师的仓库 Fork 到自己账号下，然后 Clone 自己的 Fork：
+1. 点击本仓库右上角的 **Fork**，复制一份仓库到你自己的 GitHub 账号下。
+2. 将你自己的 Fork 克隆到本地，并把主仓库添加为 `upstream`：
 
 ```bash
-git clone https://github.com/your-github-id/open-source-pulse-wall.git
+git clone https://github.com/<你的GitHub用户名>/open-source-pulse-wall.git
 cd open-source-pulse-wall
-```
-
-把老师的仓库设为 upstream，方便后续同步：
-
-```bash
 git remote add upstream https://github.com/nanzhi84/open-source-pulse-wall.git
 ```
 
-### 第二步：提交自己的 profile
+### 第二步：提交你的个人卡片（Profile）
+
+切出新分支，复制模板文件（文件名使用你的 GitHub 用户名小写）：
 
 ```bash
-git checkout -b add-your-profile
-cp data/profiles/_template.json data/profiles/your-github-id.json
-npm run validate
-git add data/profiles/your-github-id.json
-git commit -m "Add my contributor profile"
-git push origin add-your-profile
+git checkout -b add-my-profile
+cp data/profiles/_template.json data/profiles/<你的GitHub用户名>.json
 ```
 
-最后到 GitHub 页面点击 **Compare & pull request**。
-
-#### profile 字段
-
-每个 profile 必须是一个 JSON 对象：
+打开 `data/profiles/<你的GitHub用户名>.json`，只需填写 3 个字段：
 
 ```json
 {
@@ -93,40 +91,40 @@ git push origin add-your-profile
 }
 ```
 
-| 字段 | 是否必填 | 说明 |
+| 字段 | 必填 | 说明 |
 | --- | --- | --- |
-| `name` | 是 | 你的名字或昵称，最多 40 个字符 |
-| `motto` | 是 | 一句话宣言，最多 120 个字符 |
-| `city` | 否 | 城市或课堂位置 |
+| `name` | 是 | 你的名字或昵称（最多 40 个字符，请勿保留默认值「你的名字」） |
+| `motto` | 是 | 一句话介绍或座右铭（最多 120 个字符） |
+| `city` | 否 | 所在城市或课堂位置（最多 40 个字符） |
 
-> `@GitHub用户名` 与头像无需填写：系统会自动根据创建该 JSON 文件的 PR 贡献者读取其 GitHub 账号与头像。
+> **头像与 `@GitHub用户名` 无需手填**：系统会自动读取创建该 JSON 文件的 PR 贡献者账号与 GitHub 头像。
 
-#### PR 检查清单
+本地运行校验（仅需 Node.js 18+，无需 `npm install`），通过后推送并发起 PR：
 
-1. 文件放在 `data/profiles` 目录下。
-2. 文件名是你的 GitHub 用户名小写，例如 `data/profiles/octocat.json`。
-3. `npm run validate` 通过。
-4. 只提交自己的 profile 文件，不修改别人的非寄语字段。
-5. Commit message 清楚，例如 `Add my contributor profile`。
+```bash
+npm run validate
+git add data/profiles/<你的GitHub用户名>.json
+git commit -m "feat: add my contributor profile"
+git push origin add-my-profile
+```
 
-> 不想手写 JSON？打开 `http://localhost:3008` 用页面上的 **Profile Builder**，填表单 → 复制 JSON → 粘到 `data/profiles/your-github-id.json`。
+回到 GitHub 页面点击 **Compare & pull request**，目标仓库确认是 `nanzhi84/open-source-pulse-wall` 的 `main` 分支。
 
-### 第三步：给同学写寄语 Cheers
+### 第三步：给同学写寄语（Cheers）
 
-合并完自己的 profile 后，给至少一位同学的卡片留一句寄语。每条寄语是一个独立 JSON 小文件，无需填写 `from` 或时间——系统会自动识别提交该文件的 PR 贡献者与提交时间，且多人同时给同一位同学写寄语完全不会产生 Git 冲突。
-
-#### 工作流
+等你的卡片合并后，给至少一位已经上墙的同学留一句寄语。每条寄语是一个独立 JSON 小文件——**不用填 `from` 和时间**，系统同样会根据提交该文件的 PR 自动识别你的 `@用户名`，而且多人同时给同一位同学写寄语完全不会发生 Git 冲突：
 
 ```bash
 git fetch upstream
 git checkout main
 git merge upstream/main
 git checkout -b cheer/octocat
+
 mkdir -p data/cheers/octocat
-cp data/cheers/_template.json data/cheers/octocat/your-github-id.json
+cp data/cheers/_template.json data/cheers/octocat/<任意文件名>.json
 ```
 
-打开 `data/cheers/octocat/your-github-id.json`（文件名可任意命名），只需填写一行 `message`：
+打开该文件，只需写一行 `message`（80 字以内）：
 
 ```json
 {
@@ -134,221 +132,89 @@ cp data/cheers/_template.json data/cheers/octocat/your-github-id.json
 }
 ```
 
-校验、提交、推送：
+校验、提交并推送开 PR：
 
 ```bash
 npm run validate
-git add data/cheers/octocat/your-github-id.json
-git commit -m "Cheer @octocat for clear commit messages"
+git add data/cheers/octocat/<任意文件名>.json
+git commit -m "feat: cheer @octocat"
 git push origin cheer/octocat
 ```
 
-#### 校验规则
+### 第四步：参与 Issue 与 PR Review
 
-- 目标目录 `data/cheers/<目标用户名>/` 必须对应 `data/profiles/<目标用户名>.json` 中已存在的贡献者。
-- `message` 必填，不超过 80 个字符。
-- 系统自动通过 PR 识别寄语作者（`@你的GitHub用户名`），给自己写的寄语会被自动忽略。
-- 单个贡献者最多展示 50 条寄语。
+- **提一个 Issue**：打开仓库 [Issues 页面](../../issues/new/choose)，选择对应模板（提问 / 报 Bug / 改进想法 / 求救卡住）提交。
+- **邀请同学 Review**：在你的 PR 页面右侧栏点击 `Reviewers` 齿轮图标，选择至少 1 位同学（也可在 PR 描述里 `@同学用户名` 请对方帮忙看）。
+- **给同学做 Review**：点进任意同学的开放 PR，切到 `Files changed` 查看改动，留下一条友好的评论或 `Approve`。
+- **修改后重新通知 Reviewer**：如果你根据意见更新了代码，记得点右侧 Reviewer 头像旁的**循环箭头（Re-request review）**，对方才会再次收到通知。
 
-### 第四步：处理冲突（Conflict Handling）
+---
 
-发生冲突的典型信号：你 push 之后 PR 页面显示 `This branch has conflicts that must be resolved`。原因是 main 分支已经被别的 PR 改动过同一行 / 同一文件。下面默认推荐**新手 merge 流程**，进阶可选 rebase。
+## 遇到分支落后或冲突怎么办？
 
-#### 新手默认：merge upstream/main
-
-不需要 force push，对新人最安全。
+当主仓库 `main` 已经合入了新提交、你需要同步最新代码（或 PR 提示 `This branch has conflicts that must be resolved`）时，推荐使用最稳妥的 `merge` 流程：
 
 ```bash
 git fetch upstream
-git checkout add-your-profile
+git checkout <你的当前分支名>
 git merge upstream/main
 ```
 
-如果有冲突，Git 会提示哪些文件，并在文件里插入冲突标记：
+如果出现冲突标记（`<<<<<<<`、`=======`、`>>>>>>>`）：
 
-```text
-<<<<<<< HEAD
-{ "from": "alice", "message": "你太棒了" }
-=======
-{ "from": "bob", "message": "干得漂亮" }
->>>>>>> upstream/main
-```
-
-按下面五步处理：
-
-1. 打开冲突文件，删掉 `<<<<<<<`、`=======`、`>>>>>>>` 三行。
-2. 把两侧都需要保留的内容**手动合并成一段合法 JSON**（cheers 这种数组就是把两条都留下，中间加逗号）。
-3. 运行 `npm run validate`，确认 JSON 合法、字段没坏。
-4. `git add <冲突文件>`。
-5. `git commit`（merge 会自带一条 commit message，直接保存即可）。
-
-最后推送：
-
-```bash
-git push origin add-your-profile
-```
-
-回到 PR 页面，冲突提示会消失。
-
-### 第五步：开 Issue
-
-不会写代码也能贡献——发现 bug、有改进想法、卡住了想问，都欢迎开 Issue。
-
-#### 四种模板
-
-打开 [Issues 页面](../../issues/new/choose) 选一种：
-
-| 模板 | 何时用 |
-| --- | --- |
-| 我有一个问题 | 你不知道怎么做，比如 `npm run validate` 报错没看懂 |
-| 我发现了 Bug | 页面、脚本、Action 行为不符合预期 |
-| 我有改进想法 | 想加新功能 / 改设计 / 优化课堂体验 |
-| 我卡住了，求救 | 命令报错 / PR 提不上去 / 别人卡了你 |
-
-#### 一个好 Issue 的样子
-
-1. **标题**用「动词 + 现象」开头，例：`validate 脚本在 Windows PowerShell 下报 path 错误`。
-2. 提问前先**搜一下**已有 Issue：右上角搜索框输入关键词。
-3. **报 bug 必备**：复现步骤、期望结果、实际结果、环境（OS / Node 版本）。
-4. **粘日志要用三个反引号包起来**：
-
-   ````md
-   ```
-   $ npm run validate
-   Error: ENOENT: no such file...
-   ```
-   ````
-
-5. **截图**：页面问题最好附图，命令行问题最好直接粘文字。
-
-#### 课堂任务
-
-每位同学**至少开一个 Issue**。可以是：「我想知道怎么把卡片背景换成深色」、「希望 cheers 支持表情符号」、「文档第 N 行有错别字」——都算。
-
-### 第六步：请 Reviewer
-
-PR 不是写完就行，**要让别人来看**才完成开源闭环。这个仓库支持三种渠道，按场景选：
-
-#### 1. 最标准：PR 页面右侧 Reviewers 面板
-
-发起 PR 后：
-
-1. 打开 PR 页面。
-2. 右侧栏找到 `Reviewers`，点击齿轮图标。
-3. 输入老师或同学的 GitHub 用户名，回车选上。
-4. 被选中的人会收到通知，PR 列表里会出现「review requested」状态。
-
-> 注：默认 `data/profiles/*` 已配置 CODEOWNERS，老师会**自动**被请求 review。你只需要再额外指定 1 位同学。
-
-#### 2. 自动指派同学（已配置）
-
-仓库里有一个 `.github/workflows/auto-assign-reviewer.yml`，PR 一打开就会从已合并的同学列表里**随机抽一位**作为 reviewer，跳过 PR 作者本人和老师。所以你**不主动指派也会有同学被分配**。
-
-#### 3. 最轻量：在 PR 描述里 @ 同学
-
-如果你想点名某位同学帮忙看：
-
-```md
-@octocat 麻烦帮我看下 cheers 那一段 JSON 缩进对不对？
-```
-
-GitHub 会发通知给被 @ 的人。
-
-#### Re-request review：被退回后再请同学看一次
-
-如果 reviewer 提了意见、你修改后想再让 ta 看一遍：
-
-1. 打开 PR 页面。
-2. 在右侧 `Reviewers` 区找到那位 reviewer。
-3. 点头像旁边那个**循环箭头**按钮（Re-request review）。
-
-很多人不知道这个按钮，所以改完代码之后只是默默等 reviewer，结果 reviewer 根本没收到通知。
-
-#### 课堂任务
-
-- 每位同学的 PR 都要**至少 request 1 位同学** + 老师。
-- 每位同学**至少给一位同学的 PR 留一条 review 评论**（哪怕只是 `我留了一条评论`，也算练习）。
+1. 打开冲突文件，删掉冲突标记行，保留正确的 JSON 内容。
+2. 运行 `npm run validate` 确认格式无误。
+3. 执行 `git add <文件> && git commit && git push origin <你的当前分支名>`，PR 会自动更新。
 
 ---
 
-## 实时反馈与公告板
-
-老师在投影电脑上运行 `npm start` 后，页面会自动同步以下信号：
-
-1. **profile 文件变更**：`data/profiles` 目录里有新增或修改时，1 秒内贡献者墙刷新。
-2. **GitHub 同步**：每 30 秒拉一次 commit、issue、open PR；公告板列出最近 Issue 和等待 review 的 PR（含 reviewer 头像气泡）。
-3. **校验失败**：JSON 写错时页面显示具体错误，并保留上一次有效的贡献者墙。
-4. **活动流**：cheer / commit / issue / PR / review_requested 五类事件用不同图标标在时间线上，让同学一眼看到自己的事被记录了。
-
-典型课堂演示：
+## 常用命令速查
 
 ```bash
-git pull origin main
-```
-
-合并后的新文件进入本地目录，投影上的贡献墙和公告板会自动点亮新的卡片和事件。
-
-> 想让公告板和 Git 历史拉到 GitHub 远端数据，需要在 `.env` 里配置 `GITHUB_TOKEN`（fine-grained PAT，只读公开仓库即可），把 API 限额从 60 req/h 提到 5000 req/h。
-
----
-
-## GitHub Actions 自动检查
-
-仓库里已经包含 `.github/workflows/validate.yml`。学生发起 PR 后，GitHub 会自动运行：
-
-```bash
-npm run validate
-```
-
-字段缺失、JSON 解析失败、GitHub 用户名格式不正确，PR 页面会出现失败提示。这样学生能马上知道贡献是否合格。
-
-另外 `.github/workflows/auto-assign-reviewer.yml` 在 PR 打开时随机抽一位已合并的同学作为 reviewer。
-
----
-
-## 命令速查
-
-```bash
-npm start                  # 老师机：启动实时贡献墙
-npm run validate           # 校验所有 profile（含 cheers 字段）
-git fetch upstream         # 同步老师仓库
-git merge upstream/main    # 默认推荐：合并主分支（新手友好）
-git rebase upstream/main   # 进阶：变基（历史干净，需 --force-with-lease）
-git push --force-with-lease origin <branch>   # rebase 后专用 push
+npm run validate                              # 本地校验所有 profile 与 cheers JSON
+git remote -v                                 # 检查 origin（自己）与 upstream（主仓库）地址
+git fetch upstream                            # 拉取主仓库最新提交
+git merge upstream/main                       # 将主仓库最新主干合并到当前分支
+git rebase upstream/main                      # 进阶：线性变基（需配合 --force-with-lease 推送）
+git push --force-with-lease origin <branch>   # rebase 后的安全推送命令
 ```
 
 ---
 
-## 文件结构
+## 拓展阅读：从零看懂 Git 底层原理
+
+跑通一遍 `clone → branch → commit → push → merge` 之后，你可能会好奇：
+
+- `.git` 隐藏文件夹里到底存了什么？为什么 Git 不是在存「文件差异（diff）」，而是在存快照？
+- `blob`、`tree`、`commit` 三种核心对象是怎么靠 SHA-1 哈希串成一棵不可篡改的有向无环图（DAG）的？
+- 为什么新建一个分支在底层其实只是写了一个几十字节的文本文件？
+
+推荐阅读我的个人博客专栏 👉 **[Git From Scratch — 从零理解 Git 底层原理](https://yoryon.com/c/git-from-scratch/)**。把黑盒命令背后的对象模型和指针看透之后，以后无论遇到多复杂的分支、变基还是冲突现场，你都能在脑海里直接画出它的拓扑图。
+
+---
+
+## 目录结构
 
 ```text
 open-source-pulse-wall/
 ├── .github/
-│   ├── CODEOWNERS                       # 老师默认被自动 request review
-│   ├── ISSUE_TEMPLATE/                  # question / bug / idea / help
-│   ├── PULL_REQUEST_TEMPLATE.md
+│   ├── CODEOWNERS                  # 自动指派仓库维护者 Review
+│   ├── ISSUE_TEMPLATE/             # 提问 / Bug / 想法 / 求助 模板
+│   ├── PULL_REQUEST_TEMPLATE.md    # PR 自检清单
 │   └── workflows/
-│       ├── validate.yml                 # PR/push 自动跑 npm run validate
-│       └── auto-assign-reviewer.yml     # 随机抽一位同学做 reviewer
-├── data/profiles/
-│   ├── _template.json
-│   ├── nanzhi84.json
-│   └── zhangsan.json
-├── public/
-│   ├── app.js
-│   ├── favicon.svg
-│   ├── index.html
-│   └── styles.css
-├── scripts/
-│   ├── validate-contributors.js
-│   ├── state-builder.js
-│   └── build-static-site.js
-├── server.js
-├── package.json
-└── README.md
+│       ├── validate.yml            # PR 与主干自动运行 npm run validate
+│       └── pages.yml               # 自动构建并发布展示墙
+├── cloudflare/
+│   └── worker.mjs                  # 3 分钟聚合缓冲 API + PR 贡献者自动识别
+├── data/
+│   ├── profiles/                   # 每位贡献者的个人卡片 JSON
+│   │   └── _template.json
+│   └── cheers/                     # 独立寄语目录 data/cheers/<目标用户名>/<文件>.json
+│       └── _template.json
+├── public/                         # 手绘纸面风展示墙与图文教学页（index.html / guide.html）
+├── scripts/                        # 校验脚本、静态构建与状态聚合器
+└── test/                           # 自动化测试套件
 ```
-
----
 
 ## 许可证
 

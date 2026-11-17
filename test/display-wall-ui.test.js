@@ -59,6 +59,6 @@ test('all-contributors drawer separates status, source, badge, and profile link 
   assert.match(script, /class="wall-drawer-badge is-clickable" data-cheers-trigger=/);
   assert.match(script, /\[elements\.wall, elements\.wallDrawerList\]/);
   assert.doesNotMatch(script, /查看 \$\{file\} 的完整 JSON/);
-  assert.match(html, /id="refreshTop"[\s\S]*id="openTopRepo"[\s\S]*class="star-badge"/);
-  assert.doesNotMatch(html, /id="refreshBoard"|id="openBoardRepo"/);
+  assert.match(html, /class="guide-entry"[\s\S]*id="openTopRepo"[\s\S]*class="star-badge"/);
+  assert.doesNotMatch(html, /id="refreshTop"|id="refreshBoard"|id="openBoardRepo"/);
 });
