@@ -549,36 +549,35 @@ function pickEarliestGithubUser(nodes) {
   if (!Array.isArray(nodes) || !nodes.length) return null;
 
   for (let i = nodes.length - 1; i >= 0; i -= 1) {
-    const prAuthor = nodes[i]?.associatedPullRequests?.nodes?.[0]?.author;
+    const node = nodes[i];
+    const ts = String(node?.committedDate || '').trim();
+
+    const prAuthor = node?.associatedPullRequests?.nodes?.[0]?.author;
     if (prAuthor?.login) {
       return {
         github: String(prAuthor.login).trim(),
         avatar: String(prAuthor.avatarUrl || '').trim(),
-        ts: String(nodes[i]?.committedDate || '').trim(),
+        ts,
         viaPr: true
       };
     }
-  }
 
-  for (let i = nodes.length - 1; i >= 0; i -= 1) {
-    const user = nodes[i]?.author?.user;
-    if (user?.login) {
+    const authorUser = node?.author?.user;
+    if (authorUser?.login) {
       return {
-        github: String(user.login).trim(),
-        avatar: String(user.avatarUrl || '').trim(),
-        ts: String(nodes[i]?.committedDate || '').trim(),
+        github: String(authorUser.login).trim(),
+        avatar: String(authorUser.avatarUrl || '').trim(),
+        ts,
         viaPr: false
       };
     }
-  }
 
-  for (let i = nodes.length - 1; i >= 0; i -= 1) {
-    const user = nodes[i]?.committer?.user;
-    if (user?.login && user.login !== 'web-flow') {
+    const committerUser = node?.committer?.user;
+    if (committerUser?.login && committerUser.login !== 'web-flow') {
       return {
-        github: String(user.login).trim(),
-        avatar: String(user.avatarUrl || '').trim(),
-        ts: String(nodes[i]?.committedDate || '').trim(),
+        github: String(committerUser.login).trim(),
+        avatar: String(committerUser.avatarUrl || '').trim(),
+        ts,
         viaPr: false
       };
     }
@@ -598,7 +597,7 @@ async function fetchFileContributorsViaGraphql(owner, name, repoPaths, token) {
     const fields = chunk
       .map(
         (repoPath, idx) =>
-          `f${idx}: history(first: 20, path: ${JSON.stringify(repoPath)}) { nodes { committedDate author { user { login avatarUrl(size: 160) } } committer { user { login avatarUrl(size: 160) } } associatedPullRequests(first: 1) { nodes { author { login avatarUrl(size: 160) } } } } }`
+          `f${idx}: history(first: 50, path: ${JSON.stringify(repoPath)}) { nodes { committedDate author { user { login avatarUrl(size: 160) } } committer { user { login avatarUrl(size: 160) } } associatedPullRequests(first: 1) { nodes { author { login avatarUrl(size: 160) } } } } }`
       )
       .join('\n');
 
@@ -996,7 +995,7 @@ async function fetchPackedWallState({ repository, token = '' }) {
 }
 
 function cacheRequestFor(repository) {
-  return new Request(`https://pulse-wall-cache.internal/__v4/${encodeURIComponent(repository)}`, {
+  return new Request(`https://pulse-wall-cache.internal/__v5/${encodeURIComponent(repository)}`, {
     method: 'GET'
   });
 }
