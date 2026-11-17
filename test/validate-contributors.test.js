@@ -11,7 +11,7 @@ function validProfile(overrides = {}) {
   };
 }
 
-test('accepts minimal profile without github, avatar, role, stack, or style', () => {
+test('accepts minimal profile without github, avatar, homepage, role, stack, or style', () => {
   assert.equal(validateProfile(validProfile(), 'safe-user.json').errors.length, 0);
 });
 
@@ -20,27 +20,12 @@ test('rejects unedited template placeholder name on non-template files', () => {
   assert.match(result.errors.join('\n'), /你的名字/);
 });
 
-test('rejects non-http homepage URLs', () => {
-  const scriptResult = validateProfile(
-    validProfile({ homepage: 'javascript:alert(1)' }),
+test('rejects self-cheers matching file owner stem', () => {
+  const result = validateProfile(
+    validProfile({
+      cheers: [{ from: 'safe-user', message: 'Self cheer' }]
+    }),
     'safe-user.json'
   );
-  const dataResult = validateProfile(
-    validProfile({ homepage: 'data:text/html,<script>alert(1)</script>' }),
-    'safe-user.json'
-  );
-
-  assert.match(scriptResult.errors.join('\n'), /homepage/);
-  assert.match(dataResult.errors.join('\n'), /homepage/);
-});
-
-test('accepts http and https homepage URLs', () => {
-  assert.equal(
-    validateProfile(validProfile({ homepage: 'https://example.com/me' }), 'safe-user.json').errors.length,
-    0
-  );
-  assert.equal(
-    validateProfile(validProfile({ homepage: 'http://example.com/me' }), 'safe-user.json').errors.length,
-    0
-  );
+  assert.match(result.errors.join('\n'), /不能是 profile 主人自己/);
 });

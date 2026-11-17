@@ -269,14 +269,6 @@ function validateProfile(profile, filename) {
     errors.push(`${filename}: city 必须是 40 个字符以内的字符串`);
   }
 
-  if (profile.homepage !== undefined) {
-    if (typeof profile.homepage !== 'string') {
-      errors.push(`${filename}: homepage 必须是字符串`);
-    } else if (!isHttpUrl(profile.homepage)) {
-      errors.push(`${filename}: homepage 必须是 http:// 或 https:// 开头的有效 URL`);
-    }
-  }
-
   validateCheers(profile, filename, errors);
 
   return { errors, warnings };
@@ -319,7 +311,6 @@ function normalizeContributors(contributors, fileContributors = {}) {
         motto: String(item.motto || '').trim(),
         city: String(item.city || '').trim(),
         avatar,
-        homepage: String(item.homepage || '').trim(),
         cheers: normalizeCheers(item.cheers),
         file
       };
@@ -813,7 +804,7 @@ async function fetchPackedWallState({ repository, token = '' }) {
 }
 
 function cacheRequestFor(repository) {
-  return new Request(`https://pulse-wall-cache.internal/__v2/${encodeURIComponent(repository)}`, {
+  return new Request(`https://pulse-wall-cache.internal/__v3/${encodeURIComponent(repository)}`, {
     method: 'GET'
   });
 }

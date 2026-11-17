@@ -101,12 +101,12 @@ const elements = {
   historyCount: $('#historyCount'),
   refreshHistory: $('#refreshHistory'),
   refreshHistoryLabel: $('#refreshHistoryLabel'),
-  refreshBoard: $('#refreshBoard'),
-  refreshBoardLabel: $('#refreshBoardLabel'),
+  refreshTop: $('#refreshTop'),
+  refreshTopLabel: $('#refreshTopLabel'),
+  openTopRepo: $('#openTopRepo'),
   openHistoryRepo: $('#openHistoryRepo'),
   toggleHistoryMode: $('#toggleHistoryMode'),
   boardSummary: $('#boardSummary'),
-  openBoardRepo: $('#openBoardRepo'),
   issuesList: $('#issuesList'),
   pullsList: $('#pullsList'),
   openIssuesLink: $('#openIssuesLink'),
@@ -241,6 +241,14 @@ function updateGithubSync(github) {
       : (github?.message || '等待 GitHub 同步配置');
   }
 
+  if (elements.openTopRepo && state.githubHtmlUrl) {
+    elements.openTopRepo.href = state.githubHtmlUrl;
+  }
+
+  if (elements.refreshTop) {
+    elements.refreshTop.hidden = !canManualRefresh();
+  }
+
 }
 
 function githubProfileUrl(github) {
@@ -347,15 +355,9 @@ function cardMarkup(profile, options = {}) {
   const github = htmlEscape(profile.github || 'unknown');
   const motto = htmlEscape(profile.motto || '今天完成我的第一个开源 PR');
   const city = htmlEscape(profile.city || '教室');
-  const filename = profile.file || `${String(profile.github || 'your-github-id').toLowerCase()}.json`;
-  const file = htmlEscape(filename);
-  const sourceUrl = profileSourceUrl(filename);
-  const sourceLink = sourceUrl
-    ? `<a href="${htmlEscape(sourceUrl)}" target="_blank" rel="noreferrer" aria-label="查看 ${file} 的完整 JSON">${file}</a>`
-    : `<span>${file}</span>`;
-  const homepage = safeHttpUrl(profile.homepage) || (profile.github ? githubProfileUrl(profile.github) : '');
-  const footerLink = homepage
-    ? `<a href="${htmlEscape(homepage)}" target="_blank" rel="noreferrer">GitHub</a>`
+  const profileUrl = profile.github ? githubProfileUrl(profile.github) : '';
+  const footerLink = profileUrl
+    ? `<a href="${htmlEscape(profileUrl)}" target="_blank" rel="noreferrer">GitHub</a>`
     : '<span>GitHub</span>';
   const avatar = htmlEscape(avatarForProfile(profile));
   const cheerCount = Array.isArray(profile.cheers) ? profile.cheers.length : 0;
@@ -383,7 +385,6 @@ function cardMarkup(profile, options = {}) {
       </div>
       ${options.compact ? '' : cheersMarkup(profile, options)}
       <div class="profile-footer">
-        ${sourceLink}
         ${footerLink}
       </div>
     </article>
@@ -642,14 +643,18 @@ function drawerRowMarkup(profile) {
   const name = htmlEscape(profile.name || profile.github || 'Anonymous');
   const avatar = htmlEscape(avatarForProfile(profile));
   const badge = htmlEscape(profileBadgeText(profile));
+  const cheerCount = Array.isArray(profile.cheers) ? profile.cheers.length : 0;
+  const triggerKey = String(profile.file || profile.github || profile.name || '').trim();
+  const badgeMarkup = cheerCount > 0 && triggerKey
+    ? `<button type="button" class="wall-drawer-badge is-clickable" data-cheers-trigger="${htmlEscape(triggerKey)}" title="查看全部 ${cheerCount} 条寄语">${badge}</button>`
+    : `<span class="wall-drawer-badge">${badge}</span>`;
   const filename = profile.file || `${String(profile.github || 'your-github-id').toLowerCase()}.json`;
-  const file = htmlEscape(filename);
   const sourceUrl = profileSourceUrl(filename);
   const sourceLink = sourceUrl
     ? `<a class="wall-drawer-source" href="${htmlEscape(sourceUrl)}" target="_blank" rel="noreferrer">JSON</a>`
     : '<span class="wall-drawer-source">JSON</span>';
-  const recent = Array.isArray(profile.cheers) && profile.cheers.length > 0
-    ? `收到 ${profile.cheers.length} 条寄语`
+  const recent = cheerCount > 0
+    ? `收到 ${cheerCount} 条寄语`
     : '最近上墙';
   return `
     <li class="wall-drawer-row">
@@ -662,7 +667,7 @@ function drawerRowMarkup(profile) {
         <span class="wall-drawer-recent-text">${htmlEscape(recent)}</span>
         ${sourceLink}
       </span>
-      <span class="wall-drawer-badge">${badge}</span>
+      ${badgeMarkup}
       <a class="wall-drawer-profile-link" href="${githubProfileUrl(profile.github || '')}" target="_blank" rel="noreferrer" aria-label="打开 ${handle} 的 GitHub">↗</a>
     </li>
   `;
@@ -1035,12 +1040,12 @@ function detectNewCommits(commits, generatedAt) {
 }
 
 function setRefreshButtonState(label, disabled, { busy = false } = {}) {
-  [elements.refreshHistory, elements.refreshBoard].forEach((button) => {
+  [elements.refreshHistory, elements.refreshTop].forEach((button) => {
     if (!button) return;
     button.disabled = disabled;
     button.classList.toggle('is-busy', Boolean(busy));
   });
-  [elements.refreshHistoryLabel, elements.refreshBoardLabel].forEach((el) => {
+  [elements.refreshHistoryLabel, elements.refreshTopLabel].forEach((el) => {
     if (el) el.textContent = label;
   });
 }
@@ -1155,8 +1160,8 @@ function bindHistoryControls() {
     elements.refreshHistory.addEventListener('click', manuallyRefreshHistory);
   }
 
-  if (elements.refreshBoard) {
-    elements.refreshBoard.addEventListener('click', manuallyRefreshHistory);
+  if (elements.refreshTop) {
+    elements.refreshTop.addEventListener('click', manuallyRefreshHistory);
   }
 
   if (elements.toggleHistoryMode) {
@@ -1287,19 +1292,6 @@ function updateBoardSection(payload) {
   const github = payload.github || {};
   const issues = Array.isArray(github.issues) ? github.issues : [];
   const pullRequests = Array.isArray(github.pullRequests) ? github.pullRequests : [];
-
-  if (elements.refreshBoard) {
-    elements.refreshBoard.hidden = !canManualRefresh();
-  }
-
-  if (elements.openBoardRepo) {
-    if (github.htmlUrl) {
-      elements.openBoardRepo.hidden = false;
-      elements.openBoardRepo.href = `${github.htmlUrl}/issues`;
-    } else {
-      elements.openBoardRepo.hidden = true;
-    }
-  }
 
   if (elements.openIssuesLink) {
     if (github.htmlUrl) {
@@ -1522,6 +1514,10 @@ function bindActivityPanel() {
     }
     if (elements.activityOverlay && !elements.activityOverlay.hidden) {
       closeActivityPanel();
+      return;
+    }
+    if (elements.wallDrawerOverlay && !elements.wallDrawerOverlay.hidden) {
+      closeWallDrawer();
     }
   });
 }
@@ -1617,15 +1613,16 @@ function bindCheersOverlay() {
     });
   }
 
-  if (elements.wall) {
-    elements.wall.addEventListener('click', (event) => {
+  [elements.wall, elements.wallDrawerList].forEach((container) => {
+    if (!container) return;
+    container.addEventListener('click', (event) => {
       const trigger = event.target.closest('[data-cheers-trigger]');
-      if (!trigger || !elements.wall.contains(trigger)) return;
+      if (!trigger || !container.contains(trigger)) return;
       event.preventDefault();
       const profile = findContributorByHandle(trigger.getAttribute('data-cheers-trigger'));
       if (profile) openCheersOverlay(profile);
     });
-  }
+  });
 }
 
 function setWallExpanded(expanded) {

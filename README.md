@@ -90,7 +90,6 @@ git push origin add-your-profile
   "name": "你的名字",
   "motto": "今天完成我的第一个开源 PR",
   "city": "Beijing",
-  "homepage": "",
   "cheers": []
 }
 ```
@@ -100,7 +99,6 @@ git push origin add-your-profile
 | `name` | 是 | 你的名字或昵称，最多 40 个字符 |
 | `motto` | 是 | 一句话宣言，最多 120 个字符 |
 | `city` | 否 | 城市或课堂位置 |
-| `homepage` | 否 | 个人主页链接（http/https 开头） |
 | `cheers` | 否 | 别人写给你的寄语数组，**自己不要往里面加内容** |
 
 > `@GitHub用户名` 与头像无需填写：系统会自动根据创建该 JSON 文件的 PR 贡献者读取其 GitHub 账号与头像。

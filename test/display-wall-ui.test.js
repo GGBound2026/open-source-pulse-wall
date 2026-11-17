@@ -50,9 +50,15 @@ test('display wall keeps expanding data surfaces bounded by default', () => {
 
 test('all-contributors drawer separates status, source, badge, and profile link columns', () => {
   const script = fs.readFileSync(APP_PATH, 'utf8');
+  const html = fs.readFileSync(INDEX_PATH, 'utf8');
 
   assert.match(script, /class="wall-drawer-meta"/);
   assert.match(script, /class="wall-drawer-recent-text"/);
   assert.match(script, /class="wall-drawer-source"/);
   assert.match(script, /class="wall-drawer-profile-link"/);
+  assert.match(script, /class="wall-drawer-badge is-clickable" data-cheers-trigger=/);
+  assert.match(script, /\[elements\.wall, elements\.wallDrawerList\]/);
+  assert.doesNotMatch(script, /查看 \$\{file\} 的完整 JSON/);
+  assert.match(html, /id="refreshTop"[\s\S]*id="openTopRepo"[\s\S]*class="star-badge"/);
+  assert.doesNotMatch(html, /id="refreshBoard"|id="openBoardRepo"/);
 });

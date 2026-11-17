@@ -233,6 +233,7 @@ test('worker packs state in one shot, filters closed community issues, and enfor
     assert.equal(Object.hasOwn(firstData.state.contributors[0], 'role'), false);
     assert.equal(Object.hasOwn(firstData.state.contributors[0], 'stack'), false);
     assert.equal(Object.hasOwn(firstData.state.contributors[0], 'style'), false);
+    assert.equal(Object.hasOwn(firstData.state.contributors[0], 'homepage'), false);
     assert.equal(Object.hasOwn(firstData.state.github, 'communityLanes'), false);
 
     const callsAfterFirstRefresh = callLog.length;

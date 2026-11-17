@@ -145,14 +145,6 @@ function validateProfile(profile, filename) {
     errors.push(`${filename}: city 必须是 40 个字符以内的字符串`);
   }
 
-  if (profile.homepage !== undefined) {
-    if (typeof profile.homepage !== 'string') {
-      errors.push(`${filename}: homepage 必须是字符串`);
-    } else if (!isHttpUrl(profile.homepage)) {
-      errors.push(`${filename}: homepage 必须是 http:// 或 https:// 开头的有效 URL`);
-    }
-  }
-
   validateCheers(profile, filename, errors);
 
   return { errors, warnings };

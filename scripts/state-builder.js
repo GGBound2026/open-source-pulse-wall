@@ -679,7 +679,6 @@ function normalizeContributors(contributors, fileContributors = {}) {
         motto: String(item.motto || '').trim(),
         city: String(item.city || '').trim(),
         avatar,
-        homepage: String(item.homepage || '').trim(),
         cheers: normalizeCheers(item.cheers),
         file
       };
