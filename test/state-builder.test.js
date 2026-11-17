@@ -107,7 +107,7 @@ test('uses paginated GitHub collections instead of treating the first page as to
   }
 });
 
-test('builds community lanes from real GitHub issues instead of placeholders', async () => {
+test('omits removed community lanes and keeps recent pure issues and pull requests', async () => {
   const originalFetch = global.fetch;
 
   global.fetch = async (url) => {
@@ -150,76 +150,17 @@ test('builds community lanes from real GitHub issues instead of placeholders', a
           labels: [{ name: 'question', color: 'd876e3' }]
         },
         {
-          number: 12,
-          title: '[Idea] 支持头像裁剪',
+          number: 15,
+          title: 'PR surfaced in issues endpoint',
           state: 'open',
+          pull_request: { url: 'https://api.github.com/repos/acme/wall/pulls/15' },
           user: { login: 'bob', avatar_url: '', html_url: '' },
-          html_url: 'https://github.com/acme/wall/issues/12',
+          html_url: 'https://github.com/acme/wall/pull/15',
           created_at: '2026-05-09T00:00:00Z',
           updated_at: '2026-05-09T04:00:00Z',
           closed_at: null,
-          comments: 5,
-          labels: [{ name: 'enhancement', color: 'a2eeef' }]
-        },
-        {
-          number: 13,
-          title: '[Bug] 提交后页面没有更新',
-          state: 'open',
-          user: { login: 'carol', avatar_url: '', html_url: '' },
-          html_url: 'https://github.com/acme/wall/issues/13',
-          created_at: '2026-05-09T00:00:00Z',
-          updated_at: '2026-05-09T02:00:00Z',
-          closed_at: null,
-          comments: 1,
-          labels: [{ name: 'bug', color: 'd73a4a' }]
-        },
-        {
-          number: 14,
-          title: '[Idea] 减少新手路径及格式错误',
-          state: 'open',
-          user: { login: 'dana', avatar_url: '', html_url: '' },
-          html_url: 'https://github.com/acme/wall/issues/14',
-          created_at: '2026-05-09T00:00:00Z',
-          updated_at: '2026-05-09T01:00:00Z',
-          closed_at: null,
           comments: 0,
-          labels: [{ name: 'enhancement', color: 'a2eeef' }]
-        },
-        {
-          number: 15,
-          title: '[Question] 已关闭的问题',
-          state: 'closed',
-          user: { login: 'eve', avatar_url: '', html_url: '' },
-          html_url: 'https://github.com/acme/wall/issues/15',
-          created_at: '2026-05-09T00:00:00Z',
-          updated_at: '2026-05-10T00:00:00Z',
-          closed_at: '2026-05-10T00:00:00Z',
-          comments: 1,
-          labels: [{ name: 'question', color: 'd876e3' }]
-        },
-        {
-          number: 16,
-          title: '[Idea] 已关闭的想法',
-          state: 'closed',
-          user: { login: 'frank', avatar_url: '', html_url: '' },
-          html_url: 'https://github.com/acme/wall/issues/16',
-          created_at: '2026-05-09T00:00:00Z',
-          updated_at: '2026-05-10T00:00:00Z',
-          closed_at: '2026-05-10T00:00:00Z',
-          comments: 99,
-          labels: [{ name: 'enhancement', color: 'a2eeef' }]
-        },
-        {
-          number: 17,
-          title: '[Bug] 已关闭的 Bug',
-          state: 'closed',
-          user: { login: 'grace', avatar_url: '', html_url: '' },
-          html_url: 'https://github.com/acme/wall/issues/17',
-          created_at: '2026-05-09T00:00:00Z',
-          updated_at: '2026-05-10T00:00:00Z',
-          closed_at: '2026-05-10T00:00:00Z',
-          comments: 3,
-          labels: [{ name: 'bug', color: 'd73a4a' }]
+          labels: []
         }
       ]);
     }
@@ -230,14 +171,9 @@ test('builds community lanes from real GitHub issues instead of placeholders', a
   try {
     const state = await fetchGithubState({ repository: 'acme/wall' });
 
-    assert.equal(state.communityLanes.questions[0].title, '[Question] Windows 下 npm start 失败');
-    assert.equal(state.communityLanes.questions.length, 1);
-    assert.equal(state.communityLanes.ideas[0].title, '[Idea] 支持头像裁剪');
-    assert.equal(state.communityLanes.ideas.length, 2);
-    assert.equal(state.communityLanes.bugs[0].title, '[Bug] 提交后页面没有更新');
-    assert.equal(state.communityLanes.bugs.length, 1);
-    assert.equal(state.communityLanes.questions[0].source, 'issue');
-    assert.equal(Object.hasOwn(state.communityLanes, 'showcases'), false);
+    assert.equal(state.issues.length, 1);
+    assert.equal(state.issues[0].number, 11);
+    assert.equal(Object.hasOwn(state, 'communityLanes'), false);
   } finally {
     global.fetch = originalFetch;
   }

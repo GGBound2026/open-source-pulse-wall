@@ -35,9 +35,7 @@ function createGithubMockFetch(callLog) {
                     text: JSON.stringify({
                       name: 'Alice',
                       github: 'alice',
-                      role: 'First-time contributor',
                       motto: 'Hello OSS',
-                      stack: ['Git', 'Node.js'],
                       avatar: 'avatars/avatar-01.png',
                       cheers: []
                     })
@@ -195,12 +193,10 @@ test('worker packs state in one shot, filters closed community issues, and enfor
     assert.equal(firstData.cooldownMs, 180000);
     assert.equal(firstData.state.count, 1);
     assert.equal(firstData.state.contributors[0].github, 'alice');
-    assert.equal(firstData.state.github.communityLanes.questions.length, 1);
-    assert.equal(firstData.state.github.communityLanes.questions[0].title, '[Question] Open question');
-    assert.equal(firstData.state.github.communityLanes.ideas.length, 1);
-    assert.equal(firstData.state.github.communityLanes.ideas[0].title, '[Idea] Open idea');
-    assert.equal(firstData.state.github.communityLanes.bugs.length, 1);
-    assert.equal(firstData.state.github.communityLanes.bugs[0].title, '[Bug] Open bug');
+    assert.equal(Object.hasOwn(firstData.state.contributors[0], 'role'), false);
+    assert.equal(Object.hasOwn(firstData.state.contributors[0], 'stack'), false);
+    assert.equal(Object.hasOwn(firstData.state.contributors[0], 'style'), false);
+    assert.equal(Object.hasOwn(firstData.state.github, 'communityLanes'), false);
 
     const callsAfterFirstRefresh = callLog.length;
     assert.equal(callsAfterFirstRefresh, 6);

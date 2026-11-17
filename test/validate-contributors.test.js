@@ -7,12 +7,14 @@ function validProfile(overrides = {}) {
   return {
     name: 'Safe User',
     github: 'safe-user',
-    role: 'Contributor',
     motto: 'Ship carefully',
-    stack: ['Git'],
     ...overrides
   };
 }
+
+test('accepts simplified profile without role, stack, or style', () => {
+  assert.equal(validateProfile(validProfile(), 'safe-user.json').errors.length, 0);
+});
 
 test('rejects non-http homepage URLs', () => {
   const scriptResult = validateProfile(

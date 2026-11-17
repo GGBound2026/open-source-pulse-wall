@@ -16,13 +16,6 @@ const ISSUES_FETCH_LIMIT = 100;
 const PULLS_FETCH_LIMIT = 100;
 const ISSUES_DISPLAY_LIMIT = 10;
 const PULLS_DISPLAY_LIMIT = 10;
-const COMMUNITY_LANE_LIMIT = 5;
-const QUESTION_LABELS = new Set(['question', 'help wanted', 'help', 'q&a']);
-const IDEA_LABELS = new Set(['enhancement', 'idea', 'proposal', 'feature request']);
-const BUG_LABELS = new Set(['bug']);
-const QUESTION_TITLE_PATTERN = /\[(question|q&a)\]|问题|求助|求救|\?/i;
-const IDEA_TITLE_PATTERN = /\[(idea|proposal|feature)\]|建议|想法|提案|功能/i;
-const BUG_TITLE_PATTERN = /\[bug\]/i;
 
 function buildUnconfiguredGithubState() {
   return {
@@ -40,11 +33,6 @@ function buildUnconfiguredGithubState() {
     commits: [],
     issues: [],
     pullRequests: [],
-    communityLanes: {
-      questions: [],
-      ideas: [],
-      bugs: []
-    },
     issuesTotal: 0,
     openIssuesTotal: 0,
     pullRequestsTotal: 0,
@@ -405,75 +393,6 @@ function normalizePullRequestNode(node) {
   };
 }
 
-function labelNames(node) {
-  return Array.isArray(node.labels)
-    ? node.labels.map((label) => String(label.name || '').trim().toLowerCase()).filter(Boolean)
-    : [];
-}
-
-function titleMatches(node, pattern) {
-  return pattern.test(String(node.title || ''));
-}
-
-function communityItemFromIssue(issue) {
-  return {
-    source: 'issue',
-    number: issue.number,
-    title: issue.title,
-    state: issue.state,
-    author: issue.author,
-    htmlUrl: issue.htmlUrl,
-    updatedAt: issue.updatedAt,
-    commentCount: issue.commentCount,
-    labels: issue.labels
-  };
-}
-
-function sortByUpdatedDesc(a, b) {
-  const at = Date.parse(a.updatedAt || '') || 0;
-  const bt = Date.parse(b.updatedAt || '') || 0;
-  return bt - at;
-}
-
-function buildCommunityLanes(issues) {
-  const questions = [];
-  const ideas = [];
-  const bugs = [];
-
-  issues.forEach((issue) => {
-    if (issue.state !== 'open') return;
-
-    const labels = labelNames(issue);
-    const isQuestion = labels.some((name) => QUESTION_LABELS.has(name)) ||
-      titleMatches(issue, QUESTION_TITLE_PATTERN);
-    const isIdea = labels.some((name) => IDEA_LABELS.has(name)) ||
-      titleMatches(issue, IDEA_TITLE_PATTERN);
-    const isBug = labels.some((name) => BUG_LABELS.has(name)) ||
-      titleMatches(issue, BUG_TITLE_PATTERN);
-
-    if (isQuestion) {
-      questions.push(communityItemFromIssue(issue));
-    }
-    if (isIdea) {
-      ideas.push(communityItemFromIssue(issue));
-    }
-    if (isBug) {
-      bugs.push(communityItemFromIssue(issue));
-    }
-  });
-
-  ideas.sort((a, b) => {
-    if (b.commentCount !== a.commentCount) return b.commentCount - a.commentCount;
-    return sortByUpdatedDesc(a, b);
-  });
-
-  return {
-    questions: questions.sort(sortByUpdatedDesc).slice(0, COMMUNITY_LANE_LIMIT),
-    ideas: ideas.slice(0, COMMUNITY_LANE_LIMIT),
-    bugs: bugs.sort(sortByUpdatedDesc).slice(0, COMMUNITY_LANE_LIMIT)
-  };
-}
-
 function buildActivityEvents({ commits, issues, pullRequests }) {
   const events = [];
 
@@ -589,7 +508,6 @@ async function fetchGithubState({ repository, token = '' }) {
   const pureIssues = issueNodes.filter((item) => !item.isPullRequest);
   const openIssuesTotal = pureIssues.filter((item) => item.state === 'open').length;
   const awaitingReviewTotal = pullNodes.filter((pr) => pr.requestedReviewers.length || pr.requestedTeams.length).length;
-  const communityLanes = buildCommunityLanes(pureIssues);
   const allEvents = buildActivityEvents({
     commits: commitNodes,
     issues: issueNodes,
@@ -612,7 +530,6 @@ async function fetchGithubState({ repository, token = '' }) {
     commits: commitNodes,
     issues: pureIssues.slice(0, ISSUES_DISPLAY_LIMIT),
     pullRequests: pullNodes.slice(0, PULLS_DISPLAY_LIMIT),
-    communityLanes,
     issuesTotal: pureIssues.length,
     openIssuesTotal,
     pullRequestsTotal: pullNodes.length,
@@ -670,11 +587,8 @@ function normalizeContributors(contributors) {
     .map((item) => ({
       name: String(item.name || '').trim(),
       github: String(item.github || '').trim(),
-      role: String(item.role || 'Contributor').trim(),
       motto: String(item.motto || '').trim(),
-      stack: Array.isArray(item.stack) ? item.stack.map((tag) => String(tag).trim()).filter(Boolean) : [],
       city: String(item.city || '').trim(),
-      style: String(item.style || 'nature').trim(),
       avatar: String(item.avatar || '').trim(),
       homepage: String(item.homepage || '').trim(),
       cheers: normalizeCheers(item.cheers),

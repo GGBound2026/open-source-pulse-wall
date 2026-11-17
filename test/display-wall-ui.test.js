@@ -16,8 +16,9 @@ test('home page is a display-first collaboration wall with bounded detail entry 
   assert.match(html, /class="[^"]*dashboard-main[^"]*"/);
   assert.match(html, /全部贡献者/);
   assert.match(html, /查看全部 PR/);
+  assert.match(html, /最近 Issue/);
   assert.match(html, /完整时间线/);
-  assert.match(html, /Bug 反馈/);
+  assert.doesNotMatch(html, /待回答问题|热门想法|Bug 反馈/);
   assert.doesNotMatch(html, /如何在本地跑通整套开发环境|支持插件化架构|Awesome Pulse Wall 插件集|作品展示/);
 });
 

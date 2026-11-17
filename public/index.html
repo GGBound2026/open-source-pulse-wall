@@ -82,7 +82,7 @@
           </article>
           <article class="stat-card">
             <svg viewBox="0 0 48 48" aria-hidden="true"><circle cx="24" cy="24" r="17" /><path d="M24 12v13l9 5" /></svg>
-            <div><strong id="statPulse">...</strong><span>最后更新</span><small id="statStacks">0 个技术标签</small></div>
+            <div><strong id="statPulse">...</strong><span>最后更新</span><small id="statStacks">实时同步</small></div>
           </article>
         </div>
       </div>
@@ -107,7 +107,7 @@
         <label class="wall-search" for="wallSearch">
           <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m21 21-5.2-5.2" /><circle cx="10.8" cy="10.8" r="6.8" /></svg>
           <span class="sr-only">搜索贡献者</span>
-          <input id="wallSearch" type="search" placeholder="搜索名字、GitHub、标签或城市" autocomplete="off" />
+          <input id="wallSearch" type="search" placeholder="搜索名字、GitHub 或城市" autocomplete="off" />
         </label>
         <div class="wall-filter-row">
           <span id="wallFilterStatus">显示贡献者</span>
@@ -165,29 +165,6 @@
           <ol class="board-list" id="pullsList">
             <li class="board-empty">还没有等待 review 的 PR</li>
           </ol>
-        </article>
-      </div>
-      <div class="discussion-lanes" aria-label="讨论与任务入口">
-        <article>
-          <h3>待回答问题</h3>
-          <ol id="communityQuestionsList">
-            <li class="community-empty">等待 GitHub 数据</li>
-          </ol>
-          <a class="community-open" id="openQuestionsLink" href="#" target="_blank" rel="noreferrer" hidden>查看全部 -&gt;</a>
-        </article>
-        <article>
-          <h3>热门想法</h3>
-          <ol id="communityIdeasList">
-            <li class="community-empty">等待 GitHub 数据</li>
-          </ol>
-          <a class="community-open" id="openIdeasLink" href="#" target="_blank" rel="noreferrer" hidden>查看全部 -&gt;</a>
-        </article>
-        <article>
-          <h3>Bug 反馈</h3>
-          <ol id="communityBugsList">
-            <li class="community-empty">等待 GitHub 数据</li>
-          </ol>
-          <a class="community-open" id="openBugsLink" href="#" target="_blank" rel="noreferrer" hidden>查看全部 -&gt;</a>
         </article>
       </div>
     </section>
@@ -269,14 +246,11 @@
       </label>
       <div class="wall-drawer-filters" aria-label="贡献者筛选">
         <button type="button" data-drawer-filter="all" class="is-active">全部</button>
-        <button type="button" data-drawer-filter="new">新人</button>
-        <button type="button" data-drawer-filter="active">活跃</button>
-        <button type="button" data-drawer-filter="review">Review</button>
-        <button type="button" data-drawer-filter="discussion">Discussion</button>
+        <button type="button" data-drawer-filter="active">收到寄语</button>
       </div>
       <div class="wall-drawer-tools">
-        <label>
-          排序：
+        <label class="wall-drawer-sort-label" for="wallDrawerSort">
+          <span>排序：</span>
           <select id="wallDrawerSort">
             <option value="recent">最近贡献</option>
             <option value="handle">GitHub 用户名</option>

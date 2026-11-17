@@ -89,11 +89,8 @@ git push origin add-your-profile
 {
   "name": "你的名字",
   "github": "your-github-id",
-  "role": "First-time contributor",
   "motto": "今天完成我的第一个开源 PR",
-  "stack": ["Git", "Open Source"],
   "city": "Beijing",
-  "style": "nature",
   "avatar": "avatars/avatar-01.png",
   "homepage": "",
   "cheers": []
@@ -104,12 +101,9 @@ git push origin add-your-profile
 | --- | --- | --- |
 | `name` | 是 | 你的名字或昵称，最多 40 个字符 |
 | `github` | 是 | GitHub 用户名 |
-| `role` | 是 | 你的角色，最多 50 个字符 |
 | `motto` | 是 | 一句话宣言，最多 120 个字符 |
-| `stack` | 是 | 技术标签数组，最多 5 项 |
 | `city` | 否 | 城市或课堂位置 |
-| `style` | 否 | 卡片风格：`minimal`, `nature`, `sketch`, `notebook`, `ink`, `sage` |
-| `avatar` | 是 | `avatars/avatar-01.png` 到 `avatars/avatar-11.png` |
+| `avatar` | 是 | `avatars/avatar-01.png` 到 `avatars/avatar-11.png` 或 https 图片链接 |
 | `homepage` | 否 | 个人主页链接（http/https 开头） |
 | `cheers` | 否 | 别人写给你的寄语数组，**自己不要往里面加内容** |
 

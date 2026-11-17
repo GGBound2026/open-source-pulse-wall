@@ -1,29 +1,20 @@
 {
   "name": "鄢应彤",
   "github": "yanyingtong2025",
-  "role": "learner",
   "motto": "今天完成我的第一个开源 PR",
-  "stack": [
-    "Git", 
-    "Open Source",
-    "Django",
-    "Python",
-    "C"
-  ],
   "city": "湖北",
-  "style": "nature",
   "avatar": "avatars/avatar-01.png",
   "homepage": "",
   "cheers": [
-  {
-    "from": "YZ730",
-    "message": "你的 commit message 写得很清楚，加油！",
-    "ts": "2026-05-10"
-  },
     {
-  "from": "Divine-Ashes",
-  "message": "你的 commit message 写得很清楚，赞！",
-  "ts": "2026-05-10"
-}
+      "from": "YZ730",
+      "message": "你的 commit message 写得很清楚，加油！",
+      "ts": "2026-05-10"
+    },
+    {
+      "from": "Divine-Ashes",
+      "message": "你的 commit message 写得很清楚，赞！",
+      "ts": "2026-05-10"
+    }
   ]
 }

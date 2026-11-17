@@ -777,6 +777,15 @@ h1 {
   gap: 12px;
 }
 
+.profile-card.has-cheers .profile-top {
+  padding-right: 60px;
+}
+
+.identity {
+  min-width: 0;
+  flex: 1 1 auto;
+}
+
 .avatar-image {
   flex: 0 0 auto;
   width: 70px;
@@ -798,14 +807,19 @@ h1 {
   font-family: var(--hand);
   font-size: 1.16rem;
   line-height: 1.2;
+  overflow-wrap: anywhere;
 }
 
 .handle {
   display: inline-block;
+  max-width: 100%;
   margin-top: 3px;
   color: var(--muted);
   text-decoration: none;
   font-size: .8rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .role {
@@ -2394,9 +2408,13 @@ body.activity-open {
   display: inline-flex;
   align-items: center;
   flex-wrap: wrap;
-  gap: 6px 8px;
+  gap: 4px 6px;
   color: var(--muted);
   font-size: .76rem;
+}
+
+.board-item-meta > * {
+  white-space: nowrap;
 }
 
 .board-item-author {
@@ -2776,7 +2794,7 @@ body::after {
 
 .wall-section,
 .board-section {
-  height: clamp(680px, 78vh, 780px);
+  height: clamp(500px, 60vh, 580px);
   min-height: 0;
   overflow: hidden;
 }
@@ -2787,7 +2805,7 @@ body::after {
 }
 
 .board-section {
-  grid-template-rows: auto minmax(0, 1fr) auto;
+  grid-template-rows: auto minmax(0, 1fr);
 }
 
 .section-head.inline-head {
@@ -2828,10 +2846,10 @@ body::after {
 .wall .profile-card {
   display: flex;
   flex-direction: column;
-  gap: 8px;
-  height: 292px;
-  min-height: 238px;
-  padding: 12px 12px 42px;
+  gap: 10px;
+  height: auto;
+  min-height: 204px;
+  padding: 14px 14px 18px;
   border-color: rgba(48, 52, 49, .24);
   border-radius: 8px;
   background:
@@ -2843,10 +2861,11 @@ body::after {
 
 .wall .motto {
   display: -webkit-box;
-  -webkit-line-clamp: 2;
-  line-clamp: 2;
+  -webkit-line-clamp: 3;
+  line-clamp: 3;
   -webkit-box-orient: vertical;
   overflow: hidden;
+  line-height: 1.5;
 }
 
 .wall .profile-tags {
@@ -2983,7 +3002,7 @@ body::after {
   background: rgba(255, 250, 240, .7);
 }
 
-.board-item:nth-child(n+5) {
+.board-item:nth-child(n+7) {
   display: none;
 }
 
@@ -3245,9 +3264,26 @@ body::after {
   font-size: .84rem;
 }
 
+.wall-drawer-sort-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0;
+  line-height: 1;
+}
+
 .wall-drawer-tools select {
-  height: 34px;
-  padding: 0 9px;
+  appearance: none;
+  -webkit-appearance: none;
+  height: 32px;
+  line-height: 30px;
+  padding: 0 28px 0 10px;
+  font-size: .84rem;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 12 12' fill='none' stroke='%2348504b' stroke-width='1.6' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M2.5 4.5 6 8l3.5-3.5'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 9px center;
+  background-size: 12px 12px;
+  cursor: pointer;
 }
 
 .wall-drawer-list {
@@ -3264,7 +3300,7 @@ body::after {
 
 .wall-drawer-row {
   display: grid;
-  grid-template-columns: 42px minmax(160px, 1.15fr) minmax(118px, .72fr) minmax(78px, max-content) 24px;
+  grid-template-columns: 42px minmax(0, 1.2fr) 114px 76px 24px;
   align-items: center;
   gap: 10px;
   min-height: 62px;

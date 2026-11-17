@@ -35,6 +35,7 @@ const state = {
   refreshing: false,
   refreshCooldownTimer: null,
   knownCommitShas: new Set(),
+  commitRankByAuthor: new Map(),
   bootstrappedHistory: false,
   historyExpanded: false,
   lastHistoryPayload: null
@@ -45,8 +46,6 @@ const AVATARS = Array.from({ length: 11 }, (_, index) => {
   return `avatars/avatar-${number}.png`;
 });
 const AVATAR_WARNING_FALLBACK = 'avatars/avatar-warning.svg';
-
-const styles = ['minimal', 'nature', 'sketch', 'notebook', 'ink', 'sage'];
 
 const $ = (selector) => document.querySelector(selector);
 const $$ = (selector) => Array.from(document.querySelectorAll(selector));
@@ -111,13 +110,7 @@ const elements = {
   issuesList: $('#issuesList'),
   pullsList: $('#pullsList'),
   openIssuesLink: $('#openIssuesLink'),
-  openPullsLink: $('#openPullsLink'),
-  communityQuestionsList: $('#communityQuestionsList'),
-  communityIdeasList: $('#communityIdeasList'),
-  communityBugsList: $('#communityBugsList'),
-  openQuestionsLink: $('#openQuestionsLink'),
-  openIdeasLink: $('#openIdeasLink'),
-  openBugsLink: $('#openBugsLink')
+  openPullsLink: $('#openPullsLink')
 };
 
 function htmlEscape(value) {
@@ -349,16 +342,10 @@ function cheersMarkup(profile, options = {}) {
 }
 
 function cardMarkup(profile, options = {}) {
-  const style = styles.includes(profile.style) ? profile.style : 'nature';
   const name = htmlEscape(profile.name || 'Anonymous');
   const github = htmlEscape(profile.github || 'unknown');
-  const role = htmlEscape(profile.role || '开源贡献者');
   const motto = htmlEscape(profile.motto || '今天完成我的第一个开源 PR');
   const city = htmlEscape(profile.city || '教室');
-  const stack = Array.isArray(profile.stack) ? profile.stack : [];
-  const tags = stack.length
-    ? stack.map((tag) => `<span>${htmlEscape(tag)}</span>`).join('')
-    : '<span>Git</span><span>Open Source</span>';
   const filename = profile.file || `${String(profile.github || 'your-github-id').toLowerCase()}.json`;
   const file = htmlEscape(filename);
   const sourceUrl = profileSourceUrl(filename);
@@ -379,7 +366,7 @@ function cardMarkup(profile, options = {}) {
     : '';
 
   return `
-    <article class="profile-card" data-style="${htmlEscape(style)}">
+    <article class="profile-card${cheerCount > 0 ? ' has-cheers' : ''}">
       ${cheerBadge}
       <div class="profile-top">
         <img class="avatar-image" src="${avatar}" alt="${name} 的头像" loading="lazy" data-fallback-src="${AVATAR_WARNING_FALLBACK}" />
@@ -388,13 +375,11 @@ function cardMarkup(profile, options = {}) {
           <a class="handle" href="${githubProfileUrl(profile.github || '')}" target="_blank" rel="noreferrer">@${github}</a>
         </div>
       </div>
-      <div class="role">${role}</div>
       <p class="motto">${motto}</p>
       <div class="location-row">
         <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 21s7-5.3 7-12a7 7 0 1 0-14 0c0 6.7 7 12 7 12Z" /><circle cx="12" cy="9" r="2.5" /></svg>
         <span>${city}</span>
       </div>
-      <div class="profile-tags">${tags}</div>
       ${options.compact ? '' : cheersMarkup(profile, options)}
       <div class="profile-footer">
         ${sourceLink}
@@ -408,10 +393,6 @@ function updateStats(payload) {
   const contributors = payload.contributors || [];
   const github = payload.github || {};
   const contributorCount = contributors.length;
-  const stackSet = new Set();
-  contributors.forEach((person) => {
-    (person.stack || []).forEach((tag) => stackSet.add(String(tag).trim().toLowerCase()));
-  });
 
   const cheersTotal = typeof payload.cheersTotal === 'number'
     ? payload.cheersTotal
@@ -424,7 +405,7 @@ function updateStats(payload) {
       : (github.ok ? 'profile JSON 数量' : '本地 profile 数量');
   }
   if (elements.statValidation) elements.statValidation.textContent = payload.ok ? '100%' : '待修复';
-  if (elements.statStacks) elements.statStacks.textContent = `${stackSet.size} 个技术标签`;
+  if (elements.statStacks) elements.statStacks.textContent = '实时同步';
   if (elements.statPulse) elements.statPulse.textContent = formatTime(github.latestCommitAt || github.pushedAt || payload.generatedAt);
 
   if (elements.statIssues) {
@@ -502,11 +483,9 @@ function wallSearchText(profile) {
   return [
     profile.name,
     profile.github,
-    profile.role,
     profile.motto,
     profile.city,
     profile.file,
-    ...(Array.isArray(profile.stack) ? profile.stack : []),
     ...cheerTexts
   ]
     .map((value) => String(value || '').toLowerCase())
@@ -601,6 +580,16 @@ function renderWall() {
 function updateWall(payload) {
   if (!elements.wall) return;
 
+  const rankMap = new Map();
+  const commits = Array.isArray(payload.github?.commits) ? payload.github.commits : [];
+  commits.forEach((commit, idx) => {
+    const key = String(commit.author || '').trim().toLowerCase();
+    if (key && !rankMap.has(key)) {
+      rankMap.set(key, idx);
+    }
+  });
+  state.commitRankByAuthor = rankMap;
+
   state.wallContributors = sortContributors(payload.contributors || []);
   if (!state.wallExpanded) state.wallVisibleCount = WALL_PREVIEW_LIMIT;
   renderWall();
@@ -612,12 +601,10 @@ function currentWallDrawerQuery() {
 }
 
 function profileBadgeText(profile) {
-  const role = String(profile.role || '').trim();
-  if (/review/i.test(role)) return 'Review';
-  if (/discussion|话题|交流/i.test(role)) return 'Discussion';
-  if (/first|new|新人/i.test(role)) return '新人';
-  if (Array.isArray(profile.cheers) && profile.cheers.length > 0) return '活跃';
-  return role || '开源贡献者';
+  if (Array.isArray(profile.cheers) && profile.cheers.length > 0) {
+    return `寄语 ${profile.cheers.length}`;
+  }
+  return '已上墙';
 }
 
 function filteredWallDrawerContributors() {
@@ -625,14 +612,10 @@ function filteredWallDrawerContributors() {
   const filter = state.wallDrawerFilter;
 
   return state.wallContributors.filter((profile) => {
-    const badge = profileBadgeText(profile).toLowerCase();
     const text = wallSearchText(profile);
     const matchesQuery = !query || text.includes(query);
     if (!matchesQuery) return false;
-    if (filter === 'new') return badge.includes('新人') || badge.includes('first');
-    if (filter === 'active') return badge.includes('活跃') || (Array.isArray(profile.cheers) && profile.cheers.length > 0);
-    if (filter === 'review') return badge.includes('review');
-    if (filter === 'discussion') return badge.includes('discussion') || badge.includes('话题');
+    if (filter === 'active') return Array.isArray(profile.cheers) && profile.cheers.length > 0;
     return true;
   });
 }
@@ -643,7 +626,14 @@ function sortWallDrawerContributors(contributors) {
   if (mode === 'handle') {
     return sorted.sort((a, b) => String(a.github || a.name).localeCompare(String(b.github || b.name)));
   }
-  return sorted;
+  return sorted.sort((a, b) => {
+    const aKey = String(a.github || '').trim().toLowerCase();
+    const bKey = String(b.github || '').trim().toLowerCase();
+    const aRank = state.commitRankByAuthor.has(aKey) ? state.commitRankByAuthor.get(aKey) : Number.MAX_SAFE_INTEGER;
+    const bRank = state.commitRankByAuthor.has(bKey) ? state.commitRankByAuthor.get(bKey) : Number.MAX_SAFE_INTEGER;
+    if (aRank !== bRank) return aRank - bRank;
+    return String(a.github || a.name).localeCompare(String(b.github || b.name));
+  });
 }
 
 function drawerRowMarkup(profile) {
@@ -1292,56 +1282,6 @@ function pullRowMarkup(pr) {
   `;
 }
 
-function communityItemMarkup(item) {
-  const link = safeHttpUrl(item.htmlUrl || '');
-  const target = link ? ' target="_blank" rel="noreferrer"' : '';
-  const title = htmlEscape(item.title || 'Untitled');
-  const meta = [
-    item.commentCount ? `${formatNumber(item.commentCount)} 条评论` : '',
-    formatRelativeTime(item.updatedAt)
-  ].filter(Boolean).join(' · ');
-  return `
-    <li class="community-item">
-      <a href="${htmlEscape(link || '#')}"${target}>
-        <span>${title}</span>
-        <small>${htmlEscape(meta || 'GitHub issue')}</small>
-      </a>
-    </li>
-  `;
-}
-
-function renderCommunityLane(listElement, items, emptyText) {
-  if (!listElement) return;
-  listElement.innerHTML = items.length
-    ? items.map(communityItemMarkup).join('')
-    : `<li class="community-empty">${htmlEscape(emptyText)}</li>`;
-}
-
-function setCommunityLink(element, href) {
-  if (!element) return;
-  if (!href) {
-    element.hidden = true;
-    return;
-  }
-  element.hidden = false;
-  element.href = href;
-}
-
-function updateCommunityLanes(github) {
-  const lanes = github.communityLanes || {};
-  const configured = Boolean(github.configured);
-  const emptyText = configured ? '暂无真实条目' : '连接 GitHub 后显示真实数据';
-
-  renderCommunityLane(elements.communityQuestionsList, Array.isArray(lanes.questions) ? lanes.questions : [], emptyText);
-  renderCommunityLane(elements.communityIdeasList, Array.isArray(lanes.ideas) ? lanes.ideas : [], emptyText);
-  renderCommunityLane(elements.communityBugsList, Array.isArray(lanes.bugs) ? lanes.bugs : [], emptyText);
-
-  const base = github.htmlUrl || '';
-  setCommunityLink(elements.openQuestionsLink, base ? `${base}/issues?q=is%3Aissue%20is%3Aopen%20label%3Aquestion` : '');
-  setCommunityLink(elements.openIdeasLink, base ? `${base}/issues?q=is%3Aissue%20is%3Aopen%20label%3Aenhancement` : '');
-  setCommunityLink(elements.openBugsLink, base ? `${base}/issues?q=is%3Aissue%20is%3Aopen%20label%3Abug` : '');
-}
-
 function updateBoardSection(payload) {
   const github = payload.github || {};
   const issues = Array.isArray(github.issues) ? github.issues : [];
@@ -1411,8 +1351,6 @@ function updateBoardSection(payload) {
       elements.pullsList.innerHTML = warnings + pullRequests.map(pullRowMarkup).join('');
     }
   }
-
-  updateCommunityLanes(github);
 }
 
 function applyState(payload) {

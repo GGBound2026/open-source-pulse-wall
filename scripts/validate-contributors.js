@@ -5,7 +5,6 @@ const path = require('path');
 
 const ROOT = path.resolve(__dirname, '..');
 const PROFILES_DIR = path.join(ROOT, 'data', 'profiles');
-const ALLOWED_STYLES = new Set(['minimal', 'nature', 'sketch', 'notebook', 'ink', 'sage']);
 const ALLOWED_AVATARS = new Set(Array.from({ length: 11 }, (_, index) => {
   const number = String(index + 1).padStart(2, '0');
   return `avatars/avatar-${number}.png`;
@@ -140,33 +139,11 @@ function validateProfile(profile, filename) {
 
   requiredString(profile, 'name', 'name', errors, filename, 40);
   requiredString(profile, 'github', 'github', errors, filename, 39);
-  requiredString(profile, 'role', 'role', errors, filename, 50);
   requiredString(profile, 'motto', 'motto', errors, filename, 120);
 
   const githubProblem = validateGithubHandle(profile.github);
   if (githubProblem) {
     errors.push(`${filename}: ${githubProblem}`);
-  }
-
-  if (!Array.isArray(profile.stack) || profile.stack.length === 0) {
-    errors.push(`${filename}: stack 必须是非空数组，例如 ["Git", "Open Source"]`);
-  } else {
-    if (profile.stack.length > 5) {
-      errors.push(`${filename}: stack 最多填写 5 项`);
-    }
-
-    profile.stack.forEach((item, index) => {
-      if (typeof item !== 'string' || item.trim().length === 0) {
-        errors.push(`${filename}: stack 第 ${index + 1} 项必须是非空字符串`);
-      }
-      if (typeof item === 'string' && item.trim().length > 24) {
-        errors.push(`${filename}: stack 第 ${index + 1} 项过长，最多 24 个字符`);
-      }
-    });
-  }
-
-  if (profile.style !== undefined && !ALLOWED_STYLES.has(profile.style)) {
-    errors.push(`${filename}: style 只能是 ${Array.from(ALLOWED_STYLES).join(', ')} 中的一个`);
   }
 
   if (profile.city !== undefined && (typeof profile.city !== 'string' || profile.city.trim().length > 40)) {
@@ -270,7 +247,6 @@ module.exports = {
   validateGithubHandle,
   isHttpUrl,
   isHttpsUrl,
-  ALLOWED_STYLES,
   ALLOWED_AVATARS,
   CHEERS_MAX_PER_PROFILE,
   CHEER_MESSAGE_MAX_LENGTH
