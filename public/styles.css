@@ -3844,6 +3844,18 @@ button.wall-drawer-badge.is-clickable:focus-visible {
   background: rgba(255, 250, 240, .75);
 }
 
+.guide-step-head p:last-child {
+  margin-bottom: 0;
+}
+
+.guide-step-card > :not(.guide-step-head) {
+  margin-left: 60px;
+}
+
+.guide-step-card > ul.guide-clean-list {
+  margin-left: 60px;
+}
+
 @media (max-width: 980px) {
   .guide-topbar {
     grid-template-columns: 1fr;
@@ -3888,5 +3900,10 @@ button.wall-drawer-badge.is-clickable:focus-visible {
   .guide-step-head > span {
     width: 34px;
     height: 34px;
+  }
+
+  .guide-step-card > :not(.guide-step-head),
+  .guide-step-card > ul.guide-clean-list {
+    margin-left: 0;
   }
 }
