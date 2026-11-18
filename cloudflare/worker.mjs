@@ -385,6 +385,7 @@ function normalizeContributors(contributors, fileContributors = {}, cheerEntries
         motto: String(item.motto || '').trim(),
         city: String(item.city || '').trim(),
         avatar,
+        joinedAt: String(resolved.ts || item.joinedAt || '').trim(),
         cheers: normalizeCheers(item.cheers),
         file
       };
@@ -995,7 +996,7 @@ async function fetchPackedWallState({ repository, token = '' }) {
 }
 
 function cacheRequestFor(repository) {
-  return new Request(`https://pulse-wall-cache.internal/__v5/${encodeURIComponent(repository)}`, {
+  return new Request(`https://pulse-wall-cache.internal/__v6/${encodeURIComponent(repository)}`, {
     method: 'GET'
   });
 }

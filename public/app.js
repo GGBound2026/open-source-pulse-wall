@@ -12,7 +12,7 @@ const GRAPH_PADDING_LEFT = 18;
 const GRAPH_PALETTE = ['#3b6064', '#a36a3b', '#5b8a3a', '#8a3b6a', '#3b6a8a', '#6a8a3b', '#8a5b3b'];
 const REFRESH_LABEL_DEFAULT = '立即拉取';
 const HISTORY_PREVIEW_LIMIT = 6;
-const STATE_CACHE_KEY = 'pulse-wall:state:v1';
+const STATE_CACHE_KEY = 'pulse-wall:state:v2';
 
 const state = {
   knownHandles: new Set(),
@@ -470,10 +470,22 @@ function updateValidation(payload) {
   box.classList.add('show');
 }
 
+function compareByRecentContribution(a, b) {
+  const aJoined = Date.parse(a.joinedAt || '') || 0;
+  const bJoined = Date.parse(b.joinedAt || '') || 0;
+  if (aJoined !== bJoined) return bJoined - aJoined;
+
+  const aKey = String(a.github || '').trim().toLowerCase();
+  const bKey = String(b.github || '').trim().toLowerCase();
+  const aRank = state.commitRankByAuthor.has(aKey) ? state.commitRankByAuthor.get(aKey) : Number.MAX_SAFE_INTEGER;
+  const bRank = state.commitRankByAuthor.has(bKey) ? state.commitRankByAuthor.get(bKey) : Number.MAX_SAFE_INTEGER;
+  if (aRank !== bRank) return aRank - bRank;
+
+  return String(a.github || a.name).localeCompare(String(b.github || b.name));
+}
+
 function sortContributors(contributors) {
-  return contributors
-    .slice()
-    .sort((a, b) => String(a.github || a.name).localeCompare(String(b.github || b.name)));
+  return contributors.slice().sort(compareByRecentContribution);
 }
 
 function wallSearchText(profile) {
@@ -625,14 +637,7 @@ function sortWallDrawerContributors(contributors) {
   if (mode === 'handle') {
     return sorted.sort((a, b) => String(a.github || a.name).localeCompare(String(b.github || b.name)));
   }
-  return sorted.sort((a, b) => {
-    const aKey = String(a.github || '').trim().toLowerCase();
-    const bKey = String(b.github || '').trim().toLowerCase();
-    const aRank = state.commitRankByAuthor.has(aKey) ? state.commitRankByAuthor.get(aKey) : Number.MAX_SAFE_INTEGER;
-    const bRank = state.commitRankByAuthor.has(bKey) ? state.commitRankByAuthor.get(bKey) : Number.MAX_SAFE_INTEGER;
-    if (aRank !== bRank) return aRank - bRank;
-    return String(a.github || a.name).localeCompare(String(b.github || b.name));
-  });
+  return sorted.sort(compareByRecentContribution);
 }
 
 function drawerRowMarkup(profile) {

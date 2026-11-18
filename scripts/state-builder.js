@@ -797,6 +797,7 @@ function normalizeContributors(contributors, fileContributors = {}, cheerEntries
         motto: String(item.motto || '').trim(),
         city: String(item.city || '').trim(),
         avatar,
+        joinedAt: String(resolved.ts || item.joinedAt || '').trim(),
         cheers: normalizeCheers(item.cheers),
         file
       };
