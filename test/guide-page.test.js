@@ -19,6 +19,7 @@ test('guide page teaches the profile and pull request flow with screenshots', ()
   const html = fs.readFileSync(GUIDE_PATH, 'utf8');
 
   assert.doesNotMatch(html, /class="guide-hero"/);
+  assert.doesNotMatch(html, /class="guide-two-shots"/);
   assert.match(html, /添加 Profile 文件/);
   assert.match(html, /cp data\/profiles\/_template\.json data\/profiles\/your-github-id\.json/);
   assert.match(html, /npm run validate/);
