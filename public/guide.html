@@ -51,22 +51,6 @@
       </div>
     </header>
 
-    <section class="guide-hero">
-      <div>
-        <h1>添加你的 Profile 与寄语</h1>
-        <p>这一页把完整的开源贡献流程拆成清晰的课堂步骤。你只需要跟着做：Fork 仓库、切分支、填写精简后的 3 行 JSON、本地校验、提交 Pull Request；上墙后还能在 <code>data/cheers</code> 下给同学写寄语。头像与 <code>@用户名</code> 均由系统通过你的 PR 自动识别，无需手填。</p>
-      </div>
-      <aside class="guide-checklist" aria-label="完成标准">
-        <h2>课堂通关清单</h2>
-        <ul>
-          <li>切出自己的分支，添加了 <code>data/profiles/你的用户名.json</code>。</li>
-          <li>运行 <code>npm run validate</code> 校验通过。</li>
-          <li>向主仓库 <code>main</code> 发起 Pull Request 并邀请同学 Review。</li>
-          <li>上墙后在 <code>data/cheers/同学用户名/</code> 下送出至少 1 条寄语。</li>
-        </ul>
-      </aside>
-    </section>
-
     <div class="guide-layout">
       <aside class="guide-toc" aria-label="教学目录">
         <strong>课堂步骤</strong>
@@ -131,7 +115,7 @@ git remote add upstream https://github.com/nanzhi84/open-source-pulse-wall.git</
             </figure>
             <figure class="guide-shot">
               <img src="guide-assets/03-profile-template.png" alt="_template.json 文件截图。" loading="lazy" />
-              <figcaption>复制 <code>_template.json</code> 生成你自己的文件，不要直接改动模板本身（模板现已精简为下方第 4 步的 3 个字段）。</figcaption>
+              <figcaption>复制 <code>_template.json</code> 生成你自己的文件（仅含 <code>name</code>、<code>motto</code>、<code>city</code> 三个字段），不要直接改动模板本身。</figcaption>
             </figure>
           </div>
         </section>
@@ -166,10 +150,10 @@ git remote add upstream https://github.com/nanzhi84/open-source-pulse-wall.git</
             </div>
           </div>
           <pre><code>npm run validate</code></pre>
-          <p class="guide-note">本项目零第三方依赖，无需运行 <code>npm install</code>，只要本机装有 Node.js 18+ 即可直接执行。</p>
+          <p class="guide-note">本项目零第三方依赖，无需运行 <code>npm install</code>，只要本机装有 Node.js 18+ 即可直接执行。发起 PR 后，GitHub Actions 也会自动运行同一条校验命令。</p>
           <figure class="guide-shot">
-            <img src="guide-assets/05-add-file-docs.png" alt="GitHub 官方添加文件文档截图。" loading="lazy" />
-            <figcaption>如果手边临时没有本地环境，也可在 GitHub 网页端新增文件；课堂推荐优先用命令行走完完整流程。</figcaption>
+            <img src="guide-assets/05-add-file-docs.png" alt="GitHub Actions Validate contributors 自动校验记录截图。" loading="lazy" />
+            <figcaption>仓库内置的 <code>Validate contributors</code> 工作流会在每次 PR 提交时自动运行 <code>npm run validate</code>。</figcaption>
           </figure>
         </section>
 
@@ -190,8 +174,8 @@ git push origin add-your-profile</code></pre>
             <figcaption>发起 PR 时确认左侧 base repository 是主仓库 <code>nanzhi84/open-source-pulse-wall</code> 的 <code>main</code>。</figcaption>
           </figure>
           <figure class="guide-shot">
-            <img src="guide-assets/07-pulls-page.png" alt="GitHub Pull requests 页面截图。" loading="lazy" />
-            <figcaption>右侧 Reviewers 栏点击齿轮图标，邀请至少 1 位同学帮你做 Code Review。</figcaption>
+            <img src="guide-assets/07-pulls-page.png" alt="GitHub Pull requests 列表截图。" loading="lazy" />
+            <figcaption>仓库已合并的同学 PR 列表；发起你自己的 PR 后，右侧 Reviewers 栏可点击齿轮邀请同学帮你做 Code Review。</figcaption>
           </figure>
         </section>
 
@@ -200,17 +184,17 @@ git push origin add-your-profile</code></pre>
             <span>7</span>
             <div>
               <h2>等待 Review 与实时上墙</h2>
-              <p>PR 发出后，GitHub Actions 会自动运行 <code>npm run validate</code>。收到修改建议时继续在同一分支提交并 push，PR 会自动更新；合并后你的卡片就会点亮在展示墙上。</p>
+              <p>PR 发出后，GitHub Actions 会自动运行 <code>npm run validate</code>。收到修改建议时继续在同一分支提交并 push，PR 会自动更新；合并后你的卡片就会点亮在展示墙左上角第 1 格。</p>
             </div>
           </div>
           <ul class="guide-clean-list">
             <li>看到 Actions 检查失败：点进 Details 查看报错字段，本地修复后重新 commit &amp; push。</li>
             <li>修改完代码想让同学再看一次：点右侧 Reviewer 头像旁的循环箭头（Re-request review）。</li>
-            <li>PR 合并后：回到展示墙即可看到卡片上墙，也可点击页面下方「Git 历史时间线」右上角的「立即拉取」实时同步。</li>
+            <li>PR 合并后：回到展示墙即可看到卡片按最新上墙顺序点亮，也可点击页面下方「Git 历史时间线」右上角的「立即拉取」实时同步。</li>
           </ul>
           <figure class="guide-shot">
-            <img src="guide-assets/08-review-docs.png" alt="GitHub 官方 Pull Request review 文档截图。" loading="lazy" />
-            <figcaption>别忘了也点进同学的 PR，阅读改动并留下一条友好的 Review 评论。</figcaption>
+            <img src="guide-assets/08-review-docs.png" alt="Open Source Pulse Wall 实时展示墙截图。" loading="lazy" />
+            <figcaption>合并后回到展示墙，贡献者大厅（按最新上墙排序）、PR 协作看板与 Git 历史时间线会同步更新。</figcaption>
           </figure>
         </section>
 
@@ -237,6 +221,10 @@ cp data/cheers/_template.json data/cheers/octocat/cheer.json</code></pre>
 git add data/cheers/octocat/cheer.json
 git commit -m "feat: cheer @octocat"
 git push origin cheer/octocat</code></pre>
+          <figure class="guide-shot">
+            <img src="guide-assets/09-cheers-template.png" alt="data/cheers 目录与 _template.json 截图。" loading="lazy" />
+            <figcaption><code>data/cheers</code> 目录下按目标同学用户名分文件夹存放独立寄语，模板仅含一行 <code>message</code> 字段。</figcaption>
+          </figure>
         </section>
 
         <section class="guide-step-card" id="mistakes">

@@ -18,7 +18,8 @@ test('home page routes contribution teaching to the standalone guide', () => {
 test('guide page teaches the profile and pull request flow with screenshots', () => {
   const html = fs.readFileSync(GUIDE_PATH, 'utf8');
 
-  assert.match(html, /添加你的 Profile/);
+  assert.doesNotMatch(html, /class="guide-hero"/);
+  assert.match(html, /添加 Profile 文件/);
   assert.match(html, /cp data\/profiles\/_template\.json data\/profiles\/your-github-id\.json/);
   assert.match(html, /npm run validate/);
   assert.match(html, /git push origin add-your-profile/);
@@ -26,6 +27,7 @@ test('guide page teaches the profile and pull request flow with screenshots', ()
   assert.match(html, /data\/cheers/);
   assert.match(html, /guide-assets\/01-repo-home\.png/);
   assert.match(html, /guide-assets\/08-review-docs\.png/);
+  assert.match(html, /guide-assets\/09-cheers-template\.png/);
 });
 
 test('guide screenshot assets are present', () => {
@@ -37,7 +39,8 @@ test('guide screenshot assets are present', () => {
     '05-add-file-docs.png',
     '06-compare-page.png',
     '07-pulls-page.png',
-    '08-review-docs.png'
+    '08-review-docs.png',
+    '09-cheers-template.png'
   ];
 
   expected.forEach((filename) => {

@@ -65,7 +65,11 @@ function markStaticHtmlAssets() {
         '<meta name="app-data-source" content="static" />'
       )
       .replace('href="styles.css"', `href="styles.css?v=${cssHash}"`)
-      .replace('src="app.js"', `src="app.js?v=${jsHash}"`);
+      .replace('src="app.js"', `src="app.js?v=${jsHash}"`)
+      .replace(/src="(guide-assets\/[^"?]+\.png)"/g, (_, relPath) => {
+        const assetFull = path.join(DIST_DIR, relPath);
+        return fs.existsSync(assetFull) ? `src="${relPath}?v=${shortFileHash(assetFull)}"` : `src="${relPath}"`;
+      });
 
     fs.writeFileSync(htmlPath, html);
   }

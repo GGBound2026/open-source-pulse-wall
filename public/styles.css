@@ -3677,6 +3677,7 @@ button.wall-drawer-badge.is-clickable:focus-visible {
   grid-template-columns: 230px minmax(0, 1fr);
   gap: 18px;
   align-items: start;
+  margin-top: 10px;
 }
 
 .guide-toc {
