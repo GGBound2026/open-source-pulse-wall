@@ -6,16 +6,12 @@
 - **零基础图文教学页**：<https://pulse-wall.yoryon.com/guide.html>
 - **拓展阅读 · 从零理解 Git 底层原理**：<https://yoryon.com/c/git-from-scratch/>
 
----
-
 ## 课堂四项任务
 
 1. **上墙个人卡片**：在 `data/profiles/` 下创建自己的 JSON 卡片，完成人生第一个开源 PR。
 2. **给同学写寄语**（Cheers）：在 `data/cheers/<同学用户名>/` 下留下一句鼓励，互相点亮寄语角标。
 3. **提一个 Issue**：用仓库内置模板提问、报 Bug 或提改进想法。
 4. **参与 PR Review**：邀请至少一位同学 Review 你的 PR，并给同学的 PR 留下一条 Review 评论。
-
----
 
 ## 拓扑结构
 
@@ -38,7 +34,7 @@ flowchart LR
 
 ### 2. 展示墙实时同步拓扑
 
-提交并合并 PR 后，展示墙如何自动识别你的头像、`@用户名` 并点亮大屏：
+提交并合并 PR 后，展示墙自动识别贡献者头像与 `@用户名` 并点亮大屏：
 
 ```mermaid
 flowchart LR
@@ -55,11 +51,9 @@ flowchart LR
   Wall -- "加载快照 / 立即拉取" --> Worker
 ```
 
----
-
 ## 贡献步骤指南
 
-> 想要看每一步带 GitHub 网页截图的手把手指引？直接打开 **[图文教学页](https://pulse-wall.yoryon.com/guide.html)**。
+> 想要看每一步带 GitHub 网页截图的手把手指引？直接打开 **[零基础图文教学页](https://pulse-wall.yoryon.com/guide.html)**。
 
 ### 第一步：Fork & Clone
 
@@ -148,8 +142,6 @@ git push origin cheer/octocat
 - **给同学做 Review**：点进任意同学的开放 PR，切到 `Files changed` 查看改动，留下一条友好的评论或 `Approve`。
 - **修改后重新通知 Reviewer**：如果你根据意见更新了代码，记得点右侧 Reviewer 头像旁的 **循环箭头**（Re-request review），对方才会再次收到通知。
 
----
-
 ## 遇到分支落后或冲突怎么办？
 
 当主仓库 `main` 已经合入了新提交、你需要同步最新代码（或 PR 提示 `This branch has conflicts that must be resolved`）时，推荐使用最稳妥的 `merge` 流程：
@@ -166,8 +158,6 @@ git merge upstream/main
 2. 运行 `npm run validate` 确认格式无误。
 3. 执行 `git add <文件> && git commit && git push origin <你的当前分支名>`，PR 会自动更新。
 
----
-
 ## 常用命令速查
 
 ```bash
@@ -179,8 +169,6 @@ git rebase upstream/main                      # 进阶：线性变基（需配�
 git push --force-with-lease origin <branch>   # rebase 后的安全推送命令
 ```
 
----
-
 ## 拓展阅读：从零看懂 Git 底层原理
 
 跑通一遍 `clone → branch → commit → push → merge` 之后，你可能会好奇：
@@ -190,8 +178,6 @@ git push --force-with-lease origin <branch>   # rebase 后的安全推送命令
 - 为什么新建一个分支在底层其实只是写了一个几十字节的文本文件？
 
 推荐阅读我的个人博客专栏 👉 **[Git From Scratch — 从零理解 Git 底层原理](https://yoryon.com/c/git-from-scratch/)**。把黑盒命令背后的对象模型和指针看透之后，以后无论遇到多复杂的分支、变基还是冲突现场，你都能在脑海里直接画出它的拓扑图。
-
----
 
 ## 目录结构
 
