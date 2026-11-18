@@ -322,6 +322,27 @@ test('worker packs state in one shot, filters closed community issues, and enfor
     assert.equal(stateData.delivery, 'cloudflare-worker');
     assert.equal(stateData.count, 1);
     assert.equal(callLog.length, callsAfterFirstRefresh);
+
+    // 4. After cooldown expires, GET /api/state serves stale snapshot immediately and revalidates in ctx.waitUntil.
+    const realDateNow = Date.now;
+    const backgroundTasks = [];
+    try {
+      Date.now = () => realDateNow() + 200000;
+      const staleResp = await worker.fetch(
+        new Request('https://pulse-wall-api.yoryon.com/api/state', { method: 'GET' }),
+        env,
+        { waitUntil(promise) { backgroundTasks.push(promise); } }
+      );
+      assert.equal(staleResp.status, 200);
+      const staleData = await staleResp.json();
+      assert.equal(staleData.cached, true);
+      assert.equal(staleData.revalidating, true);
+      assert.equal(staleData.count, 1);
+      assert.equal(backgroundTasks.length, 1);
+      await Promise.all(backgroundTasks);
+    } finally {
+      Date.now = realDateNow;
+    }
   } finally {
     workerModule.resetMemoryBundleForTests();
     global.fetch = originalFetch;

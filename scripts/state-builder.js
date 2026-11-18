@@ -524,10 +524,10 @@ async function fetchFileContributorsViaGraphql(repository, repoPaths, token) {
   for (let offset = 0; offset < repoPaths.length; offset += chunkSize) {
     const chunk = repoPaths.slice(offset, offset + chunkSize);
     const fields = chunk
-      .map(
-        (repoPath, idx) =>
-          `f${idx}: history(first: 50, path: ${JSON.stringify(repoPath)}) { nodes { committedDate author { user { login avatarUrl(size: 160) } } committer { user { login avatarUrl(size: 160) } } associatedPullRequests(first: 1) { nodes { author { login avatarUrl(size: 160) } } } } }`
-      )
+      .map((repoPath, idx) => {
+        const depth = repoPath.startsWith('data/cheers/') ? 5 : 15;
+        return `f${idx}: history(first: ${depth}, path: ${JSON.stringify(repoPath)}) { nodes { committedDate author { user { login avatarUrl(size: 160) } } committer { user { login avatarUrl(size: 160) } } associatedPullRequests(first: 1) { nodes { author { login avatarUrl(size: 160) } } } } }`;
+      })
       .join('\n');
 
     const query = `

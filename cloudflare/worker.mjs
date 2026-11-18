@@ -595,10 +595,10 @@ async function fetchFileContributorsViaGraphql(owner, name, repoPaths, token) {
   for (let offset = 0; offset < repoPaths.length; offset += chunkSize) {
     const chunk = repoPaths.slice(offset, offset + chunkSize);
     const fields = chunk
-      .map(
-        (repoPath, idx) =>
-          `f${idx}: history(first: 50, path: ${JSON.stringify(repoPath)}) { nodes { committedDate author { user { login avatarUrl(size: 160) } } committer { user { login avatarUrl(size: 160) } } associatedPullRequests(first: 1) { nodes { author { login avatarUrl(size: 160) } } } } }`
-      )
+      .map((repoPath, idx) => {
+        const depth = repoPath.startsWith('data/cheers/') ? 5 : 15;
+        return `f${idx}: history(first: ${depth}, path: ${JSON.stringify(repoPath)}) { nodes { committedDate author { user { login avatarUrl(size: 160) } } committer { user { login avatarUrl(size: 160) } } associatedPullRequests(first: 1) { nodes { author { login avatarUrl(size: 160) } } } } }`;
+      })
       .join('\n');
 
     const query = `
@@ -1064,7 +1064,7 @@ async function refreshOnce(repository, token) {
   }
 }
 
-function enrichState(state, { refreshedAt, cooldownMs, retryInMs, cached, stale = false }) {
+function enrichState(state, { refreshedAt, cooldownMs, retryInMs, cached, stale = false, revalidating = false }) {
   return {
     ...state,
     refreshedAt,
@@ -1072,12 +1072,13 @@ function enrichState(state, { refreshedAt, cooldownMs, retryInMs, cached, stale 
     retryInMs,
     cached,
     ...(stale ? { stale: true } : {}),
+    ...(revalidating ? { revalidating: true } : {}),
     delivery: 'cloudflare-worker'
   };
 }
 
 export default {
-  async fetch(request, env = {}) {
+  async fetch(request, env = {}, ctx = {}) {
     if (request.method === 'OPTIONS') {
       return new Response(null, { status: 204, headers: CORS_HEADERS });
     }
@@ -1108,6 +1109,20 @@ export default {
             cooldownMs,
             retryInMs,
             cached: true
+          })
+        );
+      }
+
+      if (bundle && ctx && typeof ctx.waitUntil === 'function') {
+        ctx.waitUntil(refreshOnce(repository, token).catch(() => {}));
+        return jsonResponse(
+          enrichState(bundle.state, {
+            refreshedAt: bundle.refreshedAt,
+            cooldownMs,
+            retryInMs: 0,
+            cached: true,
+            stale: true,
+            revalidating: true
           })
         );
       }

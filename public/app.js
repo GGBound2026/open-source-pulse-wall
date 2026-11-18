@@ -12,6 +12,7 @@ const GRAPH_PADDING_LEFT = 18;
 const GRAPH_PALETTE = ['#3b6064', '#a36a3b', '#5b8a3a', '#8a3b6a', '#3b6a8a', '#6a8a3b', '#8a5b3b'];
 const REFRESH_LABEL_DEFAULT = '立即拉取';
 const HISTORY_PREVIEW_LIMIT = 6;
+const STATE_CACHE_KEY = 'pulse-wall:state:v1';
 
 const state = {
   knownHandles: new Set(),
@@ -20,6 +21,8 @@ const state = {
   bootstrappedCheers: false,
   feed: [],
   lastOk: null,
+  lastFingerprint: '',
+  lastPayloadTime: 0,
   fallbackTimer: null,
   dataMode: '',
   activityReturnFocus: null,
@@ -1335,6 +1338,41 @@ function updateBoardSection(payload) {
   }
 }
 
+function payloadTimestamp(payload) {
+  if (!payload) return 0;
+  return Number(payload.refreshedAt || 0) || Date.parse(payload.generatedAt || '') || 0;
+}
+
+function readCachedState() {
+  try {
+    const raw = window.sessionStorage?.getItem(STATE_CACHE_KEY);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw);
+    if (parsed && parsed.payload && Array.isArray(parsed.payload.contributors)) {
+      return parsed;
+    }
+  } catch {
+    // Ignore storage access errors
+  }
+  return null;
+}
+
+function writeCachedState(payload) {
+  if (!payload || !payload.ok || !Array.isArray(payload.contributors)) return;
+  try {
+    window.sessionStorage?.setItem(
+      STATE_CACHE_KEY,
+      JSON.stringify({
+        savedAt: Date.now(),
+        mode: state.dataMode || '',
+        payload
+      })
+    );
+  } catch {
+    // Ignore storage quota or private mode errors
+  }
+}
+
 function applyState(payload) {
   updateGithubSync(payload.github);
   updateStats(payload);
@@ -1346,13 +1384,17 @@ function applyState(payload) {
   detectNewContributors(payload);
   detectNewCheers(payload);
 
+  const fp = String(payload.fingerprint || '');
   if (state.lastOk !== payload.ok) {
     addFeed(payload.ok ? '数据恢复正常，贡献者墙已刷新' : '数据校验失败，等待修复', payload.generatedAt, 'validation');
-  } else {
+  } else if (!fp || fp !== state.lastFingerprint) {
     addFeed(payload.message || '收到一次数据刷新', payload.generatedAt, 'pulse');
   }
 
   state.lastOk = payload.ok;
+  if (fp) state.lastFingerprint = fp;
+  state.lastPayloadTime = Math.max(state.lastPayloadTime, payloadTimestamp(payload));
+  writeCachedState(payload);
 }
 
 function dataSourceMode() {
@@ -1752,18 +1794,80 @@ function bindAvatarFallback() {
   }, true);
 }
 
+async function revalidateStaticAndWorkerInBackground({ checkStatic = false } = {}) {
+  if (checkStatic) {
+    try {
+      const staticResp = await fetch('contributors.json', { priority: 'low' });
+      if (staticResp.ok) {
+        const staticPayload = await staticResp.json();
+        if (payloadTimestamp(staticPayload) > state.lastPayloadTime) {
+          applyState(staticPayload);
+        }
+      }
+    } catch {
+      // Ignore background static check errors
+    }
+  }
+
+  const workerBase = refreshApiBase();
+  if (!workerBase) return;
+
+  try {
+    const response = await fetch(`${workerBase}/api/state`, {
+      cache: 'no-store',
+      priority: 'low'
+    });
+    if (!response.ok) return;
+    const workerPayload = await response.json();
+    const incomingTime = payloadTimestamp(workerPayload);
+    if (incomingTime >= state.lastPayloadTime || workerPayload.fingerprint !== state.lastFingerprint) {
+      state.dataMode = 'worker';
+      applyState(workerPayload);
+    }
+  } catch {
+    // Keep already-rendered snapshot silently
+  }
+}
+
+async function bootstrapState() {
+  if (dataSourceMode() === 'static') {
+    const cached = readCachedState();
+    if (cached) {
+      state.dataMode = refreshApiBase() ? 'worker' : (cached.mode || 'static');
+      applyState(cached.payload);
+      connectEvents();
+      revalidateStaticAndWorkerInBackground({ checkStatic: true });
+      return;
+    }
+
+    try {
+      const response = await fetch('contributors.json');
+      if (response.ok) {
+        const staticPayload = await response.json();
+        state.dataMode = refreshApiBase() ? 'worker' : 'static';
+        applyState(staticPayload);
+        connectEvents();
+        revalidateStaticAndWorkerInBackground({ checkStatic: false });
+        return;
+      }
+    } catch {
+      // Fall through to fetchState()
+    }
+  }
+
+  try {
+    const payload = await fetchState();
+    applyState(payload);
+    connectEvents();
+  } catch {
+    setConnection('offline', '无法读取贡献者数据');
+  }
+}
+
 bindAvatarFallback();
 bindActivityPanel();
 bindCheersOverlay();
 bindWallControls();
 bindHistoryControls();
 renderFeed();
-
-fetchState()
-  .then((payload) => {
-    applyState(payload);
-    connectEvents();
-  })
-  .catch(() => {
-    setConnection('offline', '无法读取贡献者数据');
-  });
+bootstrapState();
