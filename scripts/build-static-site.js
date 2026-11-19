@@ -59,10 +59,13 @@ function markStaticHtmlAssets() {
     if (!fs.existsSync(htmlPath)) continue;
 
     let html = fs.readFileSync(htmlPath, 'utf8');
+    const preloadDataHint = htmlFile === 'index.html'
+      ? '\n  <link rel="preload" href="contributors.json" as="fetch" crossorigin />'
+      : '';
     html = html
       .replace(
         '<meta name="app-data-source" content="auto" />',
-        '<meta name="app-data-source" content="static" />'
+        `<meta name="app-data-source" content="static" />${preloadDataHint}`
       )
       .replace('href="styles.css"', `href="styles.css?v=${cssHash}"`)
       .replace('src="app.js"', `src="app.js?v=${jsHash}"`)
@@ -97,7 +100,7 @@ async function buildStaticSite() {
     JSON.stringify({
       ...payload,
       delivery: 'github-pages'
-    }, null, 2)
+    })
   );
 
   console.log(`Built GitHub Pages site for ${githubState.repository}`);

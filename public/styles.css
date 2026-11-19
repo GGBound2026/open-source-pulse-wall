@@ -38,8 +38,12 @@ body::before {
   inset: 0;
   z-index: 0;
   pointer-events: none;
-  opacity: .32;
-  background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 240 240' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.82' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='240' height='240' filter='url(%23n)' opacity='.18'/%3E%3C/svg%3E");
+  opacity: .26;
+  background-image:
+    radial-gradient(rgba(48, 52, 49, .14) 0.55px, transparent 0.55px),
+    radial-gradient(rgba(96, 122, 100, .10) 0.55px, transparent 0.55px);
+  background-size: 16px 16px;
+  background-position: 0 0, 8px 8px;
 }
 
 body::after {
@@ -596,9 +600,22 @@ h1 {
 .about {
   border: 1px solid rgba(48,52,49,.15);
   border-radius: 12px;
-  background: rgba(255,250,240,.66);
+  background: rgba(255,250,240,.84);
   box-shadow: var(--shadow);
-  backdrop-filter: blur(8px);
+}
+
+.board-section,
+.history-section {
+  content-visibility: auto;
+  contain-intrinsic-size: auto none auto 520px;
+}
+
+.wall:empty {
+  min-height: 280px;
+}
+
+#liveFeed:empty {
+  min-height: 150px;
 }
 
 .feedback-panel {

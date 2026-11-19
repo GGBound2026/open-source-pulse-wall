@@ -284,15 +284,35 @@ function safeHttpsUrl(value) {
   }
 }
 
+function optimizeAvatarUrl(rawUrl, size = 96) {
+  const safe = safeHttpsUrl(rawUrl);
+  if (!safe) return '';
+  try {
+    const parsed = new URL(safe);
+    if (parsed.hostname === 'avatars.githubusercontent.com') {
+      parsed.searchParams.set('s', String(size));
+      parsed.searchParams.sort();
+      return parsed.href;
+    }
+    if (parsed.hostname === 'github.com' && parsed.pathname.endsWith('.png')) {
+      parsed.searchParams.set('size', String(size));
+      return parsed.href;
+    }
+  } catch {
+    return safe;
+  }
+  return safe;
+}
+
 function avatarForProfile(profile) {
   const explicitAvatar = String(profile.avatar || '').trim();
   if (AVATARS.includes(explicitAvatar)) return explicitAvatar;
-  const avatarUrl = safeHttpsUrl(explicitAvatar);
+  const avatarUrl = optimizeAvatarUrl(explicitAvatar, 96);
   if (avatarUrl) return avatarUrl;
 
   const handle = String(profile.github || '').trim();
   if (/^[A-Za-z0-9-]+$/.test(handle)) {
-    return `https://github.com/${encodeURIComponent(handle)}.png?size=160`;
+    return `https://github.com/${encodeURIComponent(handle)}.png?size=96`;
   }
 
   return AVATARS[0];
@@ -365,11 +385,13 @@ function cardMarkup(profile, options = {}) {
       : `<span class="cheer-badge" title="收到 ${cheerCount} 条同学寄语">寄语 ${cheerCount}</span>`)
     : '';
 
+  const loadingAttr = state.wallExpanded ? ' loading="lazy"' : '';
+
   return `
     <article class="profile-card${cheerCount > 0 ? ' has-cheers' : ''}">
       ${cheerBadge}
       <div class="profile-top">
-        <img class="avatar-image" src="${avatar}" alt="${name} 的头像" loading="lazy" data-fallback-src="${AVATAR_WARNING_FALLBACK}" />
+        <img class="avatar-image" src="${avatar}" alt="${name} 的头像" width="48" height="48" decoding="async"${loadingAttr} data-fallback-src="${AVATAR_WARNING_FALLBACK}" />
         <div class="identity">
           <h3>${name}</h3>
           <a class="handle" href="${githubProfileUrl(profile.github || '')}" target="_blank" rel="noreferrer">@${github}</a>
@@ -660,7 +682,7 @@ function drawerRowMarkup(profile) {
     : '最近上墙';
   return `
     <li class="wall-drawer-row">
-      <img src="${avatar}" alt="${name} 的头像" loading="lazy" data-fallback-src="${AVATAR_WARNING_FALLBACK}" />
+      <img src="${avatar}" alt="${name} 的头像" width="38" height="38" loading="lazy" decoding="async" data-fallback-src="${AVATAR_WARNING_FALLBACK}" />
       <span class="wall-drawer-person">
         <strong>${name}</strong>
         <small>@${handle}</small>
@@ -907,8 +929,9 @@ function commitListMarkup(rows, commits) {
       const shortSha = htmlEscape(commit.shortSha || commit.sha.slice(0, 7));
       const relative = htmlEscape(formatRelativeTime(commit.time) || '未知时间');
       const exact = htmlEscape(commit.time || '');
-      const avatarMarkup = commit.avatarUrl
-        ? `<img src="${htmlEscape(commit.avatarUrl)}" alt="" loading="lazy" />`
+      const optimizedCommitAvatar = commit.avatarUrl ? optimizeAvatarUrl(commit.avatarUrl, 96) : '';
+      const avatarMarkup = optimizedCommitAvatar
+        ? `<img src="${htmlEscape(optimizedCommitAvatar)}" alt="" width="26" height="26" loading="lazy" decoding="async" />`
         : `<span class="avatar-fallback">${htmlEscape((commit.author || '?').slice(0, 1).toUpperCase())}</span>`;
       const link = commit.htmlUrl || '#';
       const target = commit.htmlUrl ? ' target="_blank" rel="noreferrer"' : '';
@@ -1172,8 +1195,9 @@ function bindHistoryControls() {
 }
 
 function avatarBubbleMarkup(person, fallbackChar) {
-  if (person?.avatarUrl) {
-    return `<img src="${htmlEscape(person.avatarUrl)}" alt="" loading="lazy" />`;
+  const optimizedUrl = person?.avatarUrl ? optimizeAvatarUrl(person.avatarUrl, 96) : '';
+  if (optimizedUrl) {
+    return `<img src="${htmlEscape(optimizedUrl)}" alt="" width="30" height="30" loading="lazy" decoding="async" />`;
   }
   const fallback = htmlEscape((fallbackChar || person?.login || person?.author || '?').slice(0, 1).toUpperCase());
   return `<span class="avatar-fallback">${fallback}</span>`;
@@ -1228,8 +1252,9 @@ function reviewerBubblesMarkup(pr) {
 
   const reviewerBubbles = reviewers.map((reviewer) => {
     const login = htmlEscape(reviewer.login || 'unknown');
-    if (reviewer.avatarUrl) {
-      return `<span class="board-reviewer-bubble"><img src="${htmlEscape(reviewer.avatarUrl)}" alt="" loading="lazy" />@${login}</span>`;
+    const optimizedReviewerAvatar = reviewer.avatarUrl ? optimizeAvatarUrl(reviewer.avatarUrl, 96) : '';
+    if (optimizedReviewerAvatar) {
+      return `<span class="board-reviewer-bubble"><img src="${htmlEscape(optimizedReviewerAvatar)}" alt="" width="18" height="18" loading="lazy" decoding="async" />@${login}</span>`;
     }
     return `<span class="board-reviewer-bubble no-avatar">@${login}</span>`;
   }).join('');
