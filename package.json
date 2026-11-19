@@ -8,6 +8,7 @@
     "start": "node server.js",
     "test": "node --test",
     "validate": "node scripts/validate-contributors.js",
+    "validate:pr": "node scripts/validate-pr-diff.js",
     "build:pages": "node scripts/build-static-site.js",
     "deploy:worker": "node scripts/deploy-worker.js",
     "dev": "node server.js"
