@@ -1082,19 +1082,55 @@ function formatCooldownDuration(seconds) {
   return secs > 0 ? `${mins}分${String(secs).padStart(2, '0')}秒` : `${mins}分钟`;
 }
 
-function startRefreshCooldown(seconds) {
+const REFRESH_COOLDOWN_STORAGE_KEY = 'pulse-wall:refresh-cooldown-until';
+
+function savePersonalRefreshCooldown(seconds) {
+  try {
+    const until = Date.now() + Math.max(1, Math.floor(seconds)) * 1000;
+    window.localStorage.setItem(REFRESH_COOLDOWN_STORAGE_KEY, String(until));
+  } catch {
+    // Ignore storage quota / privacy mode errors.
+  }
+}
+
+function clearPersonalRefreshCooldown() {
+  try {
+    window.localStorage.removeItem(REFRESH_COOLDOWN_STORAGE_KEY);
+  } catch {
+    // Ignore storage errors.
+  }
+}
+
+function readPersonalRefreshCooldownRemaining() {
+  try {
+    const raw = window.localStorage.getItem(REFRESH_COOLDOWN_STORAGE_KEY);
+    const until = Number(raw || 0);
+    if (!Number.isFinite(until) || until <= Date.now()) {
+      return 0;
+    }
+    return Math.ceil((until - Date.now()) / 1000);
+  } catch {
+    return 0;
+  }
+}
+
+function startRefreshCooldown(seconds, { persist = true } = {}) {
   if (state.refreshCooldownTimer) {
     window.clearInterval(state.refreshCooldownTimer);
     state.refreshCooldownTimer = null;
   }
 
   let remaining = Math.max(1, Math.floor(seconds));
+  if (persist) {
+    savePersonalRefreshCooldown(remaining);
+  }
   setRefreshButtonState(`${formatCooldownDuration(remaining)}后可再拉取`, true, { busy: false });
   state.refreshCooldownTimer = window.setInterval(() => {
     remaining -= 1;
     if (remaining <= 0) {
       window.clearInterval(state.refreshCooldownTimer);
       state.refreshCooldownTimer = null;
+      clearPersonalRefreshCooldown();
       setRefreshButtonState(REFRESH_LABEL_DEFAULT, false);
       return;
     }
@@ -1165,7 +1201,7 @@ async function manuallyRefreshHistory() {
     }
     toast(data.message || buildRefreshToastMessage(data));
 
-    const cooldownMs = Number(data.retryInMs || data.cooldownMs || 0);
+    const cooldownMs = Number(data.cooldownMs || data.retryInMs || 0);
     if (cooldownMs > 0) {
       startRefreshCooldown(Math.ceil(cooldownMs / 1000));
     } else {
@@ -1182,6 +1218,10 @@ async function manuallyRefreshHistory() {
 function bindHistoryControls() {
   if (elements.refreshHistory) {
     elements.refreshHistory.addEventListener('click', manuallyRefreshHistory);
+    const savedRemaining = readPersonalRefreshCooldownRemaining();
+    if (savedRemaining > 0) {
+      startRefreshCooldown(savedRemaining, { persist: false });
+    }
   }
 
   if (elements.toggleHistoryMode) {

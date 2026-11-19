@@ -187,7 +187,7 @@ function validateProfile(profile, filename) {
 
   if (profile.cheers !== undefined) {
     errors.push(
-      `${filename}: 寄语已改为独立文件，请删除 cheers 字段，并创建 data/cheers/<目标用户名>/<任意文件名>.json（仅需填写 { "message": "..." }）`
+      `${filename}: 寄语已改为独立文件，请删除 cheers 字段，并创建 data/cheers/<目标用户名>/<你的GitHub用户名>.json（仅需填写 { "message": "..." }）`
     );
   }
 

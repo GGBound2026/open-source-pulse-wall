@@ -3,7 +3,6 @@
 一个一节课就能跑通完整开源闭环的 Git 协作实践项目。从 **Fork** 出发，亲手走完 **Clone → Branch → Validate → Commit → Push → Pull Request → Review → Merge** 全流程；每一次合并与互动都会实时点亮课堂展示墙。
 
 - **在线协作展示墙**（课堂大屏直达）：<https://pulse-wall.yoryon.com/>
-- **零基础图文教学页**：<https://pulse-wall.yoryon.com/guide.html>
 - **拓展阅读 · 从零理解 Git 底层原理**：<https://yoryon.com/c/git-from-scratch/>
 
 ## 课堂四项任务
@@ -13,47 +12,7 @@
 3. **提一个 Issue**：用仓库内置模板提问、报 Bug 或提改进想法。
 4. **参与 PR Review**：邀请至少一位同学 Review 你的 PR，并给同学的 PR 留下一条 Review 评论。
 
-## 拓扑结构
-
-### 1. Git 开源协作拓扑（三仓联动）
-
-开源协作和个人单机 Git 最大的区别，是同时存在 **主仓库**（`upstream`）、**你的云端 Fork**（`origin`）和 **你的本地仓库**（`local`）三个节点：
-
-```mermaid
-flowchart LR
-  Upstream["主仓库 upstream · nanzhi84/open-source-pulse-wall"]
-  Origin["你的云端 Fork origin · your-id/open-source-pulse-wall"]
-  Local["你的本地仓库 local · 分支开发与本地校验"]
-
-  Upstream -- "1. GitHub 点击 Fork" --> Origin
-  Origin -- "2. git clone" --> Local
-  Local -- "3. git push origin 分支" --> Origin
-  Origin -- "4. 发起 Pull Request 与 Review" --> Upstream
-  Upstream -. "5. git fetch upstream && git merge" .-> Local
-```
-
-### 2. 展示墙实时同步拓扑
-
-提交并合并 PR 后，展示墙自动识别贡献者头像与 `@用户名` 并点亮大屏：
-
-```mermaid
-flowchart LR
-  PR["提交 PR · profiles / cheers"]
-  CI["GitHub Actions · 自动校验"]
-  Main["主分支 main · 合入记录"]
-  Pages["GitHub Pages · 静态构建"]
-  Worker["Cloudflare Worker · 3 分钟缓冲 + 自动识别贡献者"]
-  Wall["展示墙 pulse-wall.yoryon.com"]
-
-  PR --> CI --> Main
-  Main --> Pages --> Wall
-  Main --> Worker
-  Wall -- "加载快照 / 立即拉取" --> Worker
-```
-
 ## 贡献步骤指南
-
-> 想要看每一步带 GitHub 网页截图的手把手指引？直接打开 **[零基础图文教学页](https://pulse-wall.yoryon.com/guide.html)**。
 
 ### 第一步：Fork & Clone
 
@@ -68,12 +27,15 @@ git remote add upstream https://github.com/nanzhi84/open-source-pulse-wall.git
 
 ### 第二步：提交你的个人卡片（Profile）
 
-切出新分支，复制模板文件（文件名使用你的 GitHub 用户名小写）：
+切出新分支，复制模板文件（文件名**必须使用你自己的 GitHub 用户名**，支持保留原大小写或小写）：
 
 ```bash
 git checkout -b add-my-profile
 cp data/profiles/_template.json data/profiles/<你的GitHub用户名>.json
 ```
+
+> **为什么用 GitHub 用户名做文件名不会和同学冲突？**
+> 在 GitHub 上，`alice` 和 `Alice` 不可能是两个人——GitHub 用户名全局不区分大小写，只要有人注册了 `Alice`，别人就不可能再注册 `alice`，访问 `github.com/alice` 和 `github.com/Alice` 都是同一个账号，因此以你的 GitHub 用户名命名文件绝对不会和他人重合（CI 也会自动校验文件名与你提交 PR 的 GitHub 账号一致，且不允许大小写重复文件）。
 
 打开 `data/profiles/<你的GitHub用户名>.json`，只需填写 3 个字段：
 
@@ -87,11 +49,9 @@ cp data/profiles/_template.json data/profiles/<你的GitHub用户名>.json
 
 | 字段 | 必填 | 说明 |
 | --- | --- | --- |
-| `name` | 是 | 你的名字或昵称（最多 40 个字符，请勿保留默认值「你的名字」） |
+| `name` | 是 | 填什么都可以，建议填真名让大家认识你（最多 40 个字符，请勿保留默认值「你的名字」） |
 | `motto` | 是 | 一句话介绍或座右铭（最多 120 个字符） |
 | `city` | 否 | 所在城市或课堂位置（最多 40 个字符） |
-
-> **头像与 `@GitHub用户名` 无需手填**：系统会自动读取创建该 JSON 文件的 PR 贡献者账号与 GitHub 头像。
 
 本地运行校验（仅需 Node.js 18+，无需 `npm install`），通过后推送并发起 PR：
 
@@ -106,7 +66,7 @@ git push origin add-my-profile
 
 ### 第三步：给同学写寄语（Cheers）
 
-等你的卡片合并后，给至少一位已经上墙的同学留一句寄语。每条寄语是一个独立 JSON 小文件——**不用填 `from` 和时间**，系统同样会根据提交该文件的 PR 自动识别你的 `@用户名`，而且多人同时给同一位同学写寄语完全不会发生 Git 冲突：
+等你的卡片合并后，给至少一位已经上墙的同学留一句寄语。每条寄语是一个独立 JSON 小文件，文件名同样**使用你自己的 GitHub 用户名**。因为每位同学的 GitHub 用户名全局唯一（不区分大小写，绝对不会重合），多人同时给同一位同学写寄语完全不会发生 Git 冲突，后续你也可以直接修改自己的同名文件来更新寄语：
 
 ```bash
 git fetch upstream
@@ -115,10 +75,10 @@ git merge upstream/main
 git checkout -b cheer/octocat
 
 mkdir -p data/cheers/octocat
-cp data/cheers/_template.json data/cheers/octocat/<任意文件名>.json
+cp data/cheers/_template.json data/cheers/octocat/<你的GitHub用户名>.json
 ```
 
-打开该文件，只需写一行 `message`（80 字以内）：
+打开该文件，**只允许填写 `message` 这一个字段**（80 字以内，不允许添加其他任何字段）：
 
 ```json
 {
@@ -130,7 +90,7 @@ cp data/cheers/_template.json data/cheers/octocat/<任意文件名>.json
 
 ```bash
 npm run validate
-git add data/cheers/octocat/<任意文件名>.json
+git add data/cheers/octocat/<你的GitHub用户名>.json
 git commit -m "feat: cheer @octocat"
 git push origin cheer/octocat
 ```
@@ -188,16 +148,17 @@ open-source-pulse-wall/
 │   ├── ISSUE_TEMPLATE/             # 提问 / Bug / 想法 / 求助 模板
 │   ├── PULL_REQUEST_TEMPLATE.md    # PR 自检清单
 │   └── workflows/
-│       ├── validate.yml            # PR 与主干自动运行 npm run validate
+│       ├── validate.yml            # PR 与主干自动运行测试与数据校验
+│       ├── pr-guard.yml            # 防篡改路径锁 + 自动审查评论 Bot
 │       └── pages.yml               # 自动构建并发布展示墙
 ├── cloudflare/
-│   └── worker.mjs                  # 3 分钟聚合缓冲 API + PR 贡献者自动识别
+│   └── worker.mjs                  # 3 分钟快照缓存 API + PR 贡献者自动识别
 ├── data/
-│   ├── profiles/                   # 每位贡献者的个人卡片 JSON
+│   ├── profiles/                   # 每位贡献者的个人卡片 data/profiles/<GitHub用户名>.json
 │   │   └── _template.json
-│   └── cheers/                     # 独立寄语目录 data/cheers/<目标用户名>/<文件>.json
+│   └── cheers/                     # 独立寄语 data/cheers/<目标用户名>/<你的GitHub用户名>.json
 │       └── _template.json
-├── public/                         # 手绘纸面风展示墙与图文教学页（index.html / guide.html）
+├── public/                         # 手绘纸面风展示墙（index.html）
 ├── scripts/                        # 校验脚本、静态构建与状态聚合器
 └── test/                           # 自动化测试套件
 ```

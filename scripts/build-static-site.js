@@ -54,25 +54,19 @@ function markStaticHtmlAssets() {
   const cssHash = shortFileHash(path.join(DIST_DIR, 'styles.css'));
   const jsHash = shortFileHash(path.join(DIST_DIR, 'app.js'));
 
-  for (const htmlFile of ['index.html', 'guide.html']) {
+  for (const htmlFile of ['index.html']) {
     const htmlPath = path.join(DIST_DIR, htmlFile);
     if (!fs.existsSync(htmlPath)) continue;
 
     let html = fs.readFileSync(htmlPath, 'utf8');
-    const preloadDataHint = htmlFile === 'index.html'
-      ? '\n  <link rel="preload" href="contributors.json" as="fetch" crossorigin />'
-      : '';
+    const preloadDataHint = '\n  <link rel="preload" href="contributors.json" as="fetch" crossorigin />';
     html = html
       .replace(
         '<meta name="app-data-source" content="auto" />',
         `<meta name="app-data-source" content="static" />${preloadDataHint}`
       )
       .replace('href="styles.css"', `href="styles.css?v=${cssHash}"`)
-      .replace('src="app.js"', `src="app.js?v=${jsHash}"`)
-      .replace(/src="(guide-assets\/[^"?]+\.png)"/g, (_, relPath) => {
-        const assetFull = path.join(DIST_DIR, relPath);
-        return fs.existsSync(assetFull) ? `src="${relPath}?v=${shortFileHash(assetFull)}"` : `src="${relPath}"`;
-      });
+      .replace('src="app.js"', `src="app.js?v=${jsHash}"`);
 
     fs.writeFileSync(htmlPath, html);
   }

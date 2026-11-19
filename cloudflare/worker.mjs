@@ -1102,28 +1102,14 @@ export default {
       const now = Date.now();
       const bundle = await readCachedBundle(repository);
 
-      if (bundle && now - bundle.refreshedAt < cooldownMs) {
-        const retryInMs = cooldownMs - (now - bundle.refreshedAt);
+      if (bundle) {
+        const remainingMs = Math.max(0, cooldownMs - (now - bundle.refreshedAt));
         return jsonResponse(
           enrichState(bundle.state, {
             refreshedAt: bundle.refreshedAt,
             cooldownMs,
-            retryInMs,
+            retryInMs: remainingMs,
             cached: true
-          })
-        );
-      }
-
-      if (bundle && ctx && typeof ctx.waitUntil === 'function') {
-        ctx.waitUntil(refreshOnce(repository, token).catch(() => {}));
-        return jsonResponse(
-          enrichState(bundle.state, {
-            refreshedAt: bundle.refreshedAt,
-            cooldownMs,
-            retryInMs: 0,
-            cached: true,
-            stale: true,
-            revalidating: true
           })
         );
       }
@@ -1139,17 +1125,6 @@ export default {
           })
         );
       } catch (error) {
-        if (bundle) {
-          return jsonResponse(
-            enrichState(bundle.state, {
-              refreshedAt: bundle.refreshedAt,
-              cooldownMs,
-              retryInMs: 0,
-              cached: true,
-              stale: true
-            })
-          );
-        }
         return jsonResponse({ ok: false, message: error.message }, 502);
       }
     }
@@ -1161,39 +1136,45 @@ export default {
       if (bundle && now - bundle.refreshedAt < cooldownMs) {
         const elapsedMs = now - bundle.refreshedAt;
         const retryInMs = cooldownMs - elapsedMs;
-        const retrySeconds = Math.max(1, Math.ceil(retryInMs / 1000));
-        const waitText = formatCooldownText(retrySeconds);
 
-        return jsonResponse(
-          {
-            ok: false,
-            rateLimited: true,
-            message: `刷新限流中（3 分钟最多拉取 1 次）：已同步缓冲数据，请 ${waitText} 后再试`,
-            elapsedMs,
-            retryInMs,
+        return jsonResponse({
+          ok: true,
+          cached: true,
+          generatedAt: bundle.state.generatedAt,
+          refreshedAt: bundle.refreshedAt,
+          cooldownMs,
+          retryInMs,
+          message: '已经帮你同步最新缓存页面，如果显示滞后请三分钟后重试',
+          git: {
+            ok: true,
+            skipped: false,
+            pulled: 0,
+            reason: '已返回最新共享快照'
+          },
+          github: {
+            ok: true,
+            configured: true,
+            message: bundle.state.github.message
+          },
+          state: enrichState(bundle.state, {
             refreshedAt: bundle.refreshedAt,
             cooldownMs,
-            state: enrichState(bundle.state, {
-              refreshedAt: bundle.refreshedAt,
-              cooldownMs,
-              retryInMs,
-              cached: true
-            })
-          },
-          429,
-          { 'Retry-After': String(retrySeconds) }
-        );
+            retryInMs,
+            cached: true
+          })
+        });
       }
 
       try {
         const fresh = await refreshOnce(repository, token);
         return jsonResponse({
           ok: true,
+          cached: false,
           generatedAt: fresh.state.generatedAt,
           refreshedAt: fresh.refreshedAt,
           cooldownMs,
           retryInMs: cooldownMs,
-          message: '已一次性打包拉取最新贡献者、Issue 与 PR 状态（限流 3 分钟/次）',
+          message: '已一次性打包拉取最新贡献者、Issue 与 PR 状态',
           git: {
             ok: true,
             skipped: false,

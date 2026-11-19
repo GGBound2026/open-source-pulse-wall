@@ -296,17 +296,18 @@ test('worker packs state in one shot, filters closed community issues, and enfor
     const callsAfterFirstRefresh = callLog.length;
     assert.equal(callsAfterFirstRefresh, 7);
 
-    // 2. Immediate second POST /api/refresh returns 429 with buffered state and 0 extra GitHub calls.
+    // 2. Immediate second POST /api/refresh returns 200 with latest cached snapshot and 0 extra GitHub calls.
     const secondRefresh = await worker.fetch(
       new Request('https://pulse-wall-api.yoryon.com/api/refresh', { method: 'POST' }),
       env
     );
-    assert.equal(secondRefresh.status, 429);
-    assert.ok(Number(secondRefresh.headers.get('retry-after')) >= 1);
+    assert.equal(secondRefresh.status, 200);
 
     const secondData = await secondRefresh.json();
-    assert.equal(secondData.ok, false);
-    assert.equal(secondData.rateLimited, true);
+    assert.equal(secondData.ok, true);
+    assert.equal(secondData.cached, true);
+    assert.equal(secondData.message, '已经帮你同步最新缓存页面，如果显示滞后请三分钟后重试');
+    assert.equal(secondData.cooldownMs, 180000);
     assert.ok(secondData.retryInMs > 0);
     assert.equal(secondData.state.count, 1);
     assert.equal(callLog.length, callsAfterFirstRefresh);
@@ -323,23 +324,34 @@ test('worker packs state in one shot, filters closed community issues, and enfor
     assert.equal(stateData.count, 1);
     assert.equal(callLog.length, callsAfterFirstRefresh);
 
-    // 4. After cooldown expires, GET /api/state serves stale snapshot immediately and revalidates in ctx.waitUntil.
+    // 4. Even after cooldown expires, GET /api/state serves cached snapshot with 0 GitHub calls (refresh is click-only).
     const realDateNow = Date.now;
     const backgroundTasks = [];
     try {
       Date.now = () => realDateNow() + 200000;
-      const staleResp = await worker.fetch(
+      const idleResp = await worker.fetch(
         new Request('https://pulse-wall-api.yoryon.com/api/state', { method: 'GET' }),
         env,
         { waitUntil(promise) { backgroundTasks.push(promise); } }
       );
-      assert.equal(staleResp.status, 200);
-      const staleData = await staleResp.json();
-      assert.equal(staleData.cached, true);
-      assert.equal(staleData.revalidating, true);
-      assert.equal(staleData.count, 1);
-      assert.equal(backgroundTasks.length, 1);
-      await Promise.all(backgroundTasks);
+      assert.equal(idleResp.status, 200);
+      const idleData = await idleResp.json();
+      assert.equal(idleData.cached, true);
+      assert.equal(idleData.count, 1);
+      assert.equal(backgroundTasks.length, 0);
+      assert.equal(callLog.length, callsAfterFirstRefresh);
+
+      // 5. Clicking POST /api/refresh after 3 minutes triggers a real GitHub fetch and resets the 3-minute window.
+      const thirdRefresh = await worker.fetch(
+        new Request('https://pulse-wall-api.yoryon.com/api/refresh', { method: 'POST' }),
+        env
+      );
+      assert.equal(thirdRefresh.status, 200);
+      const thirdData = await thirdRefresh.json();
+      assert.equal(thirdData.ok, true);
+      assert.equal(thirdData.cached, false);
+      assert.equal(thirdData.cooldownMs, 180000);
+      assert.equal(callLog.length, callsAfterFirstRefresh * 2);
     } finally {
       Date.now = realDateNow;
     }

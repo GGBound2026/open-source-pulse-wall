@@ -5,7 +5,6 @@ const test = require('node:test');
 
 const ROOT = path.resolve(__dirname, '..');
 const INDEX_PATH = path.join(ROOT, 'public', 'index.html');
-const GUIDE_PATH = path.join(ROOT, 'public', 'guide.html');
 const APP_PATH = path.join(ROOT, 'public', 'app.js');
 
 test('home page is a display-first collaboration wall with bounded detail entry points', () => {
@@ -22,17 +21,15 @@ test('home page is a display-first collaboration wall with bounded detail entry 
   assert.doesNotMatch(html, /如何在本地跑通整套开发环境|支持插件化架构|Awesome Pulse Wall 插件集|作品展示/);
 });
 
-test('home page presents the contribution guide as a separate page action', () => {
+test('home page links the contribution entry directly to GitHub README', () => {
   const html = fs.readFileSync(INDEX_PATH, 'utf8');
-  const guideHtml = fs.readFileSync(GUIDE_PATH, 'utf8');
 
   assert.doesNotMatch(html, /<nav class="topnav"/);
-  assert.doesNotMatch(guideHtml, /<nav class="topnav"/);
+  assert.doesNotMatch(html, /href="guide\.html"/);
   assert.match(html, /class="[^"]*guide-entry[^"]*"/);
+  assert.match(html, /href="https:\/\/github\.com\/nanzhi84\/open-source-pulse-wall#贡献步骤指南"/);
   assert.match(html, /<strong>开始贡献<\/strong>/);
-  assert.match(html, /<small>教学页<\/small>/);
-  assert.match(guideHtml, /class="[^"]*guide-entry[^"]*guide-back[^"]*"/);
-  assert.match(guideHtml, /<strong>返回展示墙<\/strong>/);
+  assert.match(html, /<small>README<\/small>/);
 });
 
 test('display wall keeps expanding data surfaces bounded by default', () => {
