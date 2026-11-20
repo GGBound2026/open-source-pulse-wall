@@ -2,8 +2,8 @@
 
 一个一节课就能跑通完整开源闭环的 Git 协作实践项目。从 **Fork** 出发，亲手走完 **Clone → Branch → Validate → Commit → Push → Pull Request → Review → Merge** 全流程；每一次合并与互动都会实时点亮课堂展示墙。
 
-- **在线协作展示墙**（课堂大屏直达）：<https://pulse-wall.yoryon.com/>
-- **进阶积分与星标特效玩法**（⭐ 点 Star 解锁专属皮肤与破框大招）：[查看完整积分规则（SCORING.md）](./SCORING.md)
+- **在线协作展示墙**：<https://pulse-wall.yoryon.com/>
+- **进阶积分玩法**：[SCORING.md](./SCORING.md)
 - **拓展阅读 · 从零理解 Git 底层原理**：<https://yoryon.com/c/git-from-scratch/>
 
 ## 课堂四项任务
@@ -13,8 +13,7 @@
 3. **提一个 Issue**：用仓库内置模板提问、报 Bug 或提改进想法。
 4. **参与 PR Review**：邀请至少一位同学 Review 你的 PR，并给同学的 PR 留下一条 Review 评论。
 
-> **⭐ 别忘了点 Star 开启进阶玩法！**  
-> 点击本仓库右上角 **Star** 即可激活你的专属四维星标卡面、Top 5 荣耀领奖台与 **0 阶 → 三阶** 破框特效进化体系（未点 Star 仅展示标准暖纸卡面）。通过**寄语互动**、**`Co-authored-by` 结对编程**与 **Git 考古彩蛋**累计积分，还能触发 12 脉专属召唤物与三阶邻格交互大招——详见 👉 **[进阶积分与星标特效玩法指南（SCORING.md）](./SCORING.md)**。
+> **可选趣味玩法**：以上四项就是本次培训的全部任务，不点 Star 也完全可以正常上墙、走完整个 Git 协作流程。如果你想给自己的卡片换上特殊皮肤、加上动画特效，或者冲一冲积分排行榜，可以顺手给本仓库点一下 **Star** 开启，具体玩法见 [SCORING.md](./SCORING.md)。
 
 ## 贡献步骤指南
 
@@ -107,10 +106,9 @@ git push origin cheer/octocat
 - **给同学做 Review**：点进任意同学的开放 PR，切到 `Files changed` 查看改动，留下一条友好的评论或 `Approve`。
 - **修改后重新通知 Reviewer**：如果你根据意见更新了代码，记得点右侧 Reviewer 头像旁的 **循环箭头**（Re-request review），对方才会再次收到通知。
 
-### 第五步（进阶玩法）：点亮 Star，冲刺破框特效与 Top 5
+### 第五步（可选）：体验皮肤与积分玩法
 
-- **开启星标皮肤**：点击本仓库右上角 **Star**（总开关），约 30 秒后刷新展示墙即可点亮你的专属收藏卡面并进入 Top 5 排行榜。
-- **冲刺高阶破框大招**：通过给多位同学写寄语、`Co-authored-by` 结对编程与 Git 考古彩蛋累计积分，解锁 **一阶 → 二阶 → 三阶** 12 脉专属破框特效与邻格交互。完整规则与命令示例见 👉 **[SCORING.md](./SCORING.md)**。
+这一步完全可选，不影响培训完成。如果你有兴趣，可以给本仓库点一下 **Star**（约 30 秒后刷新展示墙生效），给自己的卡片换上专属皮肤并加入排行榜；之后通过给同学写寄语、和同学一起写 `Co-authored-by` 结对提交，或者翻一翻 Git 历史找彩蛋，就能继续攒分升级卡片动画。详细规则和命令示例见 [SCORING.md](./SCORING.md)。
 
 ## 遇到分支落后或冲突怎么办？
 
@@ -155,7 +153,7 @@ git log -S "<关键词>" -p                      # 进阶：Git 历史考古，�
 ```text
 open-source-pulse-wall/
 ├── README.md                       # 课堂入门与标准 PR 贡献指南
-├── SCORING.md                      # 进阶积分、Star 皮肤与 12 脉破框特效玩法指南
+├── SCORING.md                      # 可选的进阶积分与卡片皮肤玩法说明
 ├── .github/
 │   ├── CODEOWNERS                  # 自动指派仓库维护者 Review
 │   ├── ISSUE_TEMPLATE/             # 提问 / Bug / 想法 / 求助 模板
@@ -173,10 +171,10 @@ open-source-pulse-wall/
 │   │   └── _template.json
 │   └── relics.json                 # Git 考古彩蛋哈希配置（仅存 SHA-256，不存明文）
 ├── public/
-│   ├── index.html                  # 暖纸建筑画廊风展示墙（含 Top 5 领奖台与聚光灯模式）
-│   ├── styles.css                  # 页面排版、星标卡面与四维视觉样式
+│   ├── index.html                  # 展示墙主页面（含 Top 5 排行榜）
+│   ├── styles.css                  # 页面样式与星标卡片皮肤
 │   ├── app.js                      # 展示墙渲染、筛选排序与交互逻辑
-│   └── vfx-engine.js               # 12 脉三阶 Canvas 破框特效引擎与邻格交互
+│   └── vfx-engine.js               # 卡片动画与特效渲染引擎
 ├── scripts/                        # 校验脚本、积分引擎、静态构建与部署工具
 └── test/                           # 自动化测试套件
 ```
