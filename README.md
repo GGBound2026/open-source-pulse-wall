@@ -6,16 +6,28 @@
 - **进阶积分玩法**：[SCORING.md](./SCORING.md)
 - **拓展阅读 · 从零理解 Git 底层原理**：<https://yoryon.com/c/git-from-scratch/>
 
-## 课堂四项任务
+## 课堂三项任务
 
-1. **上墙个人卡片**：在 `data/profiles/` 下创建自己的 JSON 卡片，完成人生第一个开源 PR。
-2. **给同学写寄语**（Cheers）：在 `data/cheers/<同学用户名>/` 下留下一句鼓励，互相点亮寄语角标。
-3. **提一个 Issue**：用仓库内置模板提问、报 Bug 或提改进想法。
-4. **参与 PR Review**：邀请至少一位同学 Review 你的 PR，并给同学的 PR 留下一条 Review 评论。
+1. **上墙个人卡片**：在 `data/profiles/` 下创建自己的 JSON 卡片，完成第一个开源 PR。
+2. **给同学写寄语**：在 `data/cheers/<同学用户名全小写>/` 下留下一句鼓励，互相点亮寄语角标。
+3. **提一个 Issue**：遇到真实问题、Bug 或有改进想法时，用仓库内置模板提交 Issue。
 
-> **可选趣味玩法**：以上四项就是本次培训的全部任务，不点 Star 也完全可以正常上墙、走完整个 Git 协作流程。如果你想给自己的卡片换上特殊皮肤、加上动画特效，或者冲一冲积分排行榜，可以顺手给本仓库点一下 **Star** 开启，具体玩法见 [SCORING.md](./SCORING.md)。
+> **可选趣味玩法**：完成以上三项即可跑通完整 Git 协作流程。如果还想解锁专属卡片皮肤、破框动画与 Top 5 排行榜，可以给本仓库点一下 **Star**，并在现场互相帮助时和同学一起用 `Co-authored-by` 结对提交攒分，详见 [SCORING.md](./SCORING.md)。
 
 ## 贡献步骤指南
+
+### 省流版：直接复制给 AI Agent
+
+不想一步步手动敲命令，可以把下面这段 Prompt 直接发给你的 AI 编程助手，由它带你完成第零步到第三步：
+
+```text
+请帮我完成开源项目 nanzhi84/open-source-pulse-wall 的第零步到第三步贡献流程，严格遵循仓库 README.md 的最新规范：
+
+1. 环境与鉴权：检查本机是否已安装 git、gh 和 Node.js 18+。未安装则按当前系统用纯命令行安装 git 与 gh；检查 `gh auth status`，未登录则运行 `gh auth login -h github.com -p https -w` 并在需要浏览器确认时暂停等我完成，随后执行 `gh auth setup-git` 并配置 git user.name 与 user.email。
+2. Fork 与个人卡片：使用 `gh repo fork nanzhi84/open-source-pulse-wall --clone` 克隆仓库。在创建卡片前先向我询问 name、motto、city，不要替我编造。随后新建分支，在 data/profiles/<我的GitHub用户名>.json 写入 2 空格缩进的合法 JSON，运行 `npm run validate` 通过后提交并发起 PR，把 PR 链接和 `gh pr checks` 结果发给我。
+3. 给同学写寄语：列出 data/profiles/ 下已上墙的同学名单，询问我想给哪位同学写什么寄语，再从最新 upstream/main 切出新分支，创建 data/cheers/<目标用户名全小写>/<我的GitHub用户名>.json（仅含 message 字段且不超过 80 字），运行 `npm run validate` 通过后提交并发起 PR。
+4. 严格边界：不要修改其他文件或模板文件；不要替我自动创建 Issue；不要擅自对任何人的 PR 发表 Review 评论或点击 Request changes。如果第四步提 Issue 需要你协助，仅在我明确给出真实问题或想法后帮我起草内容并等我确认。
+```
 
 ### 第零步：安装 Git 与 GitHub CLI 并完成鉴权
 
@@ -179,17 +191,14 @@ git commit -m "feat: cheer @octocat"
 git push origin cheer/octocat
 ```
 
-### 第四步：参与 Issue 与 PR Review
+### 第四步：提一个 Issue 与等待自动合并
 
-- **提一个 Issue**：打开仓库 [Issues 页面](../../issues/new/choose)，选择对应模板（提问或求助 / 报 Bug / 改进想法）提交。
-- **邀请同学 Review**：在你的 PR 页面右侧栏点击 `Reviewers` 齿轮图标，选择至少 1 位同学（也可在 PR 描述里 `@同学用户名` 请对方帮忙看）；老师 `@nanzhi84` 与 `@YJLEC` 会由 `CODEOWNERS` 自动指派。
-- **给同学做 Review**：点进任意同学的开放 PR，切到 `Files changed` 查看改动，留下一条友好的评论或 `Approve`。
-- **修改后重新通知 Reviewer**：如果你根据意见更新了代码，记得点右侧 Reviewer 头像旁的 **循环箭头**（Re-request review），对方才会再次收到通知。
-- **自动审查与合并机制**：PR 提交后会自动运行 `pr-guard`（路径与格式检查）和 `validate`（测试与全量数据校验）。当两项检查全部通过、没有未解除的 `Request changes` 审查意见、且未标记 `hold` / `do-not-merge` 标签时，串行自动合并队列会在约 **10 分钟后自动合入 `main`** 并触发展示墙更新；如果是**刚注册的 GitHub 账号**触发了平台首次外部 PR 审批限制，机器人会自动 `@` 老师协助批准运行或手动合并。
+- **提一个 Issue**：打开仓库 [Issues 页面](../../issues/new/choose)，选择对应模板提交你真实遇到的卡点、发现的 Bug 或具体改进想法。提交前先在 Issues 列表搜索确认不重复；可以让 Agent 帮你整理复现步骤或草稿，但必须由本人核对后再发，不要让 Agent 凭空编造问题。
+- **自动审查与合并**：PR 提交后会自动运行 `pr-guard` 与 `validate`，老师 `@nanzhi84` 与 `@YJLEC` 会由 `CODEOWNERS` 自动收到审阅通知。两项检查通过、无人提出 `Request changes` 且未标记 `hold` / `do-not-merge` 标签时，自动合并队列会在约 **10 分钟后合入 `main`** 并触发展示墙更新；刚注册的 GitHub 账号若触发平台安全限制，机器人会自动 `@` 老师协助处理。
 
-### 第五步（可选）：体验皮肤与积分玩法
+### 第五步：现场互助与积分玩法（可选）
 
-这一步完全可选，不影响培训完成。如果你有兴趣，可以给本仓库点一下 **Star**（约 30 秒后刷新展示墙生效），给自己的卡片换上专属皮肤并加入排行榜；之后通过给同学写寄语、和同学一起写 `Co-authored-by` 结对提交，或者翻一翻 Git 历史找彩蛋，就能继续攒分升级卡片动画。详细规则和命令示例见 [SCORING.md](./SCORING.md)。
+这一步完全可选，不影响培训完成。完成主线后可以点一下仓库右上角的 **Star** 开启专属皮肤与排行榜，并在现场互相帮助还没有跑通流程的同学——和同学一起用 `Co-authored-by` 结对提交，或翻一翻 Git 历史找考古彩蛋，就能攒分升级卡片动画。详细规则和命令示例见 [SCORING.md](./SCORING.md)。
 
 ## 遇到分支落后或冲突怎么办？
 
