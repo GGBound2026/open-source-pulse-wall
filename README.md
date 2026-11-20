@@ -17,14 +17,15 @@
 
 ## 贡献步骤指南
 
-### 第零步：安装与配置 Git
+### 第零步：安装 Git 与 GitHub CLI 并完成鉴权
 
-打开终端输入 `git --version`，已安装可直接跳过。
+`git` 负责本地版本管理，`gh` 是 GitHub 官方命令行工具，把 Fork、PR、Issue、Review 与 CI 检查全部搬进终端。两者装好并完成鉴权后，你和 AI Agent 都可以直接在命令行驱动完整协作流程。
 
 **Windows**
 
 ```powershell
 winget install --id Git.Git -e --source winget --silent --accept-package-agreements --accept-source-agreements
+winget install --id GitHub.cli -e --source winget --silent --accept-package-agreements --accept-source-agreements
 ```
 
 安装完成后重开终端生效。
@@ -35,7 +36,7 @@ winget install --id Git.Git -e --source winget --silent --accept-package-agreeme
 # 未安装 Homebrew 先执行此句，装完按终端末尾 Next steps 提示配置 PATH
 /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
 
-brew install git
+brew install git gh
 ```
 
 **Linux**
@@ -43,17 +44,55 @@ brew install git
 ```bash
 # Ubuntu / Debian
 sudo apt update && sudo apt install -y git
+sudo snap install gh --classic
 
 # Fedora / RHEL
-sudo dnf install -y git
+sudo dnf install -y git gh
 ```
 
-**配置身份**
+**配置 Git 身份**
 
 ```bash
-git --version
+git --version && gh --version
 git config --global user.name "你的GitHub用户名"
 git config --global user.email "你的GitHub绑定邮箱"
+```
+
+**获取可信凭据并授权给命令行与 Agent**
+
+首选通过官方 OAuth 登录，凭据会安全写入系统钥匙串，同时自动接管 `git push` 鉴权，本地不留明文密钥：
+
+```bash
+gh auth login -h github.com -p https -w
+gh auth setup-git
+gh auth status
+```
+
+按终端提示复制一次性设备码并在浏览器确认即可。此后本机的 `git`、`gh` 以及调用它们的 AI Agent 都会自动复用这份可信凭据。
+
+如果在无浏览器环境运行，或需要给特定 Agent 分配严格收敛的最小权限，可生成 **Fine-grained Personal Access Token**：
+
+1. 打开 <https://github.com/settings/personal-access-tokens/new>
+2. 仅选择目标仓库，按需勾选 **Contents**、**Pull requests**、**Issues** 的 Read and write 权限，并设置较短有效期。
+3. 通过环境变量 `GH_TOKEN` 注入会话，切勿把 Token 写入任何代码、配置文件或 `git commit`：
+
+```bash
+# macOS / Linux
+export GH_TOKEN="<你的Token>"
+gh auth status
+
+# Windows PowerShell
+$env:GH_TOKEN="<你的Token>"
+gh auth status
+```
+
+鉴权完成后，可直接用命令行或交给 Agent 跑通协作流程：
+
+```bash
+gh repo fork nanzhi84/open-source-pulse-wall --clone   # 自动 Fork、Clone 并配置 upstream
+gh pr create --fill                                    # 直接发起 Pull Request
+gh pr checks                                           # 查看自动审查与校验状态
+gh issue create                                        # 命令行提交 Issue
 ```
 
 ### 第一步：Fork & Clone
@@ -172,10 +211,14 @@ git merge upstream/main
 
 ```bash
 npm run validate                              # 本地校验所有 profile 与 cheers JSON
-git remote -v                                 # 检查 origin（自己）与 upstream（主仓库）地址
+gh auth status                                # 检查 GitHub CLI 当前登录与权限状态
+gh repo fork nanzhi84/open-source-pulse-wall --clone  # Fork、Clone 并自动配置 upstream
+gh pr create --fill                           # 命令行直接发起 PR
+gh pr checks                                  # 查看当前分支 PR 的自动检查结果
+git remote -v                                 # 检查 origin 与 upstream 地址
 git fetch upstream                            # 拉取主仓库最新提交
 git merge upstream/main                       # 将主仓库最新主干合并到当前分支
-git rebase upstream/main                      # 进阶：线性变基（需配合 --force-with-lease 推送）
+git rebase upstream/main                      # 进阶：线性变基，配合 --force-with-lease 推送
 git push --force-with-lease origin <branch>   # rebase 后的安全推送命令
 git log -S "<关键词>" -p                      # 进阶：Git 历史考古，检索曾经出现过的字符串变更
 ```
