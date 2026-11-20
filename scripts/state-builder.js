@@ -795,6 +795,70 @@ function resolveLocalRelicClaimTimes(contributors, existingClaimTimes = {}, root
   return merged;
 }
 
+async function fetchStargazersViaGraphql(repository, token = '', maxItems = STARGAZERS_FETCH_LIMIT) {
+  if (!token) return { data: [], truncated: false, warning: '' };
+
+  const [owner, name] = String(repository || '').split('/');
+  if (!owner || !name) return { data: [], truncated: false, warning: '' };
+
+  const query = `
+    query FetchStargazers($owner: String!, $name: String!, $after: String) {
+      repository(owner: $owner, name: $name) {
+        stargazers(first: 100, after: $after) {
+          nodes {
+            login
+          }
+          pageInfo {
+            hasNextPage
+            endCursor
+          }
+        }
+      }
+    }
+  `;
+
+  const logins = [];
+  let cursor = null;
+  let truncated = false;
+
+  while (logins.length < maxItems) {
+    const response = await fetch('https://api.github.com/graphql', {
+      method: 'POST',
+      headers: {
+        ...buildGithubHeaders(token),
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({ query, variables: { owner, name, after: cursor } })
+    });
+
+    if (!response.ok) {
+      const body = await response.text();
+      return { data: [], truncated: false, warning: `GitHub GraphQL ${response.status}: ${body.slice(0, 240)}` };
+    }
+
+    const payload = await response.json();
+    if (Array.isArray(payload.errors) && payload.errors.length) {
+      return { data: [], truncated: false, warning: `GitHub GraphQL error: ${payload.errors[0].message || 'unknown error'}` };
+    }
+
+    const conn = payload?.data?.repository?.stargazers;
+    const nodes = Array.isArray(conn?.nodes) ? conn.nodes : [];
+    for (const node of nodes) {
+      if (node?.login) logins.push(node.login);
+    }
+
+    const hasNext = Boolean(conn?.pageInfo?.hasNextPage && conn?.pageInfo?.endCursor);
+    if (!hasNext) break;
+    if (logins.length >= maxItems) {
+      truncated = true;
+      break;
+    }
+    cursor = conn.pageInfo.endCursor;
+  }
+
+  return { data: logins.slice(0, maxItems), truncated, warning: '' };
+}
+
 async function fetchGithubState({ repository, token = '' }) {
   assertGithubRepository(repository);
 
@@ -837,7 +901,27 @@ async function fetchGithubState({ repository, token = '' }) {
     )
   ]);
 
-  const stargazers = extractStargazerLogins(stargazersResult.data);
+  let finalStargazersResult = stargazersResult;
+  if ((!Array.isArray(finalStargazersResult.data) || !finalStargazersResult.data.length) && finalStargazersResult.warning && token) {
+    try {
+      const gqlStargazers = await fetchStargazersViaGraphql(repository, token, STARGAZERS_FETCH_LIMIT);
+      if (gqlStargazers.data.length) {
+        finalStargazersResult = gqlStargazers;
+      } else if (gqlStargazers.warning) {
+        finalStargazersResult = {
+          ...finalStargazersResult,
+          warning: `${finalStargazersResult.warning} | GraphQL: ${gqlStargazers.warning}`
+        };
+      }
+    } catch (error) {
+      finalStargazersResult = {
+        ...finalStargazersResult,
+        warning: `${finalStargazersResult.warning} | GraphQL: ${error.message}`
+      };
+    }
+  }
+
+  const stargazers = extractStargazerLogins(finalStargazersResult.data);
   const commitNodes = Array.isArray(commits) ? commits.map(normalizeCommitNode) : [];
   const latestCommitAt = commitNodes.length ? commitNodes[0].time : '';
   const issueNodes = issuesResult.data.map(normalizeIssueNode);
@@ -858,7 +942,8 @@ async function fetchGithubState({ repository, token = '' }) {
     repository: repo.full_name || repository,
     stars: Number(repo.stargazers_count || 0),
     stargazers,
-    stargazersTruncated: stargazersResult.truncated,
+    stargazersTruncated: finalStargazersResult.truncated,
+    stargazersWarning: finalStargazersResult.warning || '',
     contributorCount: contributorsResult.data.length,
     contributorCountTruncated: contributorsResult.truncated,
     cloneUrl: repo.clone_url || '',

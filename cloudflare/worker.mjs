@@ -588,6 +588,64 @@ async function fetchWallEntriesViaGraphql(owner, name, token) {
   return { entries: profileEntries, cheerFiles, relicDefinitions };
 }
 
+async function fetchStargazersViaGraphql(owner, name, token, maxItems = STARGAZERS_FETCH_LIMIT) {
+  if (!token) return { data: [], truncated: false, warning: '' };
+
+  const query = `
+    query FetchStargazers($owner: String!, $name: String!, $after: String) {
+      repository(owner: $owner, name: $name) {
+        stargazers(first: 100, after: $after) {
+          nodes {
+            login
+          }
+          pageInfo {
+            hasNextPage
+            endCursor
+          }
+        }
+      }
+    }
+  `;
+
+  const logins = [];
+  let cursor = null;
+  let truncated = false;
+
+  while (logins.length < maxItems) {
+    const response = await fetch(GITHUB_GRAPHQL_URL, {
+      method: 'POST',
+      headers: buildGithubHeaders(token, { 'Content-Type': 'application/json' }),
+      body: JSON.stringify({ query, variables: { owner, name, after: cursor } })
+    });
+
+    if (!response.ok) {
+      const body = await response.text();
+      return { data: [], truncated: false, warning: `GitHub GraphQL ${response.status}: ${body.slice(0, 240)}` };
+    }
+
+    const payload = await response.json();
+    if (Array.isArray(payload.errors) && payload.errors.length) {
+      return { data: [], truncated: false, warning: `GitHub GraphQL error: ${payload.errors[0].message || 'unknown error'}` };
+    }
+
+    const conn = payload?.data?.repository?.stargazers;
+    const nodes = Array.isArray(conn?.nodes) ? conn.nodes : [];
+    for (const node of nodes) {
+      if (node?.login) logins.push(node.login);
+    }
+
+    const hasNext = Boolean(conn?.pageInfo?.hasNextPage && conn?.pageInfo?.endCursor);
+    if (!hasNext) break;
+    if (logins.length >= maxItems) {
+      truncated = true;
+      break;
+    }
+    cursor = conn.pageInfo.endCursor;
+  }
+
+  return { data: logins.slice(0, maxItems), truncated, warning: '' };
+}
+
 async function fetchProfileEntriesViaContents(encodedRepo, token) {
   const items = await fetchGithubJson(`/repos/${encodedRepo}/contents/data/profiles`, token);
   if (!Array.isArray(items)) return [];
@@ -1426,7 +1484,28 @@ async function fetchPackedWallState({ repository, token = '' }) {
     )
   ]);
 
-  const stargazers = extractStargazerLogins(stargazersResult.data);
+  let finalStargazersResult = stargazersResult;
+  if ((!Array.isArray(finalStargazersResult.data) || !finalStargazersResult.data.length) && finalStargazersResult.warning && token) {
+    const [owner, name] = repository.split('/');
+    try {
+      const gqlStargazers = await fetchStargazersViaGraphql(owner, name, token, STARGAZERS_FETCH_LIMIT);
+      if (gqlStargazers.data.length) {
+        finalStargazersResult = gqlStargazers;
+      } else if (gqlStargazers.warning) {
+        finalStargazersResult = {
+          ...finalStargazersResult,
+          warning: `${finalStargazersResult.warning} | GraphQL: ${gqlStargazers.warning}`
+        };
+      }
+    } catch (error) {
+      finalStargazersResult = {
+        ...finalStargazersResult,
+        warning: `${finalStargazersResult.warning} | GraphQL: ${error.message}`
+      };
+    }
+  }
+
+  const stargazers = extractStargazerLogins(finalStargazersResult.data);
   const profileEntries = profilesBundle.entries;
   const cheerFiles = profilesBundle.cheerFiles || [];
   const fingerprint = await computeFingerprint(profileEntries, cheerFiles);
@@ -1472,7 +1551,8 @@ async function fetchPackedWallState({ repository, token = '' }) {
     repository: repo.full_name || repository,
     stars: Number(repo.stargazers_count || 0),
     stargazers,
-    stargazersTruncated: stargazersResult.truncated,
+    stargazersTruncated: finalStargazersResult.truncated,
+    stargazersWarning: finalStargazersResult.warning || '',
     contributorCount: contributorsResult.data.length,
     contributorCountTruncated: contributorsResult.truncated,
     cloneUrl: repo.clone_url || '',
@@ -1525,7 +1605,7 @@ async function fetchPackedWallState({ repository, token = '' }) {
 }
 
 function cacheRequestFor(repository) {
-  return new Request(`https://pulse-wall-cache.internal/__v8/${encodeURIComponent(repository)}`, {
+  return new Request(`https://pulse-wall-cache.internal/__v9/${encodeURIComponent(repository)}`, {
     method: 'GET'
   });
 }
