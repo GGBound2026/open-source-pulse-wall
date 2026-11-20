@@ -52,6 +52,7 @@ Co-authored-by: 同学用户名 <同学用户名@users.noreply.github.com>"
 > - `Co-authored-by:` 之前必须保留**至少一个空行**，尖括号内推荐填写对方的 GitHub noreply 邮箱（`<用户名>@users.noreply.github.com` 或 `<ID>+<用户名>@users.noreply.github.com`），系统也可通过已上墙的 GitHub 用户名匹配。
 > - 双方都必须是已合入 `data/profiles/` 的真实上墙同学（幽灵账号、自己写自己均无效）。
 > - 该 commit 必须包含至少 **1 个实质文件改动**（`git commit --allow-empty` 空提交不计分），且**必须通过 PR 真正合入 `main`**。
+> - 单个 commit 最多支持标注 **2 位**真实搭档（超过 2 位视为批量挂名刷分，整条提交不计结对分），且仅计提交者本人与各搭档之间的配对。
 > - 同一对搭档（不论谁提交、谁做 Co-author，`A+B` 与 `B+A` 视为同一对）只计 1 次 `+2 分`；但你可以和 **2 位、3 位甚至更多不同同学**结对协作，每多一位新搭档就再 `+2 分`！
 > - 实用场景：例如帮尚未熟悉流程的同学一起完善他的卡片 / 寄语 PR，或者结对给别的同学写寄语时在 commit 里加上对方的 `Co-authored-by`。
 

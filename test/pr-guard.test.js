@@ -3,9 +3,14 @@ const test = require('node:test');
 
 const {
   COMMENT_MARKER,
+  buildNoticeMarker,
   normalizeGithubPrFiles,
   evaluatePrGuard,
-  formatGuardComment
+  hasBlockingReview,
+  hasHoldLabel,
+  evaluateAutoMergeCandidate,
+  formatGuardComment,
+  formatMaintainerNoticeComment
 } = require('../scripts/pr-guard');
 
 test('normalizeGithubPrFiles maps GitHub API statuses and previous_filename', () => {
@@ -60,7 +65,20 @@ test('evaluatePrGuard passes valid profile + cheer PR and formats success commen
   assert.match(comment, /自动格式与路径审查通过/);
   assert.match(comment, /`abcdef1`/);
   assert.match(comment, /@Alice/);
-  assert.match(comment, /你的 PR 将在 5 分钟后自动合并/);
+  assert.match(comment, /约 5 分钟后将此 PR 合入/);
+
+  const draftComment = formatGuardComment(result, { headSha: 'abcdef1234567890', isDraft: true });
+  assert.match(draftComment, /Draft PR/);
+  assert.match(draftComment, /Ready for review/);
+
+  const approvalComment = formatGuardComment(result, {
+    headSha: 'abcdef1234567890',
+    approvalRequired: true,
+    workflowRunUrl: 'https://github.com/nanzhi84/open-source-pulse-wall/actions/runs/99'
+  });
+  assert.match(approvalComment, /@nanzhi84 @YJLEC/);
+  assert.match(approvalComment, /Approve and run/);
+  assert.match(approvalComment, new RegExp(buildNoticeMarker('validate_approval_required', 'abcdef1234567890')));
 });
 
 test('evaluatePrGuard blocks workflow tampering and content format errors and formats actionable comment', () => {
@@ -159,4 +177,146 @@ test('evaluatePrGuard enforces 50-cheer limit per profile while allowing updates
 
   assert.equal(updateOwn.ok, true);
   assert.deepEqual(updateOwn.errors, []);
+});
+
+test('evaluatePrGuard detects case-insensitive duplicate profile files within the same PR', () => {
+  const profileJson = `${JSON.stringify({ name: 'Alice', motto: 'Hi' }, null, 2)}\n`;
+  const result = evaluatePrGuard({
+    prAuthor: 'alice',
+    changedFiles: [
+      { status: 'A', path: 'data/profiles/alice.json' },
+      { status: 'A', path: 'data/profiles/Alice.json' }
+    ],
+    fileContents: {
+      'data/profiles/alice.json': profileJson,
+      'data/profiles/Alice.json': profileJson
+    },
+    existingProfileFiles: []
+  });
+
+  assert.equal(result.ok, false);
+  assert.match(result.errors.join('\n'), /重复（不区分大小写）/);
+});
+
+test('hasBlockingReview respects latest non-comment review state per reviewer', () => {
+  assert.deepEqual(
+    hasBlockingReview([
+      { user: { login: 'teacher' }, state: 'CHANGES_REQUESTED' },
+      { user: { login: 'teacher' }, state: 'COMMENTED' }
+    ]),
+    { blocked: true, reviewers: ['teacher'] }
+  );
+
+  assert.deepEqual(
+    hasBlockingReview([
+      { user: { login: 'teacher' }, state: 'CHANGES_REQUESTED' },
+      { user: { login: 'teacher' }, state: 'APPROVED' }
+    ]),
+    { blocked: false, reviewers: [] }
+  );
+
+  assert.deepEqual(
+    hasBlockingReview([
+      { user: { login: 'teacher' }, state: 'CHANGES_REQUESTED' },
+      { user: { login: 'teacher' }, state: 'DISMISSED' }
+    ]),
+    { blocked: false, reviewers: [] }
+  );
+});
+
+test('evaluateAutoMergeCandidate enforces reviews, hold labels, 5-min delay, and new-account maintainer notice', () => {
+  const basePr = {
+    number: 42,
+    state: 'open',
+    merged: false,
+    draft: false,
+    created_at: '2026-11-20T10:00:00Z',
+    user: { login: 'student1' },
+    base: { ref: 'main' },
+    head: { sha: 'abc1234567890' },
+    labels: []
+  };
+
+  const guardGreen = {
+    id: 10,
+    name: 'pr-guard',
+    status: 'completed',
+    conclusion: 'success',
+    completed_at: '2026-11-20T10:00:10Z'
+  };
+  const validateGreen = {
+    id: 11,
+    name: 'validate',
+    status: 'completed',
+    conclusion: 'success',
+    completed_at: '2026-11-20T10:00:20Z'
+  };
+
+  // Hold label blocks auto-merge
+  assert.deepEqual(hasHoldLabel([{ name: 'Do-Not-Merge' }]), ['Do-Not-Merge']);
+  assert.equal(
+    evaluateAutoMergeCandidate({
+      pr: { ...basePr, labels: [{ name: 'hold' }] },
+      checkRuns: [guardGreen, validateGreen],
+      nowMs: Date.parse('2026-11-20T10:10:00Z')
+    }).reason,
+    'hold_label'
+  );
+
+  // Request changes blocks auto-merge
+  assert.equal(
+    evaluateAutoMergeCandidate({
+      pr: basePr,
+      reviews: [{ user: { login: 'YJLEC' }, state: 'CHANGES_REQUESTED' }],
+      checkRuns: [guardGreen, validateGreen],
+      nowMs: Date.parse('2026-11-20T10:10:00Z')
+    }).reason,
+    'changes_requested'
+  );
+
+  // Newly registered account hits action_required -> notify maintainers, do NOT merge
+  const approvalNeeded = evaluateAutoMergeCandidate({
+    pr: basePr,
+    checkRuns: [guardGreen],
+    workflowRuns: [
+      {
+        id: 200,
+        name: 'Validate contributors',
+        event: 'pull_request',
+        status: 'completed',
+        conclusion: 'action_required',
+        html_url: 'https://github.com/nanzhi84/open-source-pulse-wall/actions/runs/200'
+      }
+    ],
+    nowMs: Date.parse('2026-11-20T10:00:30Z')
+  });
+  assert.equal(approvalNeeded.action, 'needs_maintainer');
+  assert.equal(approvalNeeded.reason, 'validate_approval_required');
+
+  const noticeBody = formatMaintainerNoticeComment({
+    reason: approvalNeeded.reason,
+    prAuthor: 'student1',
+    headSha: basePr.head.sha,
+    workflowRunUrl: approvalNeeded.workflowRunUrl
+  });
+  assert.match(noticeBody, /@nanzhi84 @YJLEC/);
+  assert.match(noticeBody, /Approve and run/);
+
+  // Before 5 minutes -> wait
+  const cooling = evaluateAutoMergeCandidate({
+    pr: basePr,
+    checkRuns: [guardGreen, validateGreen],
+    nowMs: Date.parse('2026-11-20T10:03:00Z')
+  });
+  assert.equal(cooling.action, 'wait');
+  assert.equal(cooling.reason, 'cooling_down');
+
+  // After 5 minutes -> merge
+  const ready = evaluateAutoMergeCandidate({
+    pr: basePr,
+    checkRuns: [guardGreen, validateGreen],
+    nowMs: Date.parse('2026-11-20T10:05:15Z')
+  });
+  assert.equal(ready.action, 'merge');
+  assert.equal(ready.reason, 'ready');
 });

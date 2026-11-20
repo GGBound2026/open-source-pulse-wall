@@ -4,7 +4,7 @@ const { execFileSync } = require('child_process');
 const path = require('path');
 
 const ROOT = path.resolve(__dirname, '..');
-const DEFAULT_MAINTAINERS = ['nanzhi84'];
+const DEFAULT_MAINTAINERS = ['nanzhi84', 'YJLEC'];
 
 function normalizePath(filePath) {
   return String(filePath || '').replace(/\\/g, '/').replace(/^\/+/, '');
@@ -116,6 +116,9 @@ function validatePrDiff({ prAuthor, changedFiles = [], maintainers = DEFAULT_MAI
     };
   }
 
+  const seenProfilePaths = new Map();
+  const seenCheerPaths = new Map();
+
   for (const op of ops) {
     const filePath = op.path;
 
@@ -153,6 +156,15 @@ function validatePrDiff({ prAuthor, changedFiles = [], maintainers = DEFAULT_MAI
         errors.push(
           `${filePath}: 你只能新增或修改自己的个人卡片（data/profiles/${author}.json），不能修改他人的卡片`
         );
+        continue;
+      }
+
+      const profileKey = stem.toLowerCase();
+      const prevProfilePath = seenProfilePaths.get(profileKey);
+      if (prevProfilePath && prevProfilePath !== filePath) {
+        errors.push(`${filePath}: 与本 PR 中的 ${prevProfilePath} 文件名重复（不区分大小写），请只保留一个`);
+      } else {
+        seenProfilePaths.set(profileKey, filePath);
       }
       continue;
     }
@@ -163,7 +175,7 @@ function validatePrDiff({ prAuthor, changedFiles = [], maintainers = DEFAULT_MAI
 
       if (segments.length !== 2) {
         errors.push(
-          `${filePath}: 寄语文件路径必须为 data/cheers/<目标用户名>/<文件名>.json`
+          `${filePath}: 寄语文件路径必须为 data/cheers/<目标用户名小写>/<你的GitHub用户名>.json`
         );
         continue;
       }
@@ -171,7 +183,7 @@ function validatePrDiff({ prAuthor, changedFiles = [], maintainers = DEFAULT_MAI
       const [target, filename] = segments;
       if (!target || target.startsWith('_') || !filename || filename.startsWith('_') || !filename.endsWith('.json')) {
         errors.push(
-          `${filePath}: 寄语文件路径必须为 data/cheers/<目标用户名>/<文件名>.json（且不能以 "_" 开头）`
+          `${filePath}: 寄语文件路径必须为 data/cheers/<目标用户名小写>/<你的GitHub用户名>.json（且不能以 "_" 开头）`
         );
         continue;
       }
@@ -181,11 +193,32 @@ function validatePrDiff({ prAuthor, changedFiles = [], maintainers = DEFAULT_MAI
         continue;
       }
 
-      const fileStem = filename.slice(0, -'.json'.length);
-      if (op.status === 'M' && fileStem.toLowerCase() !== authorLower) {
+      if (target !== target.toLowerCase()) {
         errors.push(
-          `${filePath}: 不能修改他人已有的寄语文件，请新建自己的寄语文件（例如 data/cheers/${target}/${author}.json）`
+          `${filePath}: 寄语目标目录名必须使用全小写（请改为 data/cheers/${target.toLowerCase()}/${author}.json）`
         );
+      }
+
+      const fileStem = filename.slice(0, -'.json'.length);
+      if (fileStem.toLowerCase() !== authorLower) {
+        if (op.status === 'M') {
+          errors.push(
+            `${filePath}: 不能修改他人已有的寄语文件，请新建或修改你自己的寄语文件（data/cheers/${target.toLowerCase()}/${author}.json）`
+          );
+        } else {
+          errors.push(
+            `${filePath}: 寄语文件名必须使用你自己的 GitHub 用户名（请改为 data/cheers/${target.toLowerCase()}/${author}.json）`
+          );
+        }
+        continue;
+      }
+
+      const cheerKey = `${target.toLowerCase()}/${fileStem.toLowerCase()}`;
+      const prevCheerPath = seenCheerPaths.get(cheerKey);
+      if (prevCheerPath && prevCheerPath !== filePath) {
+        errors.push(`${filePath}: 与本 PR 中的 ${prevCheerPath} 文件路径重复（不区分大小写），请只保留一个`);
+      } else {
+        seenCheerPaths.set(cheerKey, filePath);
       }
     }
   }

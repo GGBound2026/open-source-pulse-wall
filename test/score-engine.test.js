@@ -217,3 +217,54 @@ test('computeContributorScores enforces star cap, cheer cap 3, pair deduplicatio
   assert.equal(relics[0].claimed, true);
   assert.equal(relics[0].claimedBy, 'bob');
 });
+
+test('computeContributorScores blocks mass Co-authored-by farming (>2 partners) and avoids phantom co-author cross-pairs', () => {
+  const contributors = ['alice', 'bob', 'carol', 'dave', 'eve'].map((github) => ({
+    name: github,
+    github,
+    file: `${github}.json`,
+    starred: true,
+    joinedAt: '2026-11-10T00:00:00Z',
+    cheers: []
+  }));
+
+  const commits = [
+    // Valid 3-person pair commit (primary alice + 2 co-authors bob, carol):
+    // must credit (alice, bob) and (alice, carol), but NOT (bob, carol)!
+    {
+      sha: 'pair-two',
+      author: 'alice',
+      changedFiles: 1,
+      prMerged: true,
+      fullMessage: [
+        'feat: group pair',
+        '',
+        'Co-authored-by: Bob <bob@users.noreply.github.com>',
+        'Co-authored-by: Carol <carol@users.noreply.github.com>'
+      ].join('\n')
+    },
+    // Abuse commit: dave tags 3 classmates in one commit -> ENTIRE commit ignored!
+    {
+      sha: 'mass-farm',
+      author: 'dave',
+      changedFiles: 1,
+      prMerged: true,
+      fullMessage: [
+        'chore: farm points',
+        '',
+        'Co-authored-by: Alice <alice@users.noreply.github.com>',
+        'Co-authored-by: Bob <bob@users.noreply.github.com>',
+        'Co-authored-by: Eve <eve@users.noreply.github.com>'
+      ].join('\n')
+    }
+  ];
+
+  const { contributors: scored } = computeContributorScores({ contributors, commits });
+  const byHandle = new Map(scored.map((c) => [c.github, c]));
+
+  assert.deepEqual(byHandle.get('alice').score.breakdown.pairPartners, ['bob', 'carol']);
+  assert.deepEqual(byHandle.get('bob').score.breakdown.pairPartners, ['alice']);
+  assert.deepEqual(byHandle.get('carol').score.breakdown.pairPartners, ['alice']);
+  assert.deepEqual(byHandle.get('dave').score.breakdown.pairPartners, []);
+  assert.deepEqual(byHandle.get('eve').score.breakdown.pairPartners, []);
+});

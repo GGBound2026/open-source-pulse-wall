@@ -35,7 +35,7 @@ body:
     id: question
     attributes:
       label: 我具体想问什么 / 卡在哪里
-      placeholder: "例如：cheers 字段的 ts 是必填的吗？或者：这个冲突应该保留哪一段？"
+      placeholder: "例如：给同学写寄语的文件路径应该怎么命名？或者：这个冲突应该保留哪一段？"
     validations:
       required: true
 

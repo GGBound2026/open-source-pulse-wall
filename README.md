@@ -70,7 +70,9 @@ git push origin add-my-profile
 
 ### 第三步：给同学写寄语（Cheers）
 
-等你的卡片合并后，给至少一位已经上墙的同学留一句寄语。每条寄语是一个独立 JSON 小文件，文件名同样**使用你自己的 GitHub 用户名**。因为每位同学的 GitHub 用户名全局唯一（不区分大小写，绝对不会重合），多人同时给同一位同学写寄语完全不会发生 Git 冲突，后续你也可以直接修改自己的同名文件来更新寄语：
+等你的卡片合并后，给至少一位已经上墙的同学留一句寄语。每条寄语是一个独立 JSON 小文件：
+- **目标目录名**（`<同学用户名全小写>`）：**必须全部小写**（例如给 `Divine-Ashes` 写寄语，目录为 `data/cheers/divine-ashes/`），防止并发提交产生大小写重复目录。
+- **文件名**：**必须使用你自己的 GitHub 用户名**（`<你的GitHub用户名>.json`，CI 会校验文件名与你的 PR 提交账号一致）。因为每位同学的 GitHub 用户名全局唯一，多人同时给同一位同学写寄语完全不会发生 Git 冲突，后续你也可以直接修改自己的同名文件来更新寄语：
 
 ```bash
 git fetch upstream
@@ -101,10 +103,11 @@ git push origin cheer/octocat
 
 ### 第四步：参与 Issue 与 PR Review
 
-- **提一个 Issue**：打开仓库 [Issues 页面](../../issues/new/choose)，选择对应模板（提问 / 报 Bug / 改进想法 / 求救卡住）提交。
-- **邀请同学 Review**：在你的 PR 页面右侧栏点击 `Reviewers` 齿轮图标，选择至少 1 位同学（也可在 PR 描述里 `@同学用户名` 请对方帮忙看）。
+- **提一个 Issue**：打开仓库 [Issues 页面](../../issues/new/choose)，选择对应模板（提问或求助 / 报 Bug / 改进想法）提交。
+- **邀请同学 Review**：在你的 PR 页面右侧栏点击 `Reviewers` 齿轮图标，选择至少 1 位同学（也可在 PR 描述里 `@同学用户名` 请对方帮忙看）；老师 `@nanzhi84` 与 `@YJLEC` 会由 `CODEOWNERS` 自动指派。
 - **给同学做 Review**：点进任意同学的开放 PR，切到 `Files changed` 查看改动，留下一条友好的评论或 `Approve`。
 - **修改后重新通知 Reviewer**：如果你根据意见更新了代码，记得点右侧 Reviewer 头像旁的 **循环箭头**（Re-request review），对方才会再次收到通知。
+- **自动审查与合并机制**：PR 提交后会自动运行 `pr-guard`（路径与格式检查）和 `validate`（测试与全量数据校验）。当两项检查全部通过、没有未解除的 `Request changes` 审查意见、且未标记 `hold` / `do-not-merge` 标签时，串行自动合并队列会在约 **5 分钟后自动合入 `main`** 并触发展示墙更新；如果是**刚注册的 GitHub 账号**触发了平台首次外部 PR 审批限制，机器人会自动 `@` 老师协助批准运行或手动合并。
 
 ### 第五步（可选）：体验皮肤与积分玩法
 
@@ -155,19 +158,20 @@ open-source-pulse-wall/
 ├── README.md                       # 课堂入门与标准 PR 贡献指南
 ├── SCORING.md                      # 可选的进阶积分与卡片皮肤玩法说明
 ├── .github/
-│   ├── CODEOWNERS                  # 自动指派仓库维护者 Review
-│   ├── ISSUE_TEMPLATE/             # 提问 / Bug / 想法 / 求助 模板
+│   ├── CODEOWNERS                  # 自动指派老师与维护者 Review（@nanzhi84 @YJLEC）
+│   ├── ISSUE_TEMPLATE/             # 提问求助 / Bug / 改进想法 模板
 │   ├── PULL_REQUEST_TEMPLATE.md    # PR 自检清单
 │   └── workflows/
 │       ├── validate.yml            # PR 与主干自动运行测试与数据校验
-│       ├── pr-guard.yml            # 防篡改路径锁 + 自动审查评论 Bot
+│       ├── pr-guard.yml            # 防篡改路径锁 + 自动格式审查评论 Bot
+│       ├── auto-merge-queue.yml    # 串行自动合并队列（5 分钟静置 + 复检 + 触发部署 + 新号提醒老师）
 │       └── pages.yml               # 合并 main / 收到 Star 时自动构建并发布展示墙
 ├── cloudflare/
 │   └── worker.mjs                  # 3 分钟快照缓存 API + 积分聚合 + Star 自动同步
 ├── data/
 │   ├── profiles/                   # 每位贡献者的个人卡片 data/profiles/<GitHub用户名>.json
 │   │   └── _template.json
-│   ├── cheers/                     # 独立寄语 data/cheers/<目标用户名>/<你的GitHub用户名>.json
+│   ├── cheers/                     # 独立寄语 data/cheers/<目标用户名全小写>/<你的GitHub用户名>.json
 │   │   └── _template.json
 │   └── relics.json                 # Git 考古彩蛋哈希配置（仅存 SHA-256，不存明文）
 ├── public/

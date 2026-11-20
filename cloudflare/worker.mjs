@@ -5,7 +5,8 @@ const DEFAULT_PAGES_STATE_URL = 'https://pulse-wall.yoryon.com/contributors.json
 const DEFAULT_COOLDOWN_MS = 180000;
 
 const COMMIT_GRAPH_LIMIT = 40;
-const SCORING_COMMITS_LIMIT = 100;
+const SCORING_COMMITS_LIMIT = 300;
+const SCORING_COMMITS_PAGE_SIZE = 100;
 const ACTIVITY_FEED_LIMIT = 8;
 const CONTRIBUTORS_FETCH_LIMIT = 100;
 const ISSUES_FETCH_LIMIT = 100;
@@ -15,6 +16,8 @@ const ISSUES_DISPLAY_LIMIT = 10;
 const PULLS_DISPLAY_LIMIT = 10;
 const RECENT_CHEERS_LIMIT = 12;
 
+const ALLOWED_PROFILE_KEYS = new Set(['name', 'motto', 'city', 'relic']);
+const ALLOWED_CHEER_KEYS = new Set(['message']);
 const CHEERS_MAX_PER_PROFILE = 50;
 const CHEER_MESSAGE_MAX_LENGTH = 80;
 const RELIC_CODE_MAX_LENGTH = 64;
@@ -22,6 +25,7 @@ const RELIC_MAX_ITEMS = 2;
 const STAR_POINTS = 1;
 const CHEER_POINTS_CAP = 3;
 const PAIR_POINTS_PER_PARTNER = 2;
+const MAX_COAUTHORS_PER_COMMIT = 2;
 const RELIC_DEFAULT_POINTS = 2;
 const TOP5_LIMIT = 5;
 const TOP5_MIN_POINTS = 1;
@@ -206,7 +210,7 @@ function requiredString(profile, key, label, errors, filename, maxLength = 80) {
   }
 }
 
-function validateCheerEntry(entry, relPath, { targetOwner = '' } = {}) {
+function validateCheerEntry(entry, relPath) {
   const errors = [];
   const warnings = [];
 
@@ -217,29 +221,26 @@ function validateCheerEntry(entry, relPath, { targetOwner = '' } = {}) {
     };
   }
 
+  const autoResolvedKeys = Object.keys(entry).filter((key) => key === 'from' || key === 'ts');
+  if (autoResolvedKeys.length > 0) {
+    errors.push(
+      `${relPath}: 无需填写 ${autoResolvedKeys.join('、')}，系统会根据提交该文件的 PR 自动识别寄语人与时间，请仅保留 message 字段`
+    );
+  }
+
+  const unknownKeys = Object.keys(entry).filter(
+    (key) => key !== 'from' && key !== 'ts' && !ALLOWED_CHEER_KEYS.has(key)
+  );
+  if (unknownKeys.length > 0) {
+    errors.push(
+      `${relPath}: 包含未允许的字段 ${unknownKeys.join(', ')}（仅允许 message）`
+    );
+  }
+
   if (typeof entry.message !== 'string' || entry.message.trim().length === 0) {
     errors.push(`${relPath}: message 必须填写`);
   } else if (entry.message.trim().length > CHEER_MESSAGE_MAX_LENGTH) {
     errors.push(`${relPath}: message 过长，最多 ${CHEER_MESSAGE_MAX_LENGTH} 个字符`);
-  }
-
-  if (entry.from !== undefined) {
-    const fromProblem = validateGithubHandle(entry.from);
-    if (fromProblem) {
-      errors.push(`${relPath}: from ${fromProblem}`);
-    } else {
-      const owner = String(targetOwner || '').trim().toLowerCase();
-      const fromHandle = String(entry.from || '').trim().toLowerCase();
-      if (owner && fromHandle && fromHandle === owner) {
-        errors.push(`${relPath}: 不能是 profile 主人自己给自己写寄语`);
-      }
-    }
-  }
-
-  if (entry.ts !== undefined) {
-    if (typeof entry.ts !== 'string' || Number.isNaN(Date.parse(entry.ts))) {
-      errors.push(`${relPath}: ts 必须是 ISO 时间字符串，例如 2026-05-09`);
-    }
   }
 
   return { errors, warnings };
@@ -251,6 +252,21 @@ function validateProfile(profile, filename) {
 
   if (!isPlainObject(profile)) {
     return { errors: [`${filename}: 文件内容必须是一个 JSON 对象`], warnings };
+  }
+
+  if (profile.cheers !== undefined) {
+    errors.push(
+      `${filename}: 寄语已改为独立文件，请删除 cheers 字段，并创建 data/cheers/<目标用户名小写>/<你的GitHub用户名>.json（仅需填写 { "message": "..." }）`
+    );
+  }
+
+  const unknownKeys = Object.keys(profile).filter(
+    (key) => key !== 'cheers' && !ALLOWED_PROFILE_KEYS.has(key)
+  );
+  if (unknownKeys.length > 0) {
+    errors.push(
+      `${filename}: 包含未允许的字段 ${unknownKeys.join(', ')}（仅允许 name、motto、city、relic）`
+    );
   }
 
   requiredString(profile, 'name', 'name', errors, filename, 40);
@@ -283,14 +299,6 @@ function validateProfile(profile, filename) {
       }
     } else {
       errors.push(`${filename}: relic 必须是暗号字符串，或最多 ${RELIC_MAX_ITEMS} 个暗号组成的字符串数组`);
-    }
-  }
-
-  if (profile.cheers !== undefined) {
-    if (!Array.isArray(profile.cheers) || profile.cheers.length > 0) {
-      errors.push(
-        `${filename}: 寄语已改为独立文件，请创建 data/cheers/<目标用户名>/<任意文件名>.json（仅需填写 { "message": "..." }）`
-      );
     }
   }
 
@@ -823,7 +831,7 @@ async function fetchFileContributorsViaGraphql(owner, name, repoPaths, token, re
       .join('\n');
 
     const scoringField = offset === 0
-      ? `scoringHistory: history(first: ${SCORING_COMMITS_LIMIT}) { nodes { oid committedDate message changedFilesIfAvailable authors(first: 10) { nodes { user { login } email name } } associatedPullRequests(first: 1) { nodes { number merged } } } }`
+      ? `scoringHistory: history(first: ${SCORING_COMMITS_PAGE_SIZE}) { nodes { oid committedDate message changedFilesIfAvailable authors(first: 10) { nodes { user { login } email name } } associatedPullRequests(first: 1) { nodes { number merged } } } pageInfo { hasNextPage endCursor } }`
       : '';
 
     const query = `
@@ -854,6 +862,64 @@ async function fetchFileContributorsViaGraphql(owner, name, repoPaths, token, re
 
     if (offset === 0 && target.scoringHistory?.nodes) {
       scoringCommits = normalizeGraphqlScoringCommits(target.scoringHistory.nodes);
+      let nextCursor = target.scoringHistory?.pageInfo?.hasNextPage
+        ? target.scoringHistory?.pageInfo?.endCursor
+        : null;
+
+      while (nextCursor && scoringCommits.length < SCORING_COMMITS_LIMIT) {
+        const pageQuery = `
+          query($owner: String!, $name: String!, $after: String) {
+            repository(owner: $owner, name: $name) {
+              defaultBranchRef {
+                target {
+                  ... on Commit {
+                    history(first: ${SCORING_COMMITS_PAGE_SIZE}, after: $after) {
+                      nodes {
+                        oid
+                        committedDate
+                        message
+                        changedFilesIfAvailable
+                        authors(first: 10) {
+                          nodes {
+                            user { login }
+                            email
+                            name
+                          }
+                        }
+                        associatedPullRequests(first: 1) {
+                          nodes {
+                            number
+                            merged
+                          }
+                        }
+                      }
+                      pageInfo {
+                        hasNextPage
+                        endCursor
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        `;
+        const pageRes = await fetch(GITHUB_GRAPHQL_URL, {
+          method: 'POST',
+          headers: buildGithubHeaders(token, { 'Content-Type': 'application/json' }),
+          body: JSON.stringify({ query: pageQuery, variables: { owner, name, after: nextCursor } })
+        });
+        if (!pageRes.ok) break;
+        const pagePayload = await pageRes.json();
+        const history = pagePayload?.data?.repository?.defaultBranchRef?.target?.history;
+        if (!Array.isArray(history?.nodes) || !history.nodes.length) break;
+        scoringCommits.push(...normalizeGraphqlScoringCommits(history.nodes));
+        nextCursor = history?.pageInfo?.hasNextPage ? history?.pageInfo?.endCursor : null;
+      }
+
+      if (scoringCommits.length > SCORING_COMMITS_LIMIT) {
+        scoringCommits = scoringCommits.slice(0, SCORING_COMMITS_LIMIT);
+      }
     }
 
     for (let idx = 0; idx < chunk.length; idx += 1) {
@@ -1067,29 +1133,32 @@ async function computeContributorScoresAsync({
     const fullMessage = String(commit.fullMessage || commit.message || '');
     const messageCoAuthors = parseCoAuthorsFromMessage(fullMessage);
     const graphAuthors = Array.isArray(commit.authors) ? commit.authors : [];
-    const participants = new Set();
 
-    const primaryHandle = resolveHandleFromIdentity(
+    const hasCoAuthorSignal = messageCoAuthors.length > 0 || graphAuthors.length >= 2;
+    if (!hasCoAuthorSignal) continue;
+
+    let primaryHandle = resolveHandleFromIdentity(
       { login: commit.author, email: commit.authorEmail, name: commit.authorName },
       { handleSet, uniqueNameMap }
     );
-    if (primaryHandle) participants.add(primaryHandle);
+    if (!primaryHandle && graphAuthors.length > 0) {
+      primaryHandle = resolveHandleFromIdentity(graphAuthors[0], { handleSet, uniqueNameMap });
+    }
+    if (!primaryHandle) continue;
+
+    const coAuthors = new Set();
     for (const ga of graphAuthors) {
       const resolved = resolveHandleFromIdentity(ga, { handleSet, uniqueNameMap });
-      if (resolved) participants.add(resolved);
+      if (resolved && resolved !== primaryHandle) coAuthors.add(resolved);
     }
     for (const ca of messageCoAuthors) {
       const resolved = resolveHandleFromIdentity(ca, { handleSet, uniqueNameMap });
-      if (resolved) participants.add(resolved);
+      if (resolved && resolved !== primaryHandle) coAuthors.add(resolved);
     }
 
-    const hasCoAuthorSignal = messageCoAuthors.length > 0 || graphAuthors.length >= 2;
-    if (!hasCoAuthorSignal || participants.size < 2) continue;
-    const list = Array.from(participants);
-    for (let i = 0; i < list.length; i += 1) {
-      for (let j = i + 1; j < list.length; j += 1) {
-        recordPair(list[i], list[j]);
-      }
+    if (coAuthors.size === 0 || coAuthors.size > MAX_COAUTHORS_PER_COMMIT) continue;
+    for (const partner of coAuthors) {
+      recordPair(primaryHandle, partner);
     }
   }
 
@@ -1318,6 +1387,18 @@ function validateAndNormalizeProfileEntries(profileEntries, fileContributors = {
 
   for (const item of cheerFiles) {
     const targetKey = item.target.trim().toLowerCase();
+    if (item.target !== item.target.toLowerCase()) {
+      errors.push(
+        `data/cheers/${item.target}: 寄语目标目录名必须使用全小写（请改为 data/cheers/${targetKey}）`
+      );
+    }
+
+    const fileStem = item.file.replace(/\.json$/i, '');
+    const fileHandleProblem = validateGithubHandle(fileStem);
+    if (fileHandleProblem) {
+      errors.push(`${item.relPath}: 寄语文件名 "${fileStem}" 必须是合法的 GitHub 用户名（${fileHandleProblem}）`);
+    }
+
     if (!validTargets.has(targetKey)) {
       errors.push(`${item.relPath}: 未找到目标贡献者 "${item.target}" 对应的 data/profiles/${item.target}.json`);
     }
@@ -1336,7 +1417,7 @@ function validateAndNormalizeProfileEntries(profileEntries, fileContributors = {
       continue;
     }
 
-    const result = validateCheerEntry(parsed, item.relPath, { targetOwner: targetKey });
+    const result = validateCheerEntry(parsed, item.relPath);
     errors.push(...result.errors);
     warnings.push(...result.warnings);
 
@@ -1344,9 +1425,7 @@ function validateAndNormalizeProfileEntries(profileEntries, fileContributors = {
       target: item.target,
       file: item.file,
       relPath: item.relPath,
-      message: typeof parsed?.message === 'string' ? parsed.message.trim() : '',
-      ...(typeof parsed?.from === 'string' ? { from: parsed.from.trim() } : {}),
-      ...(typeof parsed?.ts === 'string' ? { ts: parsed.ts.trim() } : {})
+      message: typeof parsed?.message === 'string' ? parsed.message.trim() : ''
     });
   }
 

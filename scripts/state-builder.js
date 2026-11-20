@@ -17,7 +17,8 @@ const PROFILES_DIR = path.join(ROOT, 'data', 'profiles');
 const RELICS_PATH = path.join(ROOT, 'data', 'relics.json');
 const GITHUB_API_BASE = 'https://api.github.com';
 const COMMIT_GRAPH_LIMIT = 40;
-const SCORING_COMMITS_LIMIT = 100;
+const SCORING_COMMITS_LIMIT = 300;
+const SCORING_COMMITS_PAGE_SIZE = 100;
 const ACTIVITY_FEED_LIMIT = 8;
 const CONTRIBUTORS_FETCH_LIMIT = 100;
 const ISSUES_FETCH_LIMIT = 100;
@@ -624,16 +625,16 @@ function extractFirstRelicClaimsFromHistory(nodes) {
   return earliestByHash;
 }
 
-async function fetchScoringCommitsViaGraphql(repository, token) {
+async function fetchScoringCommitsViaGraphql(repository, token, maxItems = SCORING_COMMITS_LIMIT) {
   if (!token) return [];
   const [owner, name] = repository.split('/');
   const query = `
-    query($owner: String!, $name: String!) {
+    query($owner: String!, $name: String!, $after: String) {
       repository(owner: $owner, name: $name) {
         defaultBranchRef {
           target {
             ... on Commit {
-              history(first: ${SCORING_COMMITS_LIMIT}) {
+              history(first: ${SCORING_COMMITS_PAGE_SIZE}, after: $after) {
                 nodes {
                   oid
                   committedDate
@@ -653,6 +654,10 @@ async function fetchScoringCommitsViaGraphql(repository, token) {
                     }
                   }
                 }
+                pageInfo {
+                  hasNextPage
+                  endCursor
+                }
               }
             }
           }
@@ -661,46 +666,58 @@ async function fetchScoringCommitsViaGraphql(repository, token) {
     }
   `;
 
-  const response = await fetch(`${GITHUB_API_BASE}/graphql`, {
-    method: 'POST',
-    headers: {
-      ...buildGithubHeaders(token),
-      'Content-Type': 'application/json'
-    },
-    body: JSON.stringify({ query, variables: { owner, name } })
-  });
+  const collected = [];
+  let cursor = null;
 
-  if (!response.ok) return [];
-  const payload = await response.json();
-  const nodes = payload?.data?.repository?.defaultBranchRef?.target?.history?.nodes;
-  if (!Array.isArray(nodes)) return [];
+  while (collected.length < maxItems) {
+    const response = await fetch(`${GITHUB_API_BASE}/graphql`, {
+      method: 'POST',
+      headers: {
+        ...buildGithubHeaders(token),
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({ query, variables: { owner, name, after: cursor } })
+    });
 
-  return nodes.map((node) => {
-    const authors = Array.isArray(node?.authors?.nodes)
-      ? node.authors.nodes.map((a) => ({
-          login: String(a?.user?.login || '').trim(),
-          email: String(a?.email || '').trim(),
-          name: String(a?.name || '').trim()
-        }))
-      : [];
-    const prNodes = Array.isArray(node?.associatedPullRequests?.nodes)
-      ? node.associatedPullRequests.nodes
-      : [];
-    const prMerged = prNodes.length ? prNodes.some((pr) => Boolean(pr?.merged)) : null;
+    if (!response.ok) break;
+    const payload = await response.json();
+    const history = payload?.data?.repository?.defaultBranchRef?.target?.history;
+    const nodes = history?.nodes;
+    if (!Array.isArray(nodes) || !nodes.length) break;
 
-    return {
-      sha: String(node?.oid || ''),
-      time: String(node?.committedDate || ''),
-      author: authors[0]?.login || '',
-      authorEmail: authors[0]?.email || '',
-      authorName: authors[0]?.name || '',
-      authors,
-      message: String(node?.message || '').split('\n')[0],
-      fullMessage: String(node?.message || ''),
-      changedFiles: typeof node?.changedFilesIfAvailable === 'number' ? node.changedFilesIfAvailable : null,
-      prMerged
-    };
-  });
+    for (const node of nodes) {
+      const authors = Array.isArray(node?.authors?.nodes)
+        ? node.authors.nodes.map((a) => ({
+            login: String(a?.user?.login || '').trim(),
+            email: String(a?.email || '').trim(),
+            name: String(a?.name || '').trim()
+          }))
+        : [];
+      const prNodes = Array.isArray(node?.associatedPullRequests?.nodes)
+        ? node.associatedPullRequests.nodes
+        : [];
+      const prMerged = prNodes.length ? prNodes.some((pr) => Boolean(pr?.merged)) : null;
+
+      collected.push({
+        sha: String(node?.oid || ''),
+        time: String(node?.committedDate || ''),
+        author: authors[0]?.login || '',
+        authorEmail: authors[0]?.email || '',
+        authorName: authors[0]?.name || '',
+        authors,
+        message: String(node?.message || '').split('\n')[0],
+        fullMessage: String(node?.message || ''),
+        changedFiles: typeof node?.changedFilesIfAvailable === 'number' ? node.changedFilesIfAvailable : null,
+        prMerged
+      });
+    }
+
+    const hasNext = Boolean(history?.pageInfo?.hasNextPage && history?.pageInfo?.endCursor);
+    if (!hasNext) break;
+    cursor = history.pageInfo.endCursor;
+  }
+
+  return collected.slice(0, maxItems);
 }
 
 async function fetchRelicClaimTimesViaGraphql(repository, profileFilesWithRelics, token) {

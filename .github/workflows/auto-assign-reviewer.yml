@@ -53,13 +53,9 @@ jobs:
                 .filter((f) => f.endsWith('.json') && !f.startsWith('_'));
 
               for (const file of files) {
-                try {
-                  const data = JSON.parse(fs.readFileSync(path.join(profilesDir, file), 'utf8'));
-                  if (data && typeof data.github === 'string' && data.github.trim()) {
-                    peers.push(data.github.trim());
-                  }
-                } catch (parseError) {
-                  core.info(`Skipping unparseable profile ${file}: ${parseError.message}`);
+                const stem = file.slice(0, -'.json'.length).trim();
+                if (stem) {
+                  peers.push(stem);
                 }
               }
             } catch (readError) {

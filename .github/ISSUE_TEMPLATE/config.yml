@@ -1,5 +1,5 @@
 blank_issues_enabled: false
 contact_links:
-  - name: 课堂同学群
-    url: https://github.com/
-    about: 一些非常细的小问题（例如「我刚刚是不是按错键了」）建议先在课堂群里问，能更快得到回答。如果是和仓库本身有关的问题，请用上面的模板开 Issue。
+  - name: 先看课堂贡献指南（README）
+    url: https://github.com/nanzhi84/open-source-pulse-wall/blob/main/README.md
+    about: 完整操作步骤、校验命令、寄语路径规范与常见冲突处理都在这里，建议先快速核对一遍。

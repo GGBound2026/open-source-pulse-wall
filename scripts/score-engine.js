@@ -5,6 +5,7 @@ const crypto = require('crypto');
 const STAR_POINTS = 1;
 const CHEER_POINTS_CAP = 3;
 const PAIR_POINTS_PER_PARTNER = 2;
+const MAX_COAUTHORS_PER_COMMIT = 2;
 const RELIC_DEFAULT_POINTS = 2;
 const TOP5_LIMIT = 5;
 const TOP5_MIN_POINTS = 1;
@@ -214,10 +215,11 @@ function computeContributorScores({
     const messageCoAuthors = parseCoAuthorsFromMessage(fullMessage);
     const graphAuthors = Array.isArray(commit.authors) ? commit.authors : [];
 
-    // Collect distinct participant handles on this commit (primary + co-authors)
-    const participants = new Set();
+    // Must actually have a co-author signal (either >= 2 GraphQL authors or explicit Co-authored-by trailer)
+    const hasCoAuthorSignal = messageCoAuthors.length > 0 || graphAuthors.length >= 2;
+    if (!hasCoAuthorSignal) continue;
 
-    const primaryHandle = resolveHandleFromIdentity(
+    let primaryHandle = resolveHandleFromIdentity(
       {
         login: commit.author,
         email: commit.authorEmail,
@@ -225,27 +227,27 @@ function computeContributorScores({
       },
       { handleSet, uniqueNameMap }
     );
-    if (primaryHandle) participants.add(primaryHandle);
+    if (!primaryHandle && graphAuthors.length > 0) {
+      primaryHandle = resolveHandleFromIdentity(graphAuthors[0], { handleSet, uniqueNameMap });
+    }
+    if (!primaryHandle) continue;
 
+    const coAuthors = new Set();
     for (const ga of graphAuthors) {
       const resolved = resolveHandleFromIdentity(ga, { handleSet, uniqueNameMap });
-      if (resolved) participants.add(resolved);
+      if (resolved && resolved !== primaryHandle) coAuthors.add(resolved);
     }
 
     for (const ca of messageCoAuthors) {
       const resolved = resolveHandleFromIdentity(ca, { handleSet, uniqueNameMap });
-      if (resolved) participants.add(resolved);
+      if (resolved && resolved !== primaryHandle) coAuthors.add(resolved);
     }
 
-    // Must actually have a co-author signal (either >= 2 GraphQL authors or explicit Co-authored-by trailer)
-    const hasCoAuthorSignal = messageCoAuthors.length > 0 || graphAuthors.length >= 2;
-    if (!hasCoAuthorSignal || participants.size < 2) continue;
+    // Anti-abuse: ignore commits listing too many co-authors (mass-tagging farm) and only pair primary <-> co-author
+    if (coAuthors.size === 0 || coAuthors.size > MAX_COAUTHORS_PER_COMMIT) continue;
 
-    const list = Array.from(participants);
-    for (let i = 0; i < list.length; i += 1) {
-      for (let j = i + 1; j < list.length; j += 1) {
-        recordPair(list[i], list[j]);
-      }
+    for (const partner of coAuthors) {
+      recordPair(primaryHandle, partner);
     }
   }
 
@@ -421,6 +423,7 @@ module.exports = {
   STAR_POINTS,
   CHEER_POINTS_CAP,
   PAIR_POINTS_PER_PARTNER,
+  MAX_COAUTHORS_PER_COMMIT,
   RELIC_DEFAULT_POINTS,
   TOP5_LIMIT,
   TOP5_MIN_POINTS,

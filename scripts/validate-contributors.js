@@ -189,7 +189,7 @@ function validateProfile(profile, filename) {
 
   if (profile.cheers !== undefined) {
     errors.push(
-      `${filename}: 寄语已改为独立文件，请删除 cheers 字段，并创建 data/cheers/<目标用户名>/<你的GitHub用户名>.json（仅需填写 { "message": "..." }）`
+      `${filename}: 寄语已改为独立文件，请删除 cheers 字段，并创建 data/cheers/<目标用户名小写>/<你的GitHub用户名>.json（仅需填写 { "message": "..." }）`
     );
   }
 
@@ -354,7 +354,7 @@ function readAndValidateAll({ rootDir = ROOT } = {}) {
 
       if (!dirEntry.isDirectory()) {
         errors.push(
-          `${topRelPath}: 寄语文件必须放在 data/cheers/<目标用户名>/<文件名>.json 子目录中，不能直接放在 data/cheers/ 下`
+          `${topRelPath}: 寄语文件必须放在 data/cheers/<目标用户名小写>/<你的GitHub用户名>.json 子目录中，不能直接放在 data/cheers/ 下`
         );
         continue;
       }
@@ -367,6 +367,12 @@ function readAndValidateAll({ rootDir = ROOT } = {}) {
       const targetHandleProblem = validateGithubHandle(target);
       if (targetHandleProblem) {
         errors.push(`${topRelPath}: 目标目录名 "${target}" 不是合法的 GitHub 用户名（${targetHandleProblem}）`);
+      }
+
+      if (target !== target.toLowerCase()) {
+        errors.push(
+          `${topRelPath}: 寄语目标目录名必须使用全小写（请改为 data/cheers/${target.toLowerCase()}）`
+        );
       }
 
       const targetKey = target.trim().toLowerCase();
@@ -405,6 +411,12 @@ function readAndValidateAll({ rootDir = ROOT } = {}) {
         if (!file.endsWith('.json')) {
           errors.push(`${relPath}: 寄语文件必须以 .json 结尾`);
           continue;
+        }
+
+        const fileStem = file.slice(0, -'.json'.length);
+        const fileHandleProblem = validateGithubHandle(fileStem);
+        if (fileHandleProblem) {
+          errors.push(`${relPath}: 寄语文件名 "${fileStem}" 必须是合法的 GitHub 用户名（${fileHandleProblem}）`);
         }
 
         const fileKey = file.toLowerCase();

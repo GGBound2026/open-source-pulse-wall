@@ -143,7 +143,9 @@ test('rejects stray non-json files, subdirectories, underscore files, and invali
     'data/cheers/_hidden/a.json': `${JSON.stringify({ message: 'hidden dir' }, null, 2)}\n`,
     'data/cheers/valid-user/sub/a.json': `${JSON.stringify({ message: 'nested' }, null, 2)}\n`,
     'data/cheers/valid-user/_draft.json': `${JSON.stringify({ message: 'draft' }, null, 2)}\n`,
-    'data/cheers/valid-user/note.txt': 'not json'
+    'data/cheers/valid-user/note.txt': 'not json',
+    'data/cheers/valid-user/非法.json': `${JSON.stringify({ message: 'bad name' }, null, 2)}\n`,
+    'data/cheers/Valid-User/alice.json': `${JSON.stringify({ message: 'upper dir' }, null, 2)}\n`
   });
   t.after(() => fs.rmSync(dir, { recursive: true, force: true }));
 
@@ -155,11 +157,26 @@ test('rejects stray non-json files, subdirectories, underscore files, and invali
   assert.match(joined, /data\/profiles\/nested: 不允许在 data\/profiles\/ 下创建子目录/);
   assert.match(joined, /data\/profiles\/非法名字\.json: 文件名 "非法名字" 不是合法的 GitHub 用户名/);
   assert.match(joined, /data\/profiles\/-bad-\.json: 文件名 "-bad-" 不是合法的 GitHub 用户名/);
-  assert.match(joined, /data\/cheers\/stray\.json: 寄语文件必须放在 data\/cheers\/<目标用户名>\/<文件名>\.json/);
+  assert.match(joined, /data\/cheers\/stray\.json: 寄语文件必须放在 data\/cheers\/<目标用户名小写>\/<你的GitHub用户名>\.json/);
   assert.match(joined, /data\/cheers\/_hidden: 寄语目标目录名不能以 "_" 开头/);
   assert.match(joined, /data\/cheers\/valid-user\/sub: 不允许在寄语目录下嵌套子目录/);
   assert.match(joined, /data\/cheers\/valid-user\/_draft\.json: 寄语文件名不能以 "_" 开头/);
   assert.match(joined, /data\/cheers\/valid-user\/note\.txt: 寄语文件必须以 \.json 结尾/);
+  assert.match(joined, /data\/cheers\/valid-user\/非法\.json: 寄语文件名 "非法" 必须是合法的 GitHub 用户名/);
+  if (fs.existsSync(path.join(dir, 'data', 'cheers', 'Valid-User'))) {
+    // On case-insensitive macOS APFS, creating Valid-User merges into valid-user; test separately below.
+  }
+});
+
+test('rejects non-lowercase cheer target directory names', (t) => {
+  const dir = createTempRepo({
+    'data/profiles/Divine-Ashes.json': `${JSON.stringify({ name: 'Alice', motto: 'hi' }, null, 2)}\n`,
+    'data/cheers/Divine-Ashes/bob.json': `${JSON.stringify({ message: 'upper dir' }, null, 2)}\n`
+  });
+  t.after(() => fs.rmSync(dir, { recursive: true, force: true }));
+
+  const { errors } = readAndValidateAll({ rootDir: dir });
+  assert.match(errors.join('\n'), /data\/cheers\/Divine-Ashes: 寄语目标目录名必须使用全小写/);
 });
 
 test('detects case-insensitive duplicate profile filenames on case-sensitive filesystems', (t) => {

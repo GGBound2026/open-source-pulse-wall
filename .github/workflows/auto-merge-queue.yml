@@ -1,0 +1,67 @@
+name: Auto-merge queue
+
+on:
+  workflow_run:
+    workflows:
+      - Validate contributors
+    types:
+      - completed
+  pull_request_target:
+    branches:
+      - main
+    types:
+      - unlabeled
+  workflow_dispatch:
+    inputs:
+      chain_depth:
+        description: Internal continuation counter
+        required: false
+        default: "0"
+        type: string
+
+concurrency:
+  group: auto-merge-queue
+  cancel-in-progress: false
+
+jobs:
+  process-queue:
+    if: ${{ github.event_name != 'workflow_run' || github.event.workflow_run.event == 'pull_request' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: write
+      pull-requests: write
+      checks: read
+      actions: write
+    steps:
+      - name: Checkout trusted main branch
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        with:
+          ref: main
+          fetch-depth: 1
+
+      - name: Run serial auto-merge queue
+        uses: actions/github-script@f28e40c7f34bde8b3046d885e986cb6290c5673b # v7
+        env:
+          PR_MAINTAINERS: ${{ vars.PR_MAINTAINERS }}
+          CHAIN_DEPTH: ${{ inputs.chain_depth || '0' }}
+        with:
+          script: |
+            const path = require('path');
+            const { parseMaintainers } = require(path.join(process.env.GITHUB_WORKSPACE, 'scripts', 'pr-guard.js'));
+            const { processAutoMergeQueue } = require(path.join(process.env.GITHUB_WORKSPACE, 'scripts', 'auto-merge-queue.js'));
+
+            const chainDepth = Math.max(0, Number.parseInt(process.env.CHAIN_DEPTH || '0', 10) || 0);
+            const maintainers = parseMaintainers(process.env.PR_MAINTAINERS);
+
+            const summary = await processAutoMergeQueue({
+              github,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              workspace: process.env.GITHUB_WORKSPACE,
+              core,
+              maintainers,
+              chainDepth
+            });
+
+            core.info(`Auto-merge queue finished: ${JSON.stringify(summary)}`);
