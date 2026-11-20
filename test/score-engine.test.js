@@ -39,7 +39,7 @@ test('validateProfile accepts optional relic string or up to 2 strings and rejec
   assert.ok(validateProfile({ name: 'Alice', motto: 'Hi', relic: 123 }, 'alice.json').errors.length > 0);
 });
 
-test('computeContributorScores enforces star cap, cheer cap 3, pair deduplication, multi-partner pair stacking, first-blood relic, and Top 5 >= 5 threshold', () => {
+test('computeContributorScores enforces star cap, cheer cap 3, pair deduplication, multi-partner pair stacking, first-blood relic, and Star-gated Top 5 >= 1 threshold', () => {
   const secret1 = 'PULSE-ARCHAEOLOGY-01';
   const secretHash1 = sha256HexSync(secret1);
 
@@ -201,13 +201,13 @@ test('computeContributorScores enforces star cap, cheer cap 3, pair deduplicatio
   assert.equal(dave.score.vfxTier, 2);
   assert.equal(dave.score.isTop5, true);
 
-  // Carol: Star (+1) + Cheers (0) + Pairs (alice = +2) = 3 pts -> Tier 1! (under 5 pts so NOT Top 5)
+  // Carol: Star (+1) + Cheers (0) + Pairs (alice = +2) = 3 pts -> Tier 1! (Starred & >= 1 pt, rank 4 -> Top 5!)
   const carol = byHandle.get('carol');
   assert.equal(carol.score.points, 3);
   assert.equal(carol.score.vfxTier, 1);
-  assert.equal(carol.score.isTop5, false);
+  assert.equal(carol.score.isTop5, true);
 
-  // Eve: Unstarred (0) + Pairs (dave = +2; empty commit with bob ignored!) = 2 pts -> Locked (vfxTier 0)!
+  // Eve: Unstarred (0) + Pairs (dave = +2; empty commit with bob ignored!) = 2 pts -> Locked (vfxTier 0) & NOT Top 5!
   const eve = byHandle.get('eve');
   assert.equal(eve.score.points, 2);
   assert.equal(eve.score.vfxTier, 0);

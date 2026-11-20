@@ -7,7 +7,7 @@ const CHEER_POINTS_CAP = 3;
 const PAIR_POINTS_PER_PARTNER = 2;
 const RELIC_DEFAULT_POINTS = 2;
 const TOP5_LIMIT = 5;
-const TOP5_MIN_POINTS = 5;
+const TOP5_MIN_POINTS = 1;
 
 const VFX_TIER_THRESHOLDS = {
   starCard: 1,
@@ -384,7 +384,7 @@ function computeContributorScores({
     if ('relic' in p && p.relic === undefined) delete p.relic;
   });
 
-  // Compute leaderboard rank & Top 5 (requires >= 5 points threshold)
+  // Compute leaderboard rank & Top 5 (requires Star + >= 1 point)
   const rankedIndices = scored
     .map((profile, idx) => ({
       idx,
@@ -396,8 +396,8 @@ function computeContributorScores({
       handle: String(profile.github || '').toLowerCase()
     }))
     .sort((a, b) => {
-      if (b.points !== a.points) return b.points - a.points;
       if (b.starred !== a.starred) return b.starred - a.starred;
+      if (b.points !== a.points) return b.points - a.points;
       if (b.cheersSent !== a.cheersSent) return b.cheersSent - a.cheersSent;
       if (b.cheersReceived !== a.cheersReceived) return b.cheersReceived - a.cheersReceived;
       if (a.joinedTs !== b.joinedTs) return a.joinedTs - b.joinedTs;
@@ -408,7 +408,7 @@ function computeContributorScores({
     const rank = position + 1;
     const target = scored[entry.idx];
     target.score.rank = rank;
-    target.score.isTop5 = rank <= TOP5_LIMIT && target.score.points >= TOP5_MIN_POINTS;
+    target.score.isTop5 = Boolean(target.score.starred) && rank <= TOP5_LIMIT && target.score.points >= TOP5_MIN_POINTS;
   });
 
   return {

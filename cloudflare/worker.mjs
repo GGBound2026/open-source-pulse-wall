@@ -24,7 +24,7 @@ const CHEER_POINTS_CAP = 3;
 const PAIR_POINTS_PER_PARTNER = 2;
 const RELIC_DEFAULT_POINTS = 2;
 const TOP5_LIMIT = 5;
-const TOP5_MIN_POINTS = 5;
+const TOP5_MIN_POINTS = 1;
 const REPO_OWNER_NAME = /^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/;
 
 const CORS_HEADERS = {
@@ -1200,8 +1200,8 @@ async function computeContributorScoresAsync({
       handle: String(profile.github || '').toLowerCase()
     }))
     .sort((a, b) => {
-      if (b.points !== a.points) return b.points - a.points;
       if (b.starred !== a.starred) return b.starred - a.starred;
+      if (b.points !== a.points) return b.points - a.points;
       if (b.cheersSent !== a.cheersSent) return b.cheersSent - a.cheersSent;
       if (b.cheersReceived !== a.cheersReceived) return b.cheersReceived - a.cheersReceived;
       if (a.joinedTs !== b.joinedTs) return a.joinedTs - b.joinedTs;
@@ -1212,7 +1212,7 @@ async function computeContributorScoresAsync({
     const rank = position + 1;
     const target = scored[entry.idx];
     target.score.rank = rank;
-    target.score.isTop5 = rank <= TOP5_LIMIT && target.score.points >= TOP5_MIN_POINTS;
+    target.score.isTop5 = Boolean(target.score.starred) && rank <= TOP5_LIMIT && target.score.points >= TOP5_MIN_POINTS;
   });
 
   return { contributors: scored, relics: relicStatusList };
@@ -1653,7 +1653,7 @@ async function fetchPackedWallState({ repository, token = '', pagesStateUrl = ''
 }
 
 function cacheRequestFor(repository) {
-  return new Request(`https://pulse-wall-cache.internal/__v11/${encodeURIComponent(repository)}`, {
+  return new Request(`https://pulse-wall-cache.internal/__v12/${encodeURIComponent(repository)}`, {
     method: 'GET'
   });
 }

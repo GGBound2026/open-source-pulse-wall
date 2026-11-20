@@ -313,7 +313,7 @@ function scoreForProfile(profile, fallbackCheersMap = null, demoSlot = -1) {
       starred: true,
       ...meta,
       rank: demoSlot + 1,
-      isTop5: pts >= 5 && demoSlot < 5,
+      isTop5: pts >= 1 && demoSlot < 5,
       breakdown: {
         star: 1,
         cheers: cheerPts,
@@ -1315,11 +1315,13 @@ function renderHonorRibbon() {
     const handle = htmlEscape(profile.github || profile.name || key);
     const avatar = htmlEscape(avatarForProfile(profile));
     const breakdown = formatScoreBreakdownText(score);
-    const title = `#${rank} @${profile.github || profile.name} · ${score.points}分（${score.tierLabel}）｜${breakdown}｜点击定位并释放破框大招`;
+    const title = score.vfxTier >= 1
+      ? `#${rank} @${profile.github || profile.name} · ${score.points}分（${score.tierLabel}）｜${breakdown}｜点击定位并释放破框大招`
+      : `#${rank} @${profile.github || profile.name} · ${score.points}分（${score.tierLabel}）｜${breakdown}｜点击定位到卡片`;
     const crownSvg = rank === 1
       ? '<svg class="honor-pill-crown" viewBox="0 0 16 16" aria-hidden="true"><path d="M2.2 12.2h11.6L14.5 5 11 7.6 8 3.2 5 7.6 1.5 5Z" /></svg>'
       : '';
-    const ctaText = rank === 1 ? '放招 ↗' : '↗';
+    const ctaText = rank === 1 ? (score.vfxTier >= 1 ? '放招 ↗' : '直达 ↗') : '↗';
     return `
       <button
         type="button"
@@ -1345,7 +1347,7 @@ function renderHonorRibbon() {
     const isSpotlight = state.wallFilter === 'leaderboard';
     elements.honorRibbonHint.classList.toggle('is-spotlight-mode', isSpotlight);
     if (elements.honorRibbonHintText) {
-      elements.honorRibbonHintText.textContent = isSpotlight ? '聚光灯点名中' : '≥5分 · 点选直达';
+      elements.honorRibbonHintText.textContent = isSpotlight ? '聚光灯点名中' : '星标榜 · 点选直达';
     }
   }
 }
@@ -1456,8 +1458,8 @@ function filteredWallContributors() {
     return list.slice().sort((a, b) => {
       const sa = getProfileScore(a);
       const sb = getProfileScore(b);
-      if (sb.points !== sa.points) return sb.points - sa.points;
       if (Number(sb.starred) !== Number(sa.starred)) return Number(sb.starred) - Number(sa.starred);
+      if (sb.points !== sa.points) return sb.points - sa.points;
       return (sa.rank || 999) - (sb.rank || 999);
     });
   }
@@ -1915,8 +1917,8 @@ function preserveStargazersWhenDegraded(payload) {
       handle: String(profile.github || profile.name || '').toLowerCase()
     }))
     .sort((a, b) => {
-      if (b.points !== a.points) return b.points - a.points;
       if (Number(b.starred) !== Number(a.starred)) return Number(b.starred) - Number(a.starred);
+      if (b.points !== a.points) return b.points - a.points;
       if (a.joinedTs !== b.joinedTs) return a.joinedTs - b.joinedTs;
       return a.handle.localeCompare(b.handle);
     });
@@ -1925,7 +1927,7 @@ function preserveStargazersWhenDegraded(payload) {
   ranked.forEach((entry, rankIdx) => {
     const target = hydrated[entry.idx];
     if (!target.score) return;
-    const eligibleTop5 = entry.starred && entry.points >= 5 && top5Assigned < 5;
+    const eligibleTop5 = entry.starred && entry.points >= 1 && top5Assigned < 5;
     if (eligibleTop5) top5Assigned += 1;
     target.score = {
       ...target.score,
