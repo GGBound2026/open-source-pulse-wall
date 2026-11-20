@@ -1,0 +1,4 @@
+{
+  "hint": "老师可将 1-2 个暗号埋入历史 commit 后删除（供同学使用 git log -S 挖掘），运行 node scripts/hash-relic.js <暗号> 生成 sha256 填入 relics 数组。仅第一位将该暗号合入 main 的同学可获 +2 分。",
+  "relics": []
+}

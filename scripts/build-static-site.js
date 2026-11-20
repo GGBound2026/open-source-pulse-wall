@@ -52,9 +52,14 @@ function shortFileHash(filePath) {
 
 function markStaticHtmlAssets() {
   const cssHash = shortFileHash(path.join(DIST_DIR, 'styles.css'));
+  const vfxHash = shortFileHash(path.join(DIST_DIR, 'vfx-engine.js'));
   const jsHash = shortFileHash(path.join(DIST_DIR, 'app.js'));
+  const showcaseCssPath = path.join(DIST_DIR, 'vfx-showcase.css');
+  const showcaseJsPath = path.join(DIST_DIR, 'vfx-showcase.js');
+  const showcaseCssHash = fs.existsSync(showcaseCssPath) ? shortFileHash(showcaseCssPath) : '';
+  const showcaseJsHash = fs.existsSync(showcaseJsPath) ? shortFileHash(showcaseJsPath) : '';
 
-  for (const htmlFile of ['index.html']) {
+  for (const htmlFile of ['index.html', 'vfx-showcase.html']) {
     const htmlPath = path.join(DIST_DIR, htmlFile);
     if (!fs.existsSync(htmlPath)) continue;
 
@@ -66,7 +71,15 @@ function markStaticHtmlAssets() {
         `<meta name="app-data-source" content="static" />${preloadDataHint}`
       )
       .replace('href="styles.css"', `href="styles.css?v=${cssHash}"`)
+      .replace('src="vfx-engine.js"', `src="vfx-engine.js?v=${vfxHash}"`)
       .replace('src="app.js"', `src="app.js?v=${jsHash}"`);
+
+    if (showcaseCssHash) {
+      html = html.replace('href="vfx-showcase.css"', `href="vfx-showcase.css?v=${showcaseCssHash}"`);
+    }
+    if (showcaseJsHash) {
+      html = html.replace('src="vfx-showcase.js"', `src="vfx-showcase.js?v=${showcaseJsHash}"`);
+    }
 
     fs.writeFileSync(htmlPath, html);
   }

@@ -5,11 +5,19 @@ const path = require('path');
 const crypto = require('crypto');
 const { execFileSync } = require('child_process');
 const { listProfileFiles, listCheerFiles, readAndValidateAll } = require('./validate-contributors');
+const {
+  sha256HexSync,
+  normalizeRelicCodes,
+  normalizeRelicDefinitions,
+  computeContributorScores
+} = require('./score-engine');
 
 const ROOT = path.resolve(__dirname, '..');
 const PROFILES_DIR = path.join(ROOT, 'data', 'profiles');
+const RELICS_PATH = path.join(ROOT, 'data', 'relics.json');
 const GITHUB_API_BASE = 'https://api.github.com';
 const COMMIT_GRAPH_LIMIT = 40;
+const SCORING_COMMITS_LIMIT = 100;
 const ACTIVITY_FEED_LIMIT = 8;
 const CONTRIBUTORS_FETCH_LIMIT = 100;
 const ISSUES_FETCH_LIMIT = 100;
@@ -341,9 +349,12 @@ function normalizeCommitNode(commit) {
       ? commit.parents.map((parent) => String(parent.sha || '')).filter(Boolean)
       : [],
     author: pickCommitAuthorLogin(commit),
+    authorEmail: String(commit?.commit?.author?.email || ''),
+    authorName: String(commit?.commit?.author?.name || ''),
     avatarUrl: String(commit?.author?.avatar_url || ''),
     profileUrl: String(commit?.author?.html_url || ''),
     message: pickCommitMessageHeader(commit),
+    fullMessage: String(commit?.commit?.message || ''),
     time: pickCommitTime(commit),
     htmlUrl: String(commit.html_url || '')
   };
@@ -574,6 +585,216 @@ async function fetchFileContributorsViaGraphql(repository, repoPaths, token) {
   return resolved;
 }
 
+function readRelicDefinitions(rootDir = ROOT) {
+  const relicsFile = path.join(rootDir, 'data', 'relics.json');
+  if (!fs.existsSync(relicsFile)) return [];
+  try {
+    const parsed = JSON.parse(fs.readFileSync(relicsFile, 'utf8'));
+    return normalizeRelicDefinitions(parsed);
+  } catch {
+    return [];
+  }
+}
+
+function extractFirstRelicClaimsFromHistory(nodes) {
+  if (!Array.isArray(nodes) || !nodes.length) return {};
+  const earliestByHash = {};
+  // Walk oldest -> newest so first commit introducing a relic code wins.
+  for (let i = nodes.length - 1; i >= 0; i -= 1) {
+    const node = nodes[i];
+    const text = String(node?.file?.object?.text || '');
+    if (!text) continue;
+    let parsed;
+    try {
+      parsed = JSON.parse(text);
+    } catch {
+      continue;
+    }
+    const codes = normalizeRelicCodes(parsed?.relic);
+    for (const code of codes) {
+      const hash = sha256HexSync(code);
+      if (!earliestByHash[hash]) {
+        earliestByHash[hash] = {
+          committedDate: String(node?.committedDate || '').trim(),
+          commitOrder: nodes.length - 1 - i
+        };
+      }
+    }
+  }
+  return earliestByHash;
+}
+
+async function fetchScoringCommitsViaGraphql(repository, token) {
+  if (!token) return [];
+  const [owner, name] = repository.split('/');
+  const query = `
+    query($owner: String!, $name: String!) {
+      repository(owner: $owner, name: $name) {
+        defaultBranchRef {
+          target {
+            ... on Commit {
+              history(first: ${SCORING_COMMITS_LIMIT}) {
+                nodes {
+                  oid
+                  committedDate
+                  message
+                  changedFilesIfAvailable
+                  authors(first: 10) {
+                    nodes {
+                      user { login }
+                      email
+                      name
+                    }
+                  }
+                  associatedPullRequests(first: 1) {
+                    nodes {
+                      number
+                      merged
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  `;
+
+  const response = await fetch(`${GITHUB_API_BASE}/graphql`, {
+    method: 'POST',
+    headers: {
+      ...buildGithubHeaders(token),
+      'Content-Type': 'application/json'
+    },
+    body: JSON.stringify({ query, variables: { owner, name } })
+  });
+
+  if (!response.ok) return [];
+  const payload = await response.json();
+  const nodes = payload?.data?.repository?.defaultBranchRef?.target?.history?.nodes;
+  if (!Array.isArray(nodes)) return [];
+
+  return nodes.map((node) => {
+    const authors = Array.isArray(node?.authors?.nodes)
+      ? node.authors.nodes.map((a) => ({
+          login: String(a?.user?.login || '').trim(),
+          email: String(a?.email || '').trim(),
+          name: String(a?.name || '').trim()
+        }))
+      : [];
+    const prNodes = Array.isArray(node?.associatedPullRequests?.nodes)
+      ? node.associatedPullRequests.nodes
+      : [];
+    const prMerged = prNodes.length ? prNodes.some((pr) => Boolean(pr?.merged)) : null;
+
+    return {
+      sha: String(node?.oid || ''),
+      time: String(node?.committedDate || ''),
+      author: authors[0]?.login || '',
+      authorEmail: authors[0]?.email || '',
+      authorName: authors[0]?.name || '',
+      authors,
+      message: String(node?.message || '').split('\n')[0],
+      fullMessage: String(node?.message || ''),
+      changedFiles: typeof node?.changedFilesIfAvailable === 'number' ? node.changedFilesIfAvailable : null,
+      prMerged
+    };
+  });
+}
+
+async function fetchRelicClaimTimesViaGraphql(repository, profileFilesWithRelics, token) {
+  if (!token || !Array.isArray(profileFilesWithRelics) || !profileFilesWithRelics.length) return {};
+  const [owner, name] = repository.split('/');
+  const resolved = {};
+  const chunkSize = 20;
+
+  for (let offset = 0; offset < profileFilesWithRelics.length; offset += chunkSize) {
+    const chunk = profileFilesWithRelics.slice(offset, offset + chunkSize);
+    const fields = chunk
+      .map((repoPath, idx) => (
+        `r${idx}: history(first: 20, path: ${JSON.stringify(repoPath)}) { nodes { committedDate file(path: ${JSON.stringify(repoPath)}) { object { ... on Blob { text } } } } }`
+      ))
+      .join('\n');
+
+    const query = `
+      query($owner: String!, $name: String!) {
+        repository(owner: $owner, name: $name) {
+          defaultBranchRef {
+            target {
+              ... on Commit {
+                ${fields}
+              }
+            }
+          }
+        }
+      }
+    `;
+
+    const response = await fetch(`${GITHUB_API_BASE}/graphql`, {
+      method: 'POST',
+      headers: {
+        ...buildGithubHeaders(token),
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({ query, variables: { owner, name } })
+    });
+
+    if (!response.ok) break;
+    const payload = await response.json();
+    const target = payload?.data?.repository?.defaultBranchRef?.target;
+    if (!target) break;
+
+    chunk.forEach((repoPath, idx) => {
+      const claims = extractFirstRelicClaimsFromHistory(target[`r${idx}`]?.nodes);
+      if (Object.keys(claims).length) {
+        resolved[repoPath] = claims;
+      }
+    });
+  }
+
+  return resolved;
+}
+
+function listRelicProfilePaths(rootDir = ROOT) {
+  const { contributors } = readAndValidateAll({ rootDir });
+  return contributors
+    .filter((item) => normalizeRelicCodes(item?.relic).length > 0 && item.file)
+    .map((item) => `data/profiles/${item.file}`);
+}
+
+function resolveLocalRelicClaimTimes(contributors, existingClaimTimes = {}, rootDir = ROOT) {
+  const merged = { ...existingClaimTimes };
+  for (const profile of contributors) {
+    const codes = normalizeRelicCodes(profile?.relic);
+    if (!codes.length || !profile.file) continue;
+    const relPath = `data/profiles/${profile.file}`;
+    if (merged[relPath] && Object.keys(merged[relPath]).length) continue;
+
+    const bucket = {};
+    for (const code of codes) {
+      const hash = sha256HexSync(code);
+      try {
+        const out = execFileSync(
+          'git',
+          ['log', '--reverse', '--format=%cI', '-S', code, '--', relPath],
+          { cwd: rootDir, encoding: 'utf8', windowsHide: true, stdio: ['ignore', 'pipe', 'ignore'] }
+        );
+        const firstDate = out.split(/\r?\n/).map((l) => l.trim()).find(Boolean) || '';
+        if (firstDate) {
+          bucket[hash] = { committedDate: firstDate };
+        }
+      } catch {
+        // ignore if git history unavailable
+      }
+    }
+    if (Object.keys(bucket).length) {
+      merged[relPath] = bucket;
+    }
+  }
+  return merged;
+}
+
 async function fetchGithubState({ repository, token = '' }) {
   assertGithubRepository(repository);
 
@@ -584,7 +805,8 @@ async function fetchGithubState({ repository, token = '' }) {
         ...listCheerFiles().map((item) => item.relPath)
       ]
     : [];
-  const [repo, contributorsResult, commits, fileContributors] = await Promise.all([
+  const relicProfilePaths = token ? listRelicProfilePaths() : [];
+  const [repo, contributorsResult, commits, fileContributors, scoringCommits, relicClaimTimes] = await Promise.all([
     fetchGithubJson(`/repos/${encodedRepo}`, token),
     fetchGithubCollection(
       `/repos/${encodedRepo}/contributors?per_page=100`,
@@ -592,7 +814,9 @@ async function fetchGithubState({ repository, token = '' }) {
       { maxItems: CONTRIBUTORS_FETCH_LIMIT }
     ),
     fetchGithubJson(`/repos/${encodedRepo}/commits?per_page=${COMMIT_GRAPH_LIMIT}`, token),
-    fetchFileContributorsViaGraphql(repository, trackedPaths, token).catch(() => ({}))
+    fetchFileContributorsViaGraphql(repository, trackedPaths, token).catch(() => ({})),
+    fetchScoringCommitsViaGraphql(repository, token).catch(() => []),
+    fetchRelicClaimTimesViaGraphql(repository, relicProfilePaths, token).catch(() => ({}))
   ]);
 
   const [issuesResult, pullsResult, stargazersResult] = await Promise.all([
@@ -644,6 +868,8 @@ async function fetchGithubState({ repository, token = '' }) {
     latestCommitAt,
     events: allEvents.slice(0, ACTIVITY_FEED_LIMIT),
     commits: commitNodes,
+    scoringCommits: scoringCommits.length ? scoringCommits : commitNodes,
+    relicClaimTimes,
     issues: pureIssues.slice(0, ISSUES_DISPLAY_LIMIT),
     pullRequests: pullNodes.slice(0, PULLS_DISPLAY_LIMIT),
     fileContributors,
@@ -827,6 +1053,7 @@ function normalizeContributors(contributors, fileContributors = {}, cheerEntries
         joinedAt: String(resolved.ts || item.joinedAt || '').trim(),
         starred,
         cheers: normalizeCheers(item.cheers),
+        ...(item.relic !== undefined ? { relic: item.relic } : {}),
         file
       };
     })
@@ -864,12 +1091,27 @@ function buildContributorState({ githubState = buildUnconfiguredGithubState(), f
   const generatedAt = new Date().toISOString();
   const fingerprint = computeProfilesFingerprint();
   const result = readAndValidateAll();
-  const normalized = normalizeContributors(
+  const normalizedBase = normalizeContributors(
     result.contributors,
     githubState?.fileContributors || {},
     result.cheerEntries || [],
     githubState?.stargazers || []
   );
+  const relicDefinitions = readRelicDefinitions(ROOT);
+  const relicClaimTimes = resolveLocalRelicClaimTimes(
+    normalizedBase,
+    githubState?.relicClaimTimes || {},
+    ROOT
+  );
+  const scoringCommits = Array.isArray(githubState?.scoringCommits) && githubState.scoringCommits.length
+    ? githubState.scoringCommits
+    : (githubState?.commits || []);
+  const { contributors: normalized, relics } = computeContributorScores({
+    contributors: normalizedBase,
+    commits: scoringCommits,
+    relicDefinitions,
+    relicClaimTimes
+  });
   const ok = result.errors.length === 0;
   const contributors = ok ? normalized : fallbackContributors;
   const cheersTotal = contributors.reduce((sum, profile) => sum + profile.cheers.length, 0);
@@ -882,6 +1124,7 @@ function buildContributorState({ githubState = buildUnconfiguredGithubState(), f
     count: contributors.length,
     contributors,
     previewContributors: normalized,
+    relics,
     cheersTotal,
     recentCheers,
     github: githubState,

@@ -4,6 +4,7 @@ const DEFAULT_REPOSITORY = 'nanzhi84/open-source-pulse-wall';
 const DEFAULT_COOLDOWN_MS = 180000;
 
 const COMMIT_GRAPH_LIMIT = 40;
+const SCORING_COMMITS_LIMIT = 100;
 const ACTIVITY_FEED_LIMIT = 8;
 const CONTRIBUTORS_FETCH_LIMIT = 100;
 const ISSUES_FETCH_LIMIT = 100;
@@ -15,6 +16,14 @@ const RECENT_CHEERS_LIMIT = 12;
 
 const CHEERS_MAX_PER_PROFILE = 50;
 const CHEER_MESSAGE_MAX_LENGTH = 80;
+const RELIC_CODE_MAX_LENGTH = 64;
+const RELIC_MAX_ITEMS = 2;
+const STAR_POINTS = 1;
+const CHEER_POINTS_CAP = 3;
+const PAIR_POINTS_PER_PARTNER = 2;
+const RELIC_DEFAULT_POINTS = 2;
+const TOP5_LIMIT = 5;
+const TOP5_MIN_POINTS = 5;
 const REPO_OWNER_NAME = /^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/;
 
 const CORS_HEADERS = {
@@ -254,6 +263,28 @@ function validateProfile(profile, filename) {
     errors.push(`${filename}: city 必须是 40 个字符以内的字符串`);
   }
 
+  if (profile.relic !== undefined) {
+    if (typeof profile.relic === 'string') {
+      const trimmed = profile.relic.trim();
+      if (!trimmed || trimmed.length > RELIC_CODE_MAX_LENGTH) {
+        errors.push(`${filename}: relic 必须是 1–${RELIC_CODE_MAX_LENGTH} 个字符以内的非空暗号字符串`);
+      }
+    } else if (Array.isArray(profile.relic)) {
+      if (profile.relic.length === 0 || profile.relic.length > RELIC_MAX_ITEMS) {
+        errors.push(`${filename}: relic 数组最多填写 ${RELIC_MAX_ITEMS} 个非空暗号字符串`);
+      } else {
+        const invalid = profile.relic.some(
+          (item) => typeof item !== 'string' || !item.trim() || item.trim().length > RELIC_CODE_MAX_LENGTH
+        );
+        if (invalid) {
+          errors.push(`${filename}: relic 数组中的每一项都必须是 1–${RELIC_CODE_MAX_LENGTH} 个字符以内的非空字符串`);
+        }
+      }
+    } else {
+      errors.push(`${filename}: relic 必须是暗号字符串，或最多 ${RELIC_MAX_ITEMS} 个暗号组成的字符串数组`);
+    }
+  }
+
   if (profile.cheers !== undefined) {
     if (!Array.isArray(profile.cheers) || profile.cheers.length > 0) {
       errors.push(
@@ -406,6 +437,7 @@ function normalizeContributors(contributors, fileContributors = {}, cheerEntries
         joinedAt: String(resolved.ts || item.joinedAt || '').trim(),
         starred,
         cheers: normalizeCheers(item.cheers),
+        ...(item.relic !== undefined ? { relic: item.relic } : {}),
         file
       };
     })
@@ -488,6 +520,11 @@ async function fetchWallEntriesViaGraphql(owner, name, token) {
             }
           }
         }
+        relics: object(expression: "HEAD:data/relics.json") {
+          ... on Blob {
+            text
+          }
+        }
       }
     }
   `;
@@ -538,7 +575,17 @@ async function fetchWallEntriesViaGraphql(owner, name, token) {
   }
   cheerFiles.sort((a, b) => a.relPath.localeCompare(b.relPath));
 
-  return { entries: profileEntries, cheerFiles };
+  let relicDefinitions = [];
+  const rawRelicsText = String(repoNode.relics?.text || '').trim();
+  if (rawRelicsText) {
+    try {
+      relicDefinitions = normalizeRelicDefinitions(JSON.parse(rawRelicsText));
+    } catch {
+      relicDefinitions = [];
+    }
+  }
+
+  return { entries: profileEntries, cheerFiles, relicDefinitions };
 }
 
 async function fetchProfileEntriesViaContents(encodedRepo, token) {
@@ -606,20 +653,62 @@ function pickEarliestGithubUser(nodes) {
   return null;
 }
 
-async function fetchFileContributorsViaGraphql(owner, name, repoPaths, token) {
-  if (!token || !Array.isArray(repoPaths) || !repoPaths.length) return {};
+function normalizeGraphqlScoringCommits(nodes) {
+  if (!Array.isArray(nodes)) return [];
+  return nodes.map((node) => {
+    const authors = Array.isArray(node?.authors?.nodes)
+      ? node.authors.nodes.map((a) => ({
+          login: String(a?.user?.login || '').trim(),
+          email: String(a?.email || '').trim(),
+          name: String(a?.name || '').trim()
+        }))
+      : [];
+    const prNodes = Array.isArray(node?.associatedPullRequests?.nodes)
+      ? node.associatedPullRequests.nodes
+      : [];
+    const prMerged = prNodes.length ? prNodes.some((pr) => Boolean(pr?.merged)) : null;
+
+    return {
+      sha: String(node?.oid || ''),
+      time: String(node?.committedDate || ''),
+      author: authors[0]?.login || '',
+      authorEmail: authors[0]?.email || '',
+      authorName: authors[0]?.name || '',
+      authors,
+      message: String(node?.message || '').split('\n')[0],
+      fullMessage: String(node?.message || ''),
+      changedFiles: typeof node?.changedFilesIfAvailable === 'number' ? node.changedFilesIfAvailable : null,
+      prMerged
+    };
+  });
+}
+
+async function fetchFileContributorsViaGraphql(owner, name, repoPaths, token, relicPathSet = new Set()) {
+  if (!token || (!Array.isArray(repoPaths) || !repoPaths.length)) {
+    return { fileContributors: {}, scoringCommits: [], relicClaimTimes: {} };
+  }
 
   const resolved = {};
+  const relicClaimTimes = {};
+  let scoringCommits = [];
   const chunkSize = 40;
 
   for (let offset = 0; offset < repoPaths.length; offset += chunkSize) {
     const chunk = repoPaths.slice(offset, offset + chunkSize);
     const fields = chunk
       .map((repoPath, idx) => {
-        const depth = repoPath.startsWith('data/cheers/') ? 5 : 15;
-        return `f${idx}: history(first: ${depth}, path: ${JSON.stringify(repoPath)}) { nodes { committedDate author { user { login avatarUrl(size: 160) } } committer { user { login avatarUrl(size: 160) } } associatedPullRequests(first: 1) { nodes { author { login avatarUrl(size: 160) } } } } }`;
+        const isRelicPath = relicPathSet.has(repoPath);
+        const depth = isRelicPath ? 20 : (repoPath.startsWith('data/cheers/') ? 5 : 15);
+        const relicBlobField = isRelicPath
+          ? ` file(path: ${JSON.stringify(repoPath)}) { object { ... on Blob { text } } }`
+          : '';
+        return `f${idx}: history(first: ${depth}, path: ${JSON.stringify(repoPath)}) { nodes { committedDate author { user { login avatarUrl(size: 160) } } committer { user { login avatarUrl(size: 160) } } associatedPullRequests(first: 1) { nodes { author { login avatarUrl(size: 160) } } }${relicBlobField} } }`;
       })
       .join('\n');
+
+    const scoringField = offset === 0
+      ? `scoringHistory: history(first: ${SCORING_COMMITS_LIMIT}) { nodes { oid committedDate message changedFilesIfAvailable authors(first: 10) { nodes { user { login } email name } } associatedPullRequests(first: 1) { nodes { number merged } } } }`
+      : '';
 
     const query = `
       query($owner: String!, $name: String!) {
@@ -627,6 +716,7 @@ async function fetchFileContributorsViaGraphql(owner, name, repoPaths, token) {
           defaultBranchRef {
             target {
               ... on Commit {
+                ${scoringField}
                 ${fields}
               }
             }
@@ -646,29 +736,405 @@ async function fetchFileContributorsViaGraphql(owner, name, repoPaths, token) {
     const target = payload?.data?.repository?.defaultBranchRef?.target;
     if (!target) break;
 
-    chunk.forEach((repoPath, idx) => {
-      const picked = pickEarliestGithubUser(target[`f${idx}`]?.nodes);
+    if (offset === 0 && target.scoringHistory?.nodes) {
+      scoringCommits = normalizeGraphqlScoringCommits(target.scoringHistory.nodes);
+    }
+
+    for (let idx = 0; idx < chunk.length; idx += 1) {
+      const repoPath = chunk[idx];
+      const nodes = target[`f${idx}`]?.nodes;
+      const picked = pickEarliestGithubUser(nodes);
       if (picked) {
         resolved[repoPath] = picked;
         if (repoPath.startsWith('data/profiles/')) {
           resolved[repoPath.slice('data/profiles/'.length)] = picked;
         }
       }
+      if (relicPathSet.has(repoPath) && Array.isArray(nodes)) {
+        const claims = await extractFirstRelicClaimsFromHistoryAsync(nodes);
+        if (Object.keys(claims).length) {
+          relicClaimTimes[repoPath] = claims;
+        }
+      }
+    }
+  }
+
+  return { fileContributors: resolved, scoringCommits, relicClaimTimes };
+}
+
+async function sha256HexAsync(value) {
+  const bytes = new TextEncoder().encode(String(value || ''));
+  const digest = await crypto.subtle.digest('SHA-256', bytes);
+  return Array.from(new Uint8Array(digest))
+    .map((b) => b.toString(16).padStart(2, '0'))
+    .join('');
+}
+
+function normalizeRelicCodes(rawRelic) {
+  const list = Array.isArray(rawRelic)
+    ? rawRelic
+    : (typeof rawRelic === 'string' ? [rawRelic] : []);
+  const seen = new Set();
+  const codes = [];
+  for (const item of list) {
+    if (typeof item !== 'string') continue;
+    const normalized = item.trim().toUpperCase();
+    if (!normalized || seen.has(normalized)) continue;
+    seen.add(normalized);
+    codes.push(normalized);
+  }
+  return codes;
+}
+
+function normalizeRelicDefinitions(rawDefinitions = []) {
+  const list = Array.isArray(rawDefinitions)
+    ? rawDefinitions
+    : (Array.isArray(rawDefinitions?.relics) ? rawDefinitions.relics : []);
+  const seenIds = new Set();
+  const defs = [];
+  for (const item of list) {
+    if (!item || typeof item !== 'object') continue;
+    const id = String(item.id || '').trim();
+    const sha256 = String(item.sha256 || '').trim().toLowerCase();
+    if (!id || !/^[a-f0-9]{64}$/.test(sha256) || seenIds.has(id)) continue;
+    seenIds.add(id);
+    defs.push({
+      id,
+      label: String(item.label || id).trim(),
+      sha256,
+      points: Math.max(1, Number(item.points) || RELIC_DEFAULT_POINTS)
+    });
+  }
+  return defs;
+}
+
+function extractGithubLoginFromEmail(email) {
+  const raw = String(email || '').trim().toLowerCase();
+  if (!raw) return '';
+  const match = /^(?:\d+\+)?([a-z0-9-]+)@users\.noreply\.github\.com$/i.exec(raw);
+  return match ? match[1].toLowerCase() : '';
+}
+
+function parseCoAuthorsFromMessage(message) {
+  const text = String(message || '');
+  if (!text) return [];
+  const entries = [];
+  const regex = /^[ \t]*Co-authored-by:[ \t]*(.+?)[ \t]*<([^>]+)>[ \t]*$/gmi;
+  let match;
+  while ((match = regex.exec(text)) !== null) {
+    entries.push({
+      name: String(match[1] || '').trim(),
+      email: String(match[2] || '').trim()
+    });
+  }
+  return entries;
+}
+
+function resolveHandleFromIdentity(identity, { handleSet, uniqueNameMap }) {
+  if (!identity) return '';
+  const directLogin = String(identity.login || '').trim().replace(/^@/, '').toLowerCase();
+  if (directLogin && handleSet.has(directLogin)) return directLogin;
+
+  const emailLogin = extractGithubLoginFromEmail(identity.email);
+  if (emailLogin && handleSet.has(emailLogin)) return emailLogin;
+
+  const rawName = String(identity.name || '').trim().replace(/^@/, '').toLowerCase();
+  if (rawName && handleSet.has(rawName)) return rawName;
+  if (rawName && uniqueNameMap.has(rawName)) return uniqueNameMap.get(rawName);
+
+  const emailRaw = String(identity.email || '').trim().toLowerCase();
+  const atIndex = emailRaw.indexOf('@');
+  if (atIndex > 0) {
+    const localPart = emailRaw.slice(0, atIndex);
+    if (handleSet.has(localPart)) return localPart;
+  }
+  return '';
+}
+
+function resolveVfxTier(points, starred) {
+  const score = Math.max(0, Number(points) || 0);
+  if (!starred) return { vfxTier: 0, tierId: 'locked', tierLabel: '普通卡片', nextTierPoints: 1 };
+  if (score >= 10) return { vfxTier: 3, tierId: 'tier-3', tierLabel: '顶格传说', nextTierPoints: null };
+  if (score >= 6) return { vfxTier: 2, tierId: 'tier-2', tierLabel: '二阶觉醒', nextTierPoints: 10 };
+  if (score >= 3) return { vfxTier: 1, tierId: 'tier-1', tierLabel: '一阶破框', nextTierPoints: 6 };
+  return { vfxTier: 0, tierId: 'star-card', tierLabel: '星标闪卡', nextTierPoints: 3 };
+}
+
+async function extractFirstRelicClaimsFromHistoryAsync(nodes) {
+  if (!Array.isArray(nodes) || !nodes.length) return {};
+  const earliestByHash = {};
+  for (let i = nodes.length - 1; i >= 0; i -= 1) {
+    const node = nodes[i];
+    const text = String(node?.file?.object?.text || '');
+    if (!text) continue;
+    let parsed;
+    try {
+      parsed = JSON.parse(text);
+    } catch {
+      continue;
+    }
+    const codes = normalizeRelicCodes(parsed?.relic);
+    for (const code of codes) {
+      const hash = await sha256HexAsync(code);
+      if (!earliestByHash[hash]) {
+        earliestByHash[hash] = {
+          committedDate: String(node?.committedDate || '').trim(),
+          commitOrder: nodes.length - 1 - i
+        };
+      }
+    }
+  }
+  return earliestByHash;
+}
+
+async function computeContributorScoresAsync({
+  contributors = [],
+  commits = [],
+  relicDefinitions = [],
+  relicClaimTimes = {}
+} = {}) {
+  const defs = normalizeRelicDefinitions(relicDefinitions);
+  const defByHash = new Map(defs.map((d) => [d.sha256, d]));
+
+  const handleSet = new Set();
+  const displayHandleByKey = new Map();
+  const nameCounts = new Map();
+  const nameToKey = new Map();
+
+  for (const profile of contributors) {
+    const handle = String(profile.github || '').trim();
+    const key = handle.toLowerCase();
+    if (!key) continue;
+    handleSet.add(key);
+    displayHandleByKey.set(key, handle);
+    const displayName = String(profile.name || '').trim().toLowerCase();
+    if (displayName) {
+      nameCounts.set(displayName, (nameCounts.get(displayName) || 0) + 1);
+      nameToKey.set(displayName, key);
+    }
+  }
+
+  const uniqueNameMap = new Map();
+  for (const [nameKey, count] of nameCounts.entries()) {
+    if (count === 1) uniqueNameMap.set(nameKey, nameToKey.get(nameKey));
+  }
+
+  const cheeredTargetsByUser = new Map();
+  for (const targetProfile of contributors) {
+    const targetKey = String(targetProfile.github || '').trim().toLowerCase();
+    if (!targetKey) continue;
+    const cheers = Array.isArray(targetProfile.cheers) ? targetProfile.cheers : [];
+    for (const cheer of cheers) {
+      const fromKey = String(cheer?.from || '').trim().toLowerCase();
+      const message = String(cheer?.message || '').trim();
+      if (!fromKey || !message || fromKey === targetKey) continue;
+      if (!cheeredTargetsByUser.has(fromKey)) cheeredTargetsByUser.set(fromKey, new Set());
+      cheeredTargetsByUser.get(fromKey).add(targetKey);
+    }
+  }
+
+  const pairPartnersByUser = new Map();
+  const recordPair = (aKey, bKey) => {
+    if (!aKey || !bKey || aKey === bKey) return;
+    if (!handleSet.has(aKey) || !handleSet.has(bKey)) return;
+    if (!pairPartnersByUser.has(aKey)) pairPartnersByUser.set(aKey, new Set());
+    if (!pairPartnersByUser.has(bKey)) pairPartnersByUser.set(bKey, new Set());
+    pairPartnersByUser.get(aKey).add(bKey);
+    pairPartnersByUser.get(bKey).add(aKey);
+  };
+
+  for (const commit of Array.isArray(commits) ? commits : []) {
+    if (!commit || typeof commit !== 'object') continue;
+    if (typeof commit.changedFiles === 'number' && commit.changedFiles <= 0) continue;
+    if (commit.prMerged === false) continue;
+
+    const fullMessage = String(commit.fullMessage || commit.message || '');
+    const messageCoAuthors = parseCoAuthorsFromMessage(fullMessage);
+    const graphAuthors = Array.isArray(commit.authors) ? commit.authors : [];
+    const participants = new Set();
+
+    const primaryHandle = resolveHandleFromIdentity(
+      { login: commit.author, email: commit.authorEmail, name: commit.authorName },
+      { handleSet, uniqueNameMap }
+    );
+    if (primaryHandle) participants.add(primaryHandle);
+    for (const ga of graphAuthors) {
+      const resolved = resolveHandleFromIdentity(ga, { handleSet, uniqueNameMap });
+      if (resolved) participants.add(resolved);
+    }
+    for (const ca of messageCoAuthors) {
+      const resolved = resolveHandleFromIdentity(ca, { handleSet, uniqueNameMap });
+      if (resolved) participants.add(resolved);
+    }
+
+    const hasCoAuthorSignal = messageCoAuthors.length > 0 || graphAuthors.length >= 2;
+    if (!hasCoAuthorSignal || participants.size < 2) continue;
+    const list = Array.from(participants);
+    for (let i = 0; i < list.length; i += 1) {
+      for (let j = i + 1; j < list.length; j += 1) {
+        recordPair(list[i], list[j]);
+      }
+    }
+  }
+
+  const relicClaimsById = new Map();
+  for (const profile of contributors) {
+    const key = String(profile.github || '').trim().toLowerCase();
+    if (!key) continue;
+    const codes = normalizeRelicCodes(profile.relic);
+    if (!codes.length) continue;
+
+    const file = String(profile.file || '').trim();
+    const claimBucket =
+      relicClaimTimes[`data/profiles/${file}`] ||
+      relicClaimTimes[file] ||
+      relicClaimTimes[key] ||
+      {};
+
+    for (const code of codes) {
+      const hash = await sha256HexAsync(code);
+      const def = defByHash.get(hash);
+      if (!def) continue;
+
+      const meta = claimBucket[hash] || claimBucket[def.id] || {};
+      const claimedAtStr = String(meta.committedDate || profile.joinedAt || '').trim();
+      const claimedTs = claimedAtStr ? Date.parse(claimedAtStr) : Number.POSITIVE_INFINITY;
+      const validTs = Number.isNaN(claimedTs) ? Number.POSITIVE_INFINITY : claimedTs;
+
+      if (!relicClaimsById.has(def.id)) relicClaimsById.set(def.id, []);
+      relicClaimsById.get(def.id).push({
+        def,
+        key,
+        handle: displayHandleByKey.get(key) || profile.github || key,
+        file,
+        claimedAt: claimedAtStr,
+        claimedTs: validTs,
+        orderHint: typeof meta.commitOrder === 'number' ? meta.commitOrder : Number.POSITIVE_INFINITY
+      });
+    }
+  }
+
+  const relicPointsByUser = new Map();
+  const relicIdsByUser = new Map();
+  const relicLateByUser = new Map();
+  const relicStatusList = [];
+
+  for (const def of defs) {
+    const claims = relicClaimsById.get(def.id) || [];
+    if (!claims.length) {
+      relicStatusList.push({ id: def.id, label: def.label, points: def.points, claimed: false, claimedBy: '' });
+      continue;
+    }
+
+    claims.sort((a, b) => {
+      if (a.claimedTs !== b.claimedTs) return a.claimedTs - b.claimedTs;
+      if (a.orderHint !== b.orderHint) return a.orderHint - b.orderHint;
+      return a.file.localeCompare(b.file);
+    });
+
+    const winner = claims[0];
+    relicPointsByUser.set(winner.key, (relicPointsByUser.get(winner.key) || 0) + def.points);
+    if (!relicIdsByUser.has(winner.key)) relicIdsByUser.set(winner.key, []);
+    relicIdsByUser.get(winner.key).push(def.id);
+
+    for (let i = 1; i < claims.length; i += 1) {
+      const late = claims[i];
+      if (!relicLateByUser.has(late.key)) relicLateByUser.set(late.key, []);
+      relicLateByUser.get(late.key).push({ id: def.id, winner: winner.handle });
+    }
+
+    relicStatusList.push({
+      id: def.id,
+      label: def.label,
+      points: def.points,
+      claimed: true,
+      claimedBy: winner.handle,
+      claimedAt: winner.claimedAt
     });
   }
 
-  return resolved;
+  const scored = contributors.map((profile) => {
+    const key = String(profile.github || '').trim().toLowerCase();
+    const starred = Boolean(profile.starred);
+    const starPts = starred ? STAR_POINTS : 0;
+    const cheerTargets = Array.from(cheeredTargetsByUser.get(key) || [])
+      .map((t) => displayHandleByKey.get(t) || t)
+      .sort((a, b) => a.localeCompare(b));
+    const cheerPts = Math.min(CHEER_POINTS_CAP, cheerTargets.length);
+    const pairPartners = Array.from(pairPartnersByUser.get(key) || [])
+      .map((p) => displayHandleByKey.get(p) || p)
+      .sort((a, b) => a.localeCompare(b));
+    const pairPts = pairPartners.length * PAIR_POINTS_PER_PARTNER;
+    const relicPts = relicPointsByUser.get(key) || 0;
+    const relicIds = relicIdsByUser.get(key) || [];
+    const relicLate = relicLateByUser.get(key) || [];
+    const points = starPts + cheerPts + pairPts + relicPts;
+    const tier = resolveVfxTier(points, starred);
+
+    const copy = {
+      ...profile,
+      score: {
+        points,
+        starred,
+        ...tier,
+        rank: 0,
+        isTop5: false,
+        breakdown: {
+          star: starPts,
+          cheers: cheerPts,
+          cheerTargets,
+          pair: pairPts,
+          pairPartners,
+          relic: relicPts,
+          relicIds,
+          relicLate
+        }
+      }
+    };
+    delete copy.relic;
+    return copy;
+  });
+
+  const rankedIndices = scored
+    .map((profile, idx) => ({
+      idx,
+      points: profile.score.points,
+      starred: profile.score.starred ? 1 : 0,
+      cheersSent: profile.score.breakdown.cheerTargets.length,
+      cheersReceived: Array.isArray(profile.cheers) ? profile.cheers.length : 0,
+      joinedTs: Date.parse(profile.joinedAt || '') || Number.POSITIVE_INFINITY,
+      handle: String(profile.github || '').toLowerCase()
+    }))
+    .sort((a, b) => {
+      if (b.points !== a.points) return b.points - a.points;
+      if (b.starred !== a.starred) return b.starred - a.starred;
+      if (b.cheersSent !== a.cheersSent) return b.cheersSent - a.cheersSent;
+      if (b.cheersReceived !== a.cheersReceived) return b.cheersReceived - a.cheersReceived;
+      if (a.joinedTs !== b.joinedTs) return a.joinedTs - b.joinedTs;
+      return a.handle.localeCompare(b.handle);
+    });
+
+  rankedIndices.forEach((entry, position) => {
+    const rank = position + 1;
+    const target = scored[entry.idx];
+    target.score.rank = rank;
+    target.score.isTop5 = rank <= TOP5_LIMIT && target.score.points >= TOP5_MIN_POINTS;
+  });
+
+  return { contributors: scored, relics: relicStatusList };
 }
 
 async function fetchProfilesBundle(repository, encodedRepo, token) {
   const [owner, name] = repository.split('/');
   let entries = [];
   let cheerFiles = [];
+  let relicDefinitions = [];
   if (token) {
     try {
       const wallData = await fetchWallEntriesViaGraphql(owner, name, token);
       entries = wallData.entries;
       cheerFiles = wallData.cheerFiles;
+      relicDefinitions = wallData.relicDefinitions || [];
     } catch {
       entries = await fetchProfileEntriesViaContents(encodedRepo, token);
     }
@@ -680,8 +1146,30 @@ async function fetchProfilesBundle(repository, encodedRepo, token) {
     ...entries.map((entry) => `data/profiles/${entry.file}`),
     ...cheerFiles.map((item) => item.relPath)
   ];
-  const fileContributors = await fetchFileContributorsViaGraphql(owner, name, trackedPaths, token).catch(() => ({}));
-  return { entries, cheerFiles, fileContributors };
+  const relicPathSet = new Set(
+    entries
+      .filter((entry) => {
+        try {
+          const parsed = JSON.parse(entry.text);
+          return normalizeRelicCodes(parsed?.relic).length > 0;
+        } catch {
+          return false;
+        }
+      })
+      .map((entry) => `data/profiles/${entry.file}`)
+  );
+
+  const historyBundle = await fetchFileContributorsViaGraphql(owner, name, trackedPaths, token, relicPathSet).catch(
+    () => ({ fileContributors: {}, scoringCommits: [], relicClaimTimes: {} })
+  );
+  return {
+    entries,
+    cheerFiles,
+    fileContributors: historyBundle.fileContributors || {},
+    scoringCommits: historyBundle.scoringCommits || [],
+    relicDefinitions,
+    relicClaimTimes: historyBundle.relicClaimTimes || {}
+  };
 }
 
 function validateAndNormalizeProfileEntries(profileEntries, fileContributors = {}, cheerFiles = [], stargazers = []) {
@@ -773,9 +1261,12 @@ function normalizeCommitNode(commit) {
       ? commit.parents.map((parent) => String(parent.sha || '')).filter(Boolean)
       : [],
     author: pickCommitAuthorLogin(commit),
+    authorEmail: String(commit?.commit?.author?.email || ''),
+    authorName: String(commit?.commit?.author?.name || ''),
     avatarUrl: String(commit?.author?.avatar_url || ''),
     profileUrl: String(commit?.author?.html_url || ''),
     message: pickCommitMessageHeader(commit),
+    fullMessage: String(commit?.commit?.message || ''),
     time: pickCommitTime(commit),
     htmlUrl: String(commit.html_url || '')
   };
@@ -939,18 +1430,27 @@ async function fetchPackedWallState({ repository, token = '' }) {
   const profileEntries = profilesBundle.entries;
   const cheerFiles = profilesBundle.cheerFiles || [];
   const fingerprint = await computeFingerprint(profileEntries, cheerFiles);
-  const { contributors: normalized, errors, warnings } = validateAndNormalizeProfileEntries(
+  const { contributors: normalizedBase, errors, warnings } = validateAndNormalizeProfileEntries(
     profileEntries,
     profilesBundle.fileContributors,
     cheerFiles,
     stargazers
   );
+  const commitNodes = Array.isArray(commits) ? commits.map(normalizeCommitNode) : [];
+  const scoringCommits = Array.isArray(profilesBundle.scoringCommits) && profilesBundle.scoringCommits.length
+    ? profilesBundle.scoringCommits
+    : commitNodes;
+  const { contributors: normalized, relics } = await computeContributorScoresAsync({
+    contributors: normalizedBase,
+    commits: scoringCommits,
+    relicDefinitions: profilesBundle.relicDefinitions || [],
+    relicClaimTimes: profilesBundle.relicClaimTimes || {}
+  });
   const ok = errors.length === 0;
   const contributors = ok ? normalized : [];
   const cheersTotal = contributors.reduce((sum, profile) => sum + profile.cheers.length, 0);
   const recentCheers = collectRecentCheers(contributors);
 
-  const commitNodes = Array.isArray(commits) ? commits.map(normalizeCommitNode) : [];
   const latestCommitAt = commitNodes.length ? commitNodes[0].time : '';
   const issueNodes = issuesResult.data.map(normalizeIssueNode);
   const pullNodes = pullsResult.data.map(normalizePullRequestNode);
@@ -1012,6 +1512,7 @@ async function fetchPackedWallState({ repository, token = '' }) {
     count: contributors.length,
     contributors,
     previewContributors: normalized,
+    relics,
     cheersTotal,
     recentCheers,
     github: githubState,
@@ -1024,7 +1525,7 @@ async function fetchPackedWallState({ repository, token = '' }) {
 }
 
 function cacheRequestFor(repository) {
-  return new Request(`https://pulse-wall-cache.internal/__v7/${encodeURIComponent(repository)}`, {
+  return new Request(`https://pulse-wall-cache.internal/__v8/${encodeURIComponent(repository)}`, {
     method: 'GET'
   });
 }

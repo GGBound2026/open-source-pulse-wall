@@ -11,8 +11,10 @@ const CHEERS_MAX_PER_PROFILE = 50;
 const CHEER_MESSAGE_MAX_LENGTH = 80;
 const TEMPLATE_FILENAME = '_template.json';
 
-const ALLOWED_PROFILE_KEYS = new Set(['name', 'motto', 'city']);
+const ALLOWED_PROFILE_KEYS = new Set(['name', 'motto', 'city', 'relic']);
 const ALLOWED_CHEER_KEYS = new Set(['message']);
+const RELIC_CODE_MAX_LENGTH = 64;
+const RELIC_MAX_ITEMS = 2;
 
 function getDirs(rootDir = ROOT) {
   return {
@@ -196,7 +198,7 @@ function validateProfile(profile, filename) {
   );
   if (unknownKeys.length > 0) {
     errors.push(
-      `${filename}: 包含未允许的字段 ${unknownKeys.join(', ')}（仅允许 name、motto、city）`
+      `${filename}: 包含未允许的字段 ${unknownKeys.join(', ')}（仅允许 name、motto、city、relic）`
     );
   }
 
@@ -209,6 +211,28 @@ function validateProfile(profile, filename) {
 
   if (profile.city !== undefined && (typeof profile.city !== 'string' || profile.city.trim().length > 40)) {
     errors.push(`${filename}: city 必须是 40 个字符以内的字符串`);
+  }
+
+  if (profile.relic !== undefined) {
+    if (typeof profile.relic === 'string') {
+      const trimmed = profile.relic.trim();
+      if (!trimmed || trimmed.length > RELIC_CODE_MAX_LENGTH) {
+        errors.push(`${filename}: relic 必须是 1–${RELIC_CODE_MAX_LENGTH} 个字符以内的非空暗号字符串`);
+      }
+    } else if (Array.isArray(profile.relic)) {
+      if (profile.relic.length === 0 || profile.relic.length > RELIC_MAX_ITEMS) {
+        errors.push(`${filename}: relic 数组最多填写 ${RELIC_MAX_ITEMS} 个非空暗号字符串`);
+      } else {
+        const invalid = profile.relic.some(
+          (item) => typeof item !== 'string' || !item.trim() || item.trim().length > RELIC_CODE_MAX_LENGTH
+        );
+        if (invalid) {
+          errors.push(`${filename}: relic 数组中的每一项都必须是 1–${RELIC_CODE_MAX_LENGTH} 个字符以内的非空字符串`);
+        }
+      }
+    } else {
+      errors.push(`${filename}: relic 必须是暗号字符串，或最多 ${RELIC_MAX_ITEMS} 个暗号组成的字符串数组`);
+    }
   }
 
   return { errors, warnings };

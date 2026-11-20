@@ -1,10 +1,13 @@
 const MAX_FEED_ITEMS = 30;
 const VISIBLE_FEED_ITEMS = 3;
 const REFRESH_LABEL_DEFAULT = '立即刷新';
-const STATE_CACHE_KEY = 'pulse-wall:state:v4';
+const STATE_CACHE_KEY = 'pulse-wall:state:v5';
 const REFRESH_COOLDOWN_STORAGE_KEY = 'pulse-wall:refresh-cooldown-until';
 const MOTION_PREF_STORAGE_KEY = 'pulse-wall:motion-paused';
+const FRESH_WINDOW_MS = 20 * 60 * 1000;
+const SESSION_FRESH_TTL_MS = 95 * 1000;
 
+// Dimension 1: Card Collector Material Palette (8 themes)
 const STAR_THEMES = [
   { id: 'prism', label: '棱镜虹彩', tone: 'light' },
   { id: 'goldleaf', label: '鎏金典藏', tone: 'light' },
@@ -16,31 +19,71 @@ const STAR_THEMES = [
   { id: 'obsidian', label: '黑曜紫晶', tone: 'dark' }
 ];
 
-// Dimension 2 (Around the frame #1): Out-of-frame sculptural border & corner ornaments
-const STAR_FRAMES = [
-  { id: 'aurora-blades', label: '棱光星翼角' },
-  { id: 'royal-filigree', label: '巴洛克金角' },
-  { id: 'botanical-vine', label: '破框蔓金叶' },
-  { id: 'celestial-wings', label: '环框星轨环' },
-  { id: 'cyber-brackets', label: '悬浮全息护角' },
-  { id: 'sakura-petals', label: '绕框花瓣簇' },
-  { id: 'tarot-crown', label: '塔罗星冠框' },
-  { id: 'crystal-shards', label: '悬浮碎钻棱' }
+// Dimension 2: 12 Distinct Mythic & Multi-Element Frame-Break Lineages (each with its own iconic native palette!)
+// Tier 0 (1-2 pts, Starred): Collector card skin only, ZERO frame-break VFX (teases destined lineage)
+// Tier 1 (3-5 pts): Hatchling / Initiate form
+// Tier 2 (6-9 pts): Awakened / Adult form
+// Tier 3 (10+ pts): Sovereign / Epic form with live neighbor-card interaction
+const STAR_VFX_BY_TIER = {
+  1: [
+    { id: 'dragon-summon', lineage: '炎龙血脉', label: '小火龙幼崽' },
+    { id: 'hero-slays-dragon', lineage: '勇者屠龙', label: '见习勇者斩幼龙' },
+    { id: 'seraph-descent', lineage: '炽天使降临', label: '圣羽微光' },
+    { id: 'abyss-demon', lineage: '深渊魔王', label: '深渊魔爪' },
+    { id: 'thunder-zeus', lineage: '雷神裁决', label: '高压鞭雷' },
+    { id: 'paladin-cavalry', lineage: '圣殿骑士团', label: '孤骑突刺' },
+    { id: 'sword-immortal', lineage: '青莲剑仙', label: '御剑初成' },
+    { id: 'ink-dragon', lineage: '泼墨神龙', label: '墨蛟戏珠' },
+    { id: 'nine-tail-fox', lineage: '九尾天狐', label: '灵狐探首' },
+    { id: 'frost-fenrir', lineage: '极地冰狼', label: '雪狼踏霜' },
+    { id: 'arcane-cosmos', lineage: '星界天象', label: '学徒星环' },
+    { id: 'kunpeng-whale', lineage: '逍遥鲲鹏', label: '灵鲲跃浪' }
+  ],
+  2: [
+    { id: 'dragon-summon', lineage: '炎龙血脉', label: '炽翼飞龙' },
+    { id: 'hero-slays-dragon', lineage: '勇者屠龙', label: '圣剑骑士破魔龙' },
+    { id: 'seraph-descent', lineage: '炽天使降临', label: '四翼圣使天降' },
+    { id: 'abyss-demon', lineage: '深渊魔王', label: '炎魔角影降世' },
+    { id: 'thunder-zeus', lineage: '雷神裁决', label: '雷神战锤轰鸣' },
+    { id: 'paladin-cavalry', lineage: '圣殿骑士团', label: '圆桌圣盾与双骑' },
+    { id: 'sword-immortal', lineage: '青莲剑仙', label: '青莲五剑阵' },
+    { id: 'ink-dragon', lineage: '泼墨神龙', label: '泼墨神龙腾渊' },
+    { id: 'nine-tail-fox', lineage: '九尾天狐', label: '三尾妖狐幻舞' },
+    { id: 'frost-fenrir', lineage: '极地冰狼', label: '凛冬冰狼啸月' },
+    { id: 'arcane-cosmos', lineage: '星界天象', label: '大法师星象天陨' },
+    { id: 'kunpeng-whale', lineage: '逍遥鲲鹏', label: '巨鲲巡海' }
+  ],
+  3: [
+    { id: 'dragon-summon', lineage: '炎龙血脉', label: '焚天古龙王' },
+    { id: 'hero-slays-dragon', lineage: '勇者屠龙', label: '圣光斩穹 · 屠龙史诗' },
+    { id: 'seraph-descent', lineage: '炽天使降临', label: '六翼炽天使 · 众卡圣咏' },
+    { id: 'abyss-demon', lineage: '深渊魔王', label: '深渊魔君 · 锁链吞噬' },
+    { id: 'thunder-zeus', lineage: '雷神裁决', label: '万雷电网 · 连锁感电' },
+    { id: 'paladin-cavalry', lineage: '圣殿骑士团', label: '圣殿骑兵总攻' },
+    { id: 'sword-immortal', lineage: '青莲剑仙', label: '万剑归宗' },
+    { id: 'ink-dragon', lineage: '泼墨神龙', label: '九霄墨龙巡界' },
+    { id: 'nine-tail-fox', lineage: '九尾天狐', label: '九尾天狐魅影' },
+    { id: 'frost-fenrir', lineage: '极地冰狼', label: '芬里尔极光冰原' },
+    { id: 'arcane-cosmos', lineage: '星界天象', label: '诸神黄昏 · 星界禁咒' },
+    { id: 'kunpeng-whale', lineage: '逍遥鲲鹏', label: '化鲲为鹏 · 扶摇九万里' }
+  ]
+};
+
+const STAR_VFX = STAR_VFX_BY_TIER[2];
+
+// Dimension 3: VFX Energy Spectrum Palette (8 high-contrast light/dark-paper spectra)
+const STAR_SPECTRA = [
+  { id: 'cyan-volt', label: '星蓝雷电' },
+  { id: 'solar-gold', label: '炽日鎏金' },
+  { id: 'emerald-jade', label: '翡翠极光' },
+  { id: 'sakura-neon', label: '绯樱粉金' },
+  { id: 'prism-rainbow', label: '全息虹彩' },
+  { id: 'amethyst-void', label: '虚空紫晶' },
+  { id: 'crimson-ember', label: '绯红余烬' },
+  { id: 'frost-opal', label: '冰川月白' }
 ];
 
-// Dimension 3 (Around the frame #2): Animated perimeter energy aura & running border light
-const STAR_AURAS = [
-  { id: 'prism-orbit', label: '虹彩流光环' },
-  { id: 'molten-gold', label: '熔金奔跑边' },
-  { id: 'emerald-plasma', label: '极光外溢场' },
-  { id: 'comet-chase', label: '双彗星巡边' },
-  { id: 'starlight-halo', label: '星尘外光环' },
-  { id: 'sakura-mist', label: '绯霞霓虹晕' },
-  { id: 'electric-cyan', label: '星蓝离子边' },
-  { id: 'royal-radiance', label: '鎏金日冕晕' }
-];
-
-// Dimension 4: Surface vector watermark pattern
+// Dimension 4: Surface Vector Watermark Pattern (8 patterns)
 const STAR_PATTERNS = [
   { id: 'constellation', label: '星图连线' },
   { id: 'sunburst', label: '破晓芒光' },
@@ -52,7 +95,7 @@ const STAR_PATTERNS = [
   { id: 'prism-facets', label: '晶格折面' }
 ];
 
-// Dimension 5: Break-the-frame overhanging corner emblem
+// Dimension 5: Overhanging Corner Star Emblem (8 emblems)
 const STAR_BADGES = [
   { id: 'crystal-star', label: '水晶棱镜星' },
   { id: 'wax-seal', label: '复古火漆印' },
@@ -66,8 +109,8 @@ const STAR_BADGES = [
 
 const TOTAL_STAR_COMBINATIONS =
   STAR_THEMES.length *
-  STAR_FRAMES.length *
-  STAR_AURAS.length *
+  STAR_VFX.length *
+  STAR_SPECTRA.length *
   STAR_PATTERNS.length *
   STAR_BADGES.length;
 
@@ -76,8 +119,14 @@ const state = {
   knownGithubEvents: new Set(),
   knownCheerKeys: new Set(),
   knownStarredHandles: new Set(),
+  knownTiersByHandle: new Map(),
+  freshnessByHandle: new Map(),
   bootstrappedCheers: false,
   bootstrappedStars: false,
+  bootstrappedTiers: false,
+  demoFreshSeeded: false,
+  freshnessCleanupTimer: null,
+  honorSpotlightTimer: null,
   feed: [],
   lastOk: null,
   lastFingerprint: '',
@@ -95,7 +144,8 @@ const state = {
   refreshing: false,
   refreshCooldownTimer: null,
   commitRankByAuthor: new Map(),
-  motionPaused: false
+  motionPaused: false,
+  vfxEngine: null
 };
 
 const AVATARS = Array.from({ length: 11 }, (_, index) => {
@@ -128,6 +178,12 @@ const elements = {
   validationBox: $('#validationBox'),
   liveFeed: $('#liveFeed'),
   wall: $('#contributorsWall'),
+  wallViewport: $('.wall-scroll-viewport'),
+  honorRibbon: $('#honorRibbon'),
+  honorRibbonList: $('#honorRibbonList'),
+  honorRibbonHint: $('#honorRibbonHint'),
+  honorRibbonHintText: $('#honorRibbonHintText'),
+  vfxOverlay: $('#vfxOverlay'),
   toast: $('#toast'),
   viewAllFeed: $('#viewAllFeed'),
   activityOverlay: $('#activityOverlay'),
@@ -203,10 +259,116 @@ function hashString(input, seed = 2166136261) {
 
 function demoStarsEnabled() {
   try {
-    return new URLSearchParams(window.location.search).get('demo-stars') === '1';
+    const params = new URLSearchParams(window.location.search);
+    return params.get('demo-stars') === '1' || params.get('demo-tiers') === '1';
   } catch {
     return false;
   }
+}
+
+function demoTiersEnabled() {
+  try {
+    return new URLSearchParams(window.location.search).get('demo-tiers') === '1';
+  } catch {
+    return false;
+  }
+}
+
+function resolveTierMeta(points, starred) {
+  const score = Math.max(0, Number(points) || 0);
+  if (!starred) return { vfxTier: 0, tierId: 'locked', tierLabel: '未点 Star', tierShort: '', nextTierPoints: 1 };
+  if (score >= 10) return { vfxTier: 3, tierId: 'tier-3', tierLabel: '三阶 · 顶格传说', tierShort: '三阶', nextTierPoints: null };
+  if (score >= 6) return { vfxTier: 2, tierId: 'tier-2', tierLabel: '二阶 · 觉醒进化', tierShort: '二阶', nextTierPoints: 10 };
+  if (score >= 3) return { vfxTier: 1, tierId: 'tier-1', tierLabel: '一阶 · 初醒破框', tierShort: '一阶', nextTierPoints: 6 };
+  return { vfxTier: 0, tierId: 'star-card', tierLabel: '0阶 · 星标闪卡', tierShort: '0阶', nextTierPoints: 3 };
+}
+
+function buildFallbackScoresMap(contributors) {
+  const sentByUser = new Map();
+  for (const target of contributors) {
+    const targetKey = String(target.github || '').trim().toLowerCase();
+    if (!targetKey) continue;
+    for (const cheer of Array.isArray(target.cheers) ? target.cheers : []) {
+      const fromKey = String(cheer?.from || '').trim().toLowerCase();
+      if (!fromKey || !String(cheer?.message || '').trim() || fromKey === targetKey) continue;
+      if (!sentByUser.has(fromKey)) sentByUser.set(fromKey, new Set());
+      sentByUser.get(fromKey).add(targetKey);
+    }
+  }
+  return sentByUser;
+}
+
+function scoreForProfile(profile, fallbackCheersMap = null, demoSlot = -1) {
+  const starred = isProfileStarred(profile);
+  if (demoTiersEnabled() && starred && demoSlot >= 0) {
+    const demoPointsPool = [12, 10, 8, 6, 5, 4, 3, 2, 1];
+    const pts = demoSlot < demoPointsPool.length ? demoPointsPool[demoSlot] : 1;
+    const meta = resolveTierMeta(pts, true);
+    const cheerPts = Math.min(3, Math.max(0, pts - 1));
+    const rem = Math.max(0, pts - 1 - cheerPts);
+    const pairPts = Math.min(6, Math.floor(rem / 2) * 2);
+    const relicPts = Math.max(0, rem - pairPts);
+    return {
+      points: pts,
+      starred: true,
+      ...meta,
+      rank: demoSlot + 1,
+      isTop5: pts >= 5 && demoSlot < 5,
+      breakdown: {
+        star: 1,
+        cheers: cheerPts,
+        cheerTargets: [],
+        pair: pairPts,
+        pairPartners: [],
+        relic: relicPts,
+        relicIds: [],
+        relicLate: []
+      }
+    };
+  }
+
+  if (profile?.score && typeof profile.score.points === 'number') {
+    const meta = resolveTierMeta(profile.score.points, starred);
+    return {
+      ...profile.score,
+      starred,
+      ...meta
+    };
+  }
+
+  const key = String(profile.github || profile.file || profile.name || '').trim().toLowerCase();
+  const starPts = starred ? 1 : 0;
+  const sentTargets = fallbackCheersMap ? Array.from(fallbackCheersMap.get(key) || []) : [];
+  const cheerPts = Math.min(3, sentTargets.length);
+  const points = starPts + cheerPts;
+  const meta = resolveTierMeta(points, starred);
+  return {
+    points,
+    starred,
+    ...meta,
+    rank: 0,
+    isTop5: false,
+    breakdown: {
+      star: starPts,
+      cheers: cheerPts,
+      cheerTargets: sentTargets,
+      pair: 0,
+      pairPartners: [],
+      relic: 0,
+      relicIds: [],
+      relicLate: []
+    }
+  };
+}
+
+function formatScoreBreakdownText(score) {
+  const b = score?.breakdown || {};
+  const parts = [];
+  if (b.star) parts.push(`⭐Star +${b.star}`);
+  if (b.cheers) parts.push(`💬寄语 +${b.cheers}`);
+  if (b.pair) parts.push(`🤝结对 +${b.pair}`);
+  if (b.relic) parts.push(`🔍寻宝 +${b.relic}`);
+  return parts.length ? parts.join(' · ') : '尚未获得积分';
 }
 
 function isProfileStarred(profile) {
@@ -220,10 +382,14 @@ function isProfileStarred(profile) {
   return false;
 }
 
-function buildRecipeFromIndices(seedKey, indices) {
+function buildRecipeFromIndices(seedKey, indices, scoreInfo) {
   const theme = STAR_THEMES[indices[0]];
-  const frame = STAR_FRAMES[indices[1]];
-  const aura = STAR_AURAS[indices[2]];
+  const vfxTier = scoreInfo.vfxTier;
+  const lineageSlot = indices[1] % STAR_VFX.length;
+  const destinedTier1 = STAR_VFX_BY_TIER[1][lineageSlot];
+  const tierPool = STAR_VFX_BY_TIER[vfxTier] || null;
+  const vfx = tierPool ? tierPool[lineageSlot] : null;
+  const spectrum = STAR_SPECTRA[indices[2]];
   const pattern = STAR_PATTERNS[indices[3]];
   const badge = STAR_BADGES[indices[4]];
   const codeHash = hashString(`${seedKey}:${indices.join('-')}`, 0x811c9dc5);
@@ -231,18 +397,27 @@ function buildRecipeFromIndices(seedKey, indices) {
   const hueShift = ((codeHash >>> 16) % 25) - 12;
   const sparkSeed = (codeHash >>> 24) % 100;
 
+  const skinSummary = `${theme.label} × ${pattern.label} × ${badge.label}`;
+  const summary = vfx
+    ? `${vfx.lineage}·${vfx.label}（${scoreInfo.tierLabel}）× ${spectrum.label} × ${skinSummary}`
+    : `隐藏血脉「${destinedTier1.lineage}·${destinedTier1.label}」（3分唤醒）× ${skinSummary}`;
+
   return {
     key: indices.join(':'),
     serial,
     uid: `${serial.toLowerCase()}-${indices.join('')}`,
     theme,
-    frame,
-    aura,
+    vfxTier,
+    vfx,
+    destinedLineage: destinedTier1,
+    spectrum,
     pattern,
     badge,
+    score: scoreInfo,
     hueShift,
     sparkSeed,
-    summary: `${theme.label} × ${frame.label} × ${aura.label} × ${pattern.label} × ${badge.label}`
+    skinSummary,
+    summary
   };
 }
 
@@ -267,15 +442,22 @@ function pickLeastUsedIndex(preferred, size, stepSeed, counts) {
 
 function assignStarRecipes(contributors) {
   const map = new Map();
+  const scoreMap = new Map();
   const usedCombos = new Set();
+  const fallbackCheersMap = buildFallbackScoresMap(contributors);
   const sizes = [
     STAR_THEMES.length,
-    STAR_FRAMES.length,
-    STAR_AURAS.length,
+    STAR_VFX.length,
+    STAR_SPECTRA.length,
     STAR_PATTERNS.length,
     STAR_BADGES.length
   ];
   const dimCounts = sizes.map((size) => new Array(size).fill(0));
+  const tierVfxCounts = {
+    1: new Array(STAR_VFX.length).fill(0),
+    2: new Array(STAR_VFX.length).fill(0),
+    3: new Array(STAR_VFX.length).fill(0)
+  };
 
   const ordered = contributors
     .slice()
@@ -283,9 +465,17 @@ function assignStarRecipes(contributors) {
       String(b.github || b.file || b.name).toLowerCase()
     ));
 
+  let demoStarSlot = 0;
   for (const profile of ordered) {
     const key = String(profile.github || profile.file || profile.name || '').trim().toLowerCase();
-    if (!key || !isProfileStarred(profile)) continue;
+    if (!key) continue;
+    const starred = isProfileStarred(profile);
+    const slot = starred ? demoStarSlot++ : -1;
+    const scoreInfo = scoreForProfile(profile, fallbackCheersMap, slot);
+    scoreMap.set(key, scoreInfo);
+
+    // Hard gate: MUST Star the repo to unlock Star Collector Card skin & VFX!
+    if (!starred) continue;
 
     const h1 = hashString(key, 0x811c9dc5);
     const h2 = hashString(`${key}#pulse-star`, 0x9e3779b9);
@@ -306,9 +496,13 @@ function assignStarRecipes(contributors) {
       (h1 >>> 24)
     ];
 
-    let indices = preferred.map((pref, dim) =>
-      pickLeastUsedIndex(pref, sizes[dim], stepSeeds[dim], dimCounts[dim])
-    );
+    let indices = [
+      pickLeastUsedIndex(preferred[0], sizes[0], stepSeeds[0], dimCounts[0]),
+      pickLeastUsedIndex(preferred[1], sizes[1], stepSeeds[1], dimCounts[1]),
+      pickLeastUsedIndex(preferred[2], sizes[2], stepSeeds[2], dimCounts[2]),
+      pickLeastUsedIndex(preferred[3], sizes[3], stepSeeds[3], dimCounts[3]),
+      pickLeastUsedIndex(preferred[4], sizes[4], stepSeeds[4], dimCounts[4])
+    ];
 
     let attempt = 0;
     while (usedCombos.has(indices.join(':')) && attempt < 256) {
@@ -318,15 +512,23 @@ function assignStarRecipes(contributors) {
       indices[dim] = (indices[dim] + 1) % sizes[dim];
     }
 
-    const comboKey = indices.join(':');
-    usedCombos.add(comboKey);
-    indices.forEach((idx, dim) => {
-      dimCounts[dim][idx] += 1;
-    });
-    map.set(key, buildRecipeFromIndices(key, indices));
+    usedCombos.add(indices.join(':'));
+    dimCounts[0][indices[0]] += 1;
+    dimCounts[1][indices[1]] += 1;
+    dimCounts[2][indices[2]] += 1;
+    dimCounts[3][indices[3]] += 1;
+    dimCounts[4][indices[4]] += 1;
+
+    map.set(key, buildRecipeFromIndices(key, indices, scoreInfo));
   }
 
   state.starRecipes = map;
+  state.profileScores = scoreMap;
+}
+
+function getProfileScore(profile) {
+  const key = String(profile.github || profile.file || profile.name || '').trim().toLowerCase();
+  return (key && state.profileScores?.get(key)) || scoreForProfile(profile);
 }
 
 function recipeForProfile(profile) {
@@ -501,178 +703,6 @@ function avatarForProfile(profile) {
   }
 
   return AVATARS[0];
-}
-
-// ============================================================================
-// BREAK-THE-FRAME BORDER SCULPTURAL ORNAMENTS (8 DISTINCT STYLES AROUND FRAME)
-// ============================================================================
-function starFrameArtMarkup(frameId, uid) {
-  const g = `sf-${uid}`;
-  switch (frameId) {
-    case 'aurora-blades':
-      return `
-        <div class="star-frame-art frame-aurora-blades" aria-hidden="true">
-          <svg class="f-corner f-tl" viewBox="0 0 64 64">
-            <defs><linearGradient id="${g}a" x1="0%" y1="0%" x2="100%" y2="100%"><stop offset="0%" stop-color="#e0f2fe"/><stop offset="50%" stop-color="#c084fc"/><stop offset="100%" stop-color="#38bdf8"/></linearGradient></defs>
-            <path d="M2 38 L10 10 L38 2 L24 14 L14 24 Z" fill="url(#${g}a)" stroke="#ffffff" stroke-width="1" opacity="0.95"/>
-            <path d="M12 12 L48 8 M12 12 L8 48" stroke="url(#${g}a)" stroke-width="1.6" opacity="0.8"/>
-            <path d="M10 4 L12 9 L17 11 L12 13 L10 18 L8 13 L3 11 L8 9 Z" fill="#ffffff"/>
-          </svg>
-          <svg class="f-corner f-br" viewBox="0 0 64 64">
-            <path d="M62 26 L54 54 L26 62 L40 50 L50 40 Z" fill="url(#${g}a)" stroke="#ffffff" stroke-width="1" opacity="0.95"/>
-            <path d="M52 52 L16 56 M52 52 L56 16" stroke="url(#${g}a)" stroke-width="1.6" opacity="0.8"/>
-            <path d="M54 46 L56 51 L61 53 L56 55 L54 60 L52 55 L47 53 L52 51 Z" fill="#ffffff"/>
-          </svg>
-          <svg class="f-crest-top" viewBox="0 0 88 22">
-            <path d="M4 13 L36 13 L44 3 L52 13 L84 13" fill="none" stroke="url(#${g}a)" stroke-width="1.6"/>
-            <path d="M44 1 L47 9 L55 12 L47 15 L44 21 L41 15 L33 12 L41 9 Z" fill="#ffffff" stroke="url(#${g}a)" stroke-width="0.9"/>
-          </svg>
-        </div>`;
-    case 'royal-filigree':
-      return `
-        <div class="star-frame-art frame-royal-filigree" aria-hidden="true">
-          <svg class="f-corner f-tl" viewBox="0 0 64 64">
-            <defs><linearGradient id="${g}b" x1="0%" y1="0%" x2="100%" y2="100%"><stop offset="0%" stop-color="#fef3c7"/><stop offset="50%" stop-color="#d49b35"/><stop offset="100%" stop-color="#8f5c14"/></linearGradient></defs>
-            <path d="M6 52 C6 26 14 14 26 10 C18 20 18 30 28 30 C34 30 38 24 34 18 C30 12 20 12 12 12 C24 6 38 6 54 6" fill="none" stroke="url(#${g}b)" stroke-width="2.2" stroke-linecap="round"/>
-            <path d="M10 10 L18 18 M6 22 C14 22 22 14 22 6" fill="none" stroke="url(#${g}b)" stroke-width="1.5"/>
-            <circle cx="11" cy="11" r="3.4" fill="#fef3c7" stroke="#9e6a19" stroke-width="1.2"/>
-          </svg>
-          <svg class="f-corner f-bl" viewBox="0 0 64 64">
-            <path d="M6 12 C6 38 14 50 26 54 C18 44 18 34 28 34 C34 34 38 40 34 46 C30 52 20 52 12 52 C24 58 38 58 54 58" fill="none" stroke="url(#${g}b)" stroke-width="2.2" stroke-linecap="round"/>
-            <circle cx="11" cy="53" r="3" fill="#fef3c7" stroke="#9e6a19" stroke-width="1.2"/>
-          </svg>
-          <svg class="f-corner f-br" viewBox="0 0 64 64">
-            <path d="M58 12 C58 38 50 50 38 54 C46 44 46 34 36 34 C30 34 26 40 30 46 C34 52 44 52 52 52 C40 58 26 58 10 58" fill="none" stroke="url(#${g}b)" stroke-width="2.2" stroke-linecap="round"/>
-            <circle cx="53" cy="53" r="3.4" fill="#fef3c7" stroke="#9e6a19" stroke-width="1.2"/>
-          </svg>
-          <svg class="f-crest-bottom" viewBox="0 0 92 20">
-            <path d="M6 10 Q28 10 38 16 Q46 4 54 16 Q64 10 86 10" fill="none" stroke="url(#${g}b)" stroke-width="1.8"/>
-            <polygon points="46,2 51,10 46,18 41,10" fill="#fef3c7" stroke="#a66d18" stroke-width="1.2"/>
-          </svg>
-        </div>`;
-    case 'botanical-vine':
-      return `
-        <div class="star-frame-art frame-botanical-vine" aria-hidden="true">
-          <svg class="f-vine f-vine-tl" viewBox="0 0 92 92">
-            <defs><linearGradient id="${g}c" x1="0%" y1="0%" x2="100%" y2="100%"><stop offset="0%" stop-color="#fde68a"/><stop offset="52%" stop-color="#c99a3e"/><stop offset="100%" stop-color="#6ee7b7"/></linearGradient></defs>
-            <path d="M12 84 C8 50 18 22 48 12 C62 8 76 8 88 11" fill="none" stroke="url(#${g}c)" stroke-width="2" stroke-linecap="round"/>
-            <path d="M17 58 C2 48 2 34 14 28 C24 38 25 48 17 58Z" fill="url(#${g}c)" opacity="0.88"/>
-            <path d="M28 32 C16 18 20 6 34 4 C40 16 37 26 28 32Z" fill="url(#${g}c)" opacity="0.92"/>
-            <path d="M46 16 C48 4 60 0 70 6 C62 16 54 18 46 16Z" fill="url(#${g}c)" opacity="0.85"/>
-            <path d="M26 46 C38 42 46 34 46 24 C34 26 27 34 26 46Z" fill="url(#${g}c)" opacity="0.65"/>
-            <circle cx="10" cy="70" r="2.3" fill="#fef9c3"/>
-            <circle cx="76" cy="12" r="2.2" fill="#fef9c3"/>
-          </svg>
-          <svg class="f-vine f-vine-br" viewBox="0 0 92 92">
-            <path d="M80 8 C84 42 74 70 44 80 C30 84 16 84 4 81" fill="none" stroke="url(#${g}c)" stroke-width="2" stroke-linecap="round"/>
-            <path d="M75 34 C90 44 90 58 78 64 C68 54 67 44 75 34Z" fill="url(#${g}c)" opacity="0.88"/>
-            <path d="M64 60 C76 74 72 86 58 88 C52 76 55 66 64 60Z" fill="url(#${g}c)" opacity="0.92"/>
-            <path d="M46 76 C44 88 32 92 22 86 C30 76 38 74 46 76Z" fill="url(#${g}c)" opacity="0.85"/>
-            <circle cx="82" cy="22" r="2.3" fill="#fef9c3"/>
-          </svg>
-        </div>`;
-    case 'celestial-wings':
-      return `
-        <div class="star-frame-art frame-celestial-wings" aria-hidden="true">
-          <svg class="f-orbit-ring" viewBox="0 0 360 250" preserveAspectRatio="none">
-            <defs><linearGradient id="${g}d" x1="0%" y1="0%" x2="100%" y2="100%"><stop offset="0%" stop-color="#fde68a"/><stop offset="50%" stop-color="#93c5fd"/><stop offset="100%" stop-color="#f9a8d4"/></linearGradient></defs>
-            <ellipse cx="180" cy="125" rx="176" ry="86" transform="rotate(-9 180 125)" fill="none" stroke="url(#${g}d)" stroke-width="1.6" opacity="0.86"/>
-            <ellipse cx="180" cy="125" rx="170" ry="78" transform="rotate(6 180 125)" fill="none" stroke="url(#${g}d)" stroke-width="1.1" stroke-dasharray="5 6" opacity="0.65"/>
-            <path d="M14 148 L18 156 L26 160 L18 164 L14 172 L10 164 L2 160 L10 156 Z" fill="#fef08a"/>
-            <path d="M346 76 L349 83 L356 86 L349 89 L346 96 L343 89 L336 86 L343 83 Z" fill="#e0f2fe"/>
-          </svg>
-        </div>`;
-    case 'cyber-brackets':
-      return `
-        <div class="star-frame-art frame-cyber-brackets" aria-hidden="true">
-          <span class="cyber-corner cc-tl"></span>
-          <span class="cyber-corner cc-tr"></span>
-          <span class="cyber-corner cc-bl"></span>
-          <span class="cyber-corner cc-br"></span>
-          <span class="cyber-rail rail-left"></span>
-          <span class="cyber-rail rail-right"></span>
-        </div>`;
-    case 'sakura-petals':
-      return `
-        <div class="star-frame-art frame-sakura-petals" aria-hidden="true">
-          <svg class="f-blossom f-blossom-tl" viewBox="0 0 76 76">
-            <defs><linearGradient id="${g}e" x1="0%" y1="0%" x2="100%" y2="100%"><stop offset="0%" stop-color="#fff1f2"/><stop offset="55%" stop-color="#fda4af"/><stop offset="100%" stop-color="#f472b6"/></linearGradient></defs>
-            <g transform="translate(24 22)">
-              <path d="M0 -14 C6 -14 8 -4 0 0 C-8 -4 -6 -14 0 -14Z" fill="url(#${g}e)" stroke="#fff" stroke-width="0.7"/>
-              <path d="M0 -14 C6 -14 8 -4 0 0 C-8 -4 -6 -14 0 -14Z" fill="url(#${g}e)" stroke="#fff" stroke-width="0.7" transform="rotate(72)"/>
-              <path d="M0 -14 C6 -14 8 -4 0 0 C-8 -4 -6 -14 0 -14Z" fill="url(#${g}e)" stroke="#fff" stroke-width="0.7" transform="rotate(144)"/>
-              <path d="M0 -14 C6 -14 8 -4 0 0 C-8 -4 -6 -14 0 -14Z" fill="url(#${g}e)" stroke="#fff" stroke-width="0.7" transform="rotate(216)"/>
-              <path d="M0 -14 C6 -14 8 -4 0 0 C-8 -4 -6 -14 0 -14Z" fill="url(#${g}e)" stroke="#fff" stroke-width="0.7" transform="rotate(288)"/>
-              <circle cx="0" cy="0" r="3" fill="#fde047"/>
-            </g>
-            <path d="M48 10 C56 6 62 12 56 18 C50 22 44 16 48 10Z" fill="#fbcfe8" stroke="#fff" stroke-width="0.6"/>
-            <path d="M10 48 C16 44 22 50 18 58 C12 60 6 54 10 48Z" fill="#fda4af" stroke="#fff" stroke-width="0.6"/>
-          </svg>
-          <svg class="f-blossom f-blossom-br" viewBox="0 0 76 76">
-            <g transform="translate(52 54)">
-              <path d="M0 -13 C5 -13 7 -3 0 0 C-7 -3 -5 -13 0 -13Z" fill="url(#${g}e)" stroke="#fff" stroke-width="0.7"/>
-              <path d="M0 -13 C5 -13 7 -3 0 0 C-7 -3 -5 -13 0 -13Z" fill="url(#${g}e)" stroke="#fff" stroke-width="0.7" transform="rotate(72)"/>
-              <path d="M0 -13 C5 -13 7 -3 0 0 C-7 -3 -5 -13 0 -13Z" fill="url(#${g}e)" stroke="#fff" stroke-width="0.7" transform="rotate(144)"/>
-              <path d="M0 -13 C5 -13 7 -3 0 0 C-7 -3 -5 -13 0 -13Z" fill="url(#${g}e)" stroke="#fff" stroke-width="0.7" transform="rotate(216)"/>
-              <path d="M0 -13 C5 -13 7 -3 0 0 C-7 -3 -5 -13 0 -13Z" fill="url(#${g}e)" stroke="#fff" stroke-width="0.7" transform="rotate(288)"/>
-              <circle cx="0" cy="0" r="2.8" fill="#fde047"/>
-            </g>
-            <path d="M24 62 C30 58 36 62 31 68 C26 70 20 66 24 62Z" fill="#fbcfe8" stroke="#fff" stroke-width="0.6"/>
-          </svg>
-        </div>`;
-    case 'tarot-crown':
-      return `
-        <div class="star-frame-art frame-tarot-crown" aria-hidden="true">
-          <svg class="f-crown-top" viewBox="0 0 112 28">
-            <defs><linearGradient id="${g}f" x1="0%" y1="0%" x2="100%" y2="0%"><stop offset="0%" stop-color="#f6d57a"/><stop offset="50%" stop-color="#fff7d6"/><stop offset="100%" stop-color="#d49b35"/></linearGradient></defs>
-            <path d="M6 20 L38 20 Q48 20 56 6 Q64 20 74 20 L106 20" fill="none" stroke="url(#${g}f)" stroke-width="1.8"/>
-            <path d="M56 2 L59 11 L68 14 L59 17 L56 25 L53 17 L44 14 L53 11 Z" fill="url(#${g}f)" stroke="#8c5e14" stroke-width="0.8"/>
-            <circle cx="30" cy="20" r="2.4" fill="#fef3c7"/>
-            <circle cx="82" cy="20" r="2.4" fill="#fef3c7"/>
-          </svg>
-          <span class="tarot-inner-line"></span>
-          <span class="tarot-corner tc-tl">✦</span>
-          <span class="tarot-corner tc-bl">✦</span>
-          <span class="tarot-corner tc-br">✦</span>
-        </div>`;
-    case 'crystal-shards':
-    default:
-      return `
-        <div class="star-frame-art frame-crystal-shards" aria-hidden="true">
-          <svg class="f-shard f-shard-tl" viewBox="0 0 56 56">
-            <defs><linearGradient id="${g}g" x1="0%" y1="0%" x2="100%" y2="100%"><stop offset="0%" stop-color="#ffffff"/><stop offset="45%" stop-color="#bae6fd"/><stop offset="100%" stop-color="#c084fc"/></linearGradient></defs>
-            <polygon points="18,4 28,16 16,32 6,20" fill="url(#${g}g)" stroke="#ffffff" stroke-width="1"/>
-            <polygon points="36,8 44,14 38,24 30,18" fill="url(#${g}g)" stroke="#ffffff" stroke-width="0.9" opacity="0.88"/>
-            <polygon points="10,36 16,42 10,50 4,44" fill="#e0f2fe" stroke="#ffffff" stroke-width="0.8" opacity="0.85"/>
-          </svg>
-          <svg class="f-shard f-shard-br" viewBox="0 0 56 56">
-            <polygon points="38,52 28,40 40,24 50,36" fill="url(#${g}g)" stroke="#ffffff" stroke-width="1"/>
-            <polygon points="20,48 12,42 18,32 26,38" fill="url(#${g}g)" stroke="#ffffff" stroke-width="0.9" opacity="0.88"/>
-            <polygon points="46,20 40,14 46,6 52,12" fill="#f5d0fe" stroke="#ffffff" stroke-width="0.8" opacity="0.85"/>
-          </svg>
-        </div>`;
-  }
-}
-
-function starOuterSparksMarkup(auraId, shift) {
-  // Perimeter coordinates positioned just OUTSIDE or straddling the card border!
-  const slots = [
-    { x: '-7px', y: `${16 + (shift % 18)}%`, size: 11, delay: 0.2 },
-    { x: 'calc(100% - 4px)', y: `${34 + (shift % 22)}%`, size: 10, delay: 1.4 },
-    { x: `${18 + (shift % 26)}%`, y: '-7px', size: 12, delay: 0.8 },
-    { x: `${56 + (shift % 22)}%`, y: 'calc(100% - 5px)', size: 11, delay: 2.1 },
-    { x: '-6px', y: `${68 + (shift % 16)}%`, size: 8, delay: 2.9 },
-    { x: `${32 + (shift % 30)}%`, y: 'calc(100% - 4px)', size: 9, delay: 1.7 },
-    { x: 'calc(100% - 5px)', y: `${72 + (shift % 14)}%`, size: 12, delay: 0.5 },
-    { x: `${64 + (shift % 18)}%`, y: '-6px', size: 9, delay: 2.5 }
-  ];
-  const nodes = slots
-    .map((slot, idx) => {
-      const kind = (idx + shift) % 3 === 0 ? 'is-diamond' : ((idx + shift) % 3 === 1 ? 'is-dot' : 'is-star');
-      return `<i class="outer-spark ${kind}" style="--sx:${slot.x};--sy:${slot.y};--ss:${slot.size}px;--sd:-${slot.delay}s"></i>`;
-    })
-    .join('');
-  return `<div class="star-outer-sparks aura-${htmlEscape(auraId)}" aria-hidden="true">${nodes}</div>`;
 }
 
 function starPatternSvg(patternId) {
@@ -945,45 +975,29 @@ function cheersMarkup(profile) {
   if (!cheers.length) {
     return `
       <div class="cheers-block is-empty" aria-label="同学寄语">
-        <span class="cheers-empty-line">
-          <svg class="cheers-icon" viewBox="0 0 24 24" aria-hidden="true">
-            <path d="M5 6h14a2 2 0 0 1 2 2v7a2 2 0 0 1-2 2h-6l-4 3v-3H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2Z" />
-          </svg>
-          <span>寄语 0 · 合并 PR 后等同学来留言</span>
-        </span>
+        <span class="cheers-empty-line">寄语 0 · 合并 PR 后等同学来留言</span>
       </div>
     `;
   }
 
   const ordered = cheers.slice().reverse();
-  const previewItems = ordered.slice(0, 2);
+  const latest = ordered[0];
   const triggerAttr = triggerKey ? ` data-cheers-trigger="${htmlEscape(triggerKey)}"` : '';
   const viewAllBtn = triggerKey
-    ? `<button type="button" class="cheers-view-all"${triggerAttr} aria-label="查看 ${htmlEscape(profile.name || profile.github)} 的全部 ${ordered.length} 条寄语">查看全部 ›</button>`
+    ? `<button type="button" class="cheers-view-all"${triggerAttr} aria-label="查看 ${htmlEscape(profile.name || profile.github)} 的全部 ${ordered.length} 条寄语">全部 ›</button>`
     : '';
-
-  const items = previewItems
-    .map((cheer) => `
-      <li>
-        <span class="cheer-from">@${htmlEscape(cheer.from)}:</span>
-        <span class="cheer-message">${htmlEscape(cheer.message)}</span>
-      </li>
-    `)
-    .join('');
 
   return `
     <div class="cheers-block" aria-label="同学寄语">
-      <div class="cheers-head">
-        <span class="cheers-label">
-          <svg class="cheers-icon" viewBox="0 0 24 24" aria-hidden="true">
-            <path d="M5 6h14a2 2 0 0 1 2 2v7a2 2 0 0 1-2 2h-6l-4 3v-3H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2Z" />
-            <path d="M8 10.5h8M8 13.5h5" />
-          </svg>
-          <span>寄语 ${ordered.length}</span>
+      <div class="cheers-inline-row">
+        <span class="cheers-inline-text" title="@${htmlEscape(latest.from)}: ${htmlEscape(latest.message)}">
+          <strong class="cheers-count-tag">寄语 ${ordered.length}</strong>
+          <span class="cheers-sep" aria-hidden="true">·</span>
+          <span class="cheer-from">@${htmlEscape(latest.from)}:</span>
+          <span class="cheer-message">${htmlEscape(latest.message)}</span>
         </span>
         ${viewAllBtn}
       </div>
-      <ul class="cheers-list">${items}</ul>
     </div>
   `;
 }
@@ -997,6 +1011,7 @@ function cardMarkup(profile) {
   const avatar = htmlEscape(avatarForProfile(profile));
   const cheerCount = Array.isArray(profile.cheers) ? profile.cheers.length : 0;
   const recipe = recipeForProfile(profile);
+  const score = getProfileScore(profile);
   const isStarred = Boolean(recipe);
 
   const classes = ['profile-card'];
@@ -1004,43 +1019,85 @@ function cardMarkup(profile) {
   if (isStarred) {
     classes.push('is-starred');
     classes.push(`star-tone-${recipe.theme.tone}`);
+    classes.push(`star-vfx-tier-${recipe.vfxTier}`);
   }
+  if (score.isTop5) classes.push('is-top5-card');
 
   const sheenDelay = isStarred ? ((recipe.sparkSeed * 7.2) / 100).toFixed(2) : '0';
+  const vfxId = isStarred && recipe.vfx ? recipe.vfx.id : 'none';
   const starDataAttrs = isStarred
-    ? ` data-star-theme="${recipe.theme.id}" data-star-frame="${recipe.frame.id}" data-star-aura="${recipe.aura.id}" data-star-pattern="${recipe.pattern.id}" data-star-badge="${recipe.badge.id}" style="--star-hue-shift:${recipe.hueShift}deg;--sheen-delay:-${sheenDelay}s"`
+    ? ` data-star-theme="${recipe.theme.id}" data-star-vfx="${vfxId}" data-star-vfx-tier="${recipe.vfxTier}" data-star-spectrum="${recipe.spectrum.id}" data-star-pattern="${recipe.pattern.id}" data-star-badge="${recipe.badge.id}" style="--star-hue-shift:${recipe.hueShift}deg;--sheen-delay:-${sheenDelay}s"`
+    : '';
+
+  const breakdownText = formatScoreBreakdownText(score);
+  const nextHint = !score.starred
+    ? '点亮仓库 Star 即可解锁典藏闪卡皮肤'
+    : (score.nextTierPoints
+      ? `再得 ${Math.max(1, score.nextTierPoints - score.points)} 分解锁${score.nextTierPoints === 3 ? '一阶破框特效' : (score.nextTierPoints === 6 ? '二阶觉醒特效' : '十点顶格邻格交互特效')}`
+      : '已达成最高十点顶格传说 · 邻格联动');
+
+  let scoreMetaHtml = '';
+  if (!score.starred) {
+    scoreMetaHtml = `<span class="meta-dot" aria-hidden="true">·</span><span class="meta-score is-unstarred" title="${htmlEscape(nextHint)}">点star开放积分系统</span>`;
+  } else {
+    const scoreClasses = ['meta-score', `is-tier-${score.vfxTier}`];
+    if (score.isTop5) scoreClasses.push('is-top5');
+    const stageText = score.tierShort || '0阶';
+    const scoreText = score.isTop5
+      ? `TOP ${score.rank} ${score.points}分 · ${stageText}`
+      : `${score.points}分 · ${stageText}`;
+    const scoreTitle = `${score.points} 分（${score.tierLabel}）｜${breakdownText}｜${nextHint}`;
+    scoreMetaHtml = `<span class="meta-dot" aria-hidden="true">·</span><span class="${scoreClasses.join(' ')}" title="${htmlEscape(scoreTitle)}">${htmlEscape(scoreText)}</span>`;
+  }
+
+  const tierSquares = isStarred
+    ? `<span class="tier-squares" aria-hidden="true" title="${htmlEscape(score.tierLabel)}">${Array.from({ length: 3 }, (_, idx) => `<i class="${idx < score.vfxTier ? 'is-on' : ''}"></i>`).join('')}</span>`
+    : '';
+
+  const emblemTitle = isStarred
+    ? `${score.points}分 · ${score.tierLabel} #${recipe.serial}｜${breakdownText}｜${nextHint}`
     : '';
 
   const starLayers = isStarred
     ? `
-      <div class="star-aura-glow" aria-hidden="true"></div>
-      <div class="star-aura-ring" aria-hidden="true"><span class="star-aura-spinner"></span></div>
       <div class="card-surface" aria-hidden="true">
         <div class="star-pattern-layer">${starPatternSvg(recipe.pattern.id)}</div>
         <div class="star-foil-layer"></div>
       </div>
-      ${starFrameArtMarkup(recipe.frame.id, recipe.uid)}
-      ${starOuterSparksMarkup(recipe.aura.id, recipe.sparkSeed)}
-      <button type="button" class="star-emblem-btn" data-star-recipe="${htmlEscape(recipe.summary)}" data-star-serial="${htmlEscape(recipe.serial)}" data-star-owner="${github}" title="★ 星标限定 #${htmlEscape(recipe.serial)} · ${htmlEscape(recipe.summary)}" aria-label="${name} 的星标限定特效：${htmlEscape(recipe.summary)}">
+      <button type="button" class="star-emblem-btn" data-star-recipe="${htmlEscape(recipe.summary)}" data-star-serial="${htmlEscape(recipe.serial)}" data-star-owner="${github}" data-star-points="${score.points}" data-star-tier="${recipe.vfxTier}" data-star-tier-label="${htmlEscape(score.tierLabel)}" data-star-breakdown="${htmlEscape(breakdownText)}" data-star-next="${htmlEscape(nextHint)}" title="${htmlEscape(emblemTitle)}" aria-label="${name} 的星标卡：${score.points} 分（${htmlEscape(score.tierLabel)}）">
         ${starBadgeSvg(recipe.badge.id, recipe.uid)}
       </button>
     `
     : '';
 
+  const key = profileKey(profile);
+  const freshTag = getProfileFreshnessTag(profile);
+  const freshLabel = freshTag ? freshTag.replace(/^✨\s*/, '') : '';
+  if (freshLabel) classes.push('is-fresh-arrival');
+  const freshPillHtml = freshLabel
+    ? `<span class="fresh-pill" title="最新上墙 / 最新动态，稍后自动淡出">${htmlEscape(freshLabel)}</span>`
+    : '';
+
   return `
-    <article class="${classes.join(' ')}"${starDataAttrs}>
+    <article class="${classes.join(' ')}" data-profile-key="${htmlEscape(key)}"${starDataAttrs}>
       ${starLayers}
+      ${freshPillHtml}
       <header class="profile-top">
-        <img class="avatar-image" src="${avatar}" alt="${name} 的头像" width="54" height="54" loading="lazy" decoding="async" data-fallback-src="${AVATAR_WARNING_FALLBACK}" />
+        <img class="avatar-image" src="${avatar}" alt="${name} 的头像" width="38" height="38" loading="lazy" decoding="async" data-fallback-src="${AVATAR_WARNING_FALLBACK}" />
         <div class="identity">
           <h3>${name}</h3>
-          <div class="identity-meta">
-            <a class="handle" href="${githubProfileUrl(profile.github || '')}" target="_blank" rel="noreferrer">@${github}</a>
-            <span class="city-pill">${city}</span>
-          </div>
         </div>
       </header>
       <p class="motto" title="${motto}">${motto}</p>
+      <div class="identity-meta">
+        <div class="identity-meta-text">
+          <a class="handle" href="${githubProfileUrl(profile.github || '')}" target="_blank" rel="noreferrer">@${github}</a>
+          <span class="meta-dot" aria-hidden="true">·</span>
+          <span class="meta-city">${city}</span>
+          ${scoreMetaHtml}
+        </div>
+        ${tierSquares}
+      </div>
       ${cheersMarkup(profile)}
     </article>
   `;
@@ -1126,10 +1183,93 @@ function updateValidation(payload) {
   box.classList.add('show');
 }
 
+function profileKey(profile) {
+  return String(profile?.github || profile?.file || profile?.name || '')
+    .trim()
+    .replace(/\.json$/i, '')
+    .toLowerCase();
+}
+
+function latestCheerTsMs(profile) {
+  const cheers = Array.isArray(profile?.cheers) ? profile.cheers : [];
+  let maxMs = 0;
+  for (const cheer of cheers) {
+    const ms = Date.parse(cheer?.ts || '') || 0;
+    if (ms > maxMs) maxMs = ms;
+  }
+  return maxMs;
+}
+
+function scheduleFreshnessCleanup() {
+  if (state.freshnessCleanupTimer) {
+    window.clearTimeout(state.freshnessCleanupTimer);
+    state.freshnessCleanupTimer = null;
+  }
+  const now = Date.now();
+  let earliestExpiry = Infinity;
+  for (const [key, entry] of state.freshnessByHandle.entries()) {
+    const remaining = SESSION_FRESH_TTL_MS - (now - entry.markedAt);
+    if (remaining <= 0) {
+      state.freshnessByHandle.delete(key);
+    } else if (remaining < earliestExpiry) {
+      earliestExpiry = remaining;
+    }
+  }
+  if (Number.isFinite(earliestExpiry)) {
+    state.freshnessCleanupTimer = window.setTimeout(() => {
+      state.freshnessCleanupTimer = null;
+      scheduleFreshnessCleanup();
+      renderWall();
+    }, Math.min(earliestExpiry + 200, SESSION_FRESH_TTL_MS + 500));
+  }
+}
+
+function markProfileFresh(key, tag = '✨ 刚上墙', eventTs = Date.now()) {
+  const normalized = String(key || '').trim().replace(/\.json$/i, '').toLowerCase();
+  if (!normalized) return;
+  const now = Date.now();
+  state.freshnessByHandle.set(normalized, {
+    ts: Math.max(now, Number(eventTs) || now),
+    markedAt: now,
+    tag
+  });
+  scheduleFreshnessCleanup();
+}
+
+function getProfileFreshnessTag(profile) {
+  const key = profileKey(profile);
+  const now = Date.now();
+  if (key && state.freshnessByHandle.has(key)) {
+    const entry = state.freshnessByHandle.get(key);
+    if (now - entry.markedAt < SESSION_FRESH_TTL_MS) {
+      return entry.tag;
+    }
+    state.freshnessByHandle.delete(key);
+  }
+  const joinedMs = Date.parse(profile?.joinedAt || '') || 0;
+  if (joinedMs > 0 && now - joinedMs >= 0 && now - joinedMs < FRESH_WINDOW_MS) {
+    return '✨ 刚上墙';
+  }
+  const cheerMs = latestCheerTsMs(profile);
+  if (cheerMs > 0 && now - cheerMs >= 0 && now - cheerMs < FRESH_WINDOW_MS) {
+    return '✨ 刚收寄语';
+  }
+  return '';
+}
+
+function profileActivityTimestamp(profile) {
+  const key = profileKey(profile);
+  const freshEntry = key ? state.freshnessByHandle.get(key) : null;
+  const freshTs = freshEntry ? freshEntry.ts : 0;
+  const joinedMs = Date.parse(profile?.joinedAt || '') || 0;
+  const cheerMs = latestCheerTsMs(profile);
+  return Math.max(freshTs, joinedMs, cheerMs);
+}
+
 function compareByRecentContribution(a, b) {
-  const aJoined = Date.parse(a.joinedAt || '') || 0;
-  const bJoined = Date.parse(b.joinedAt || '') || 0;
-  if (aJoined !== bJoined) return bJoined - aJoined;
+  const aPulse = profileActivityTimestamp(a);
+  const bPulse = profileActivityTimestamp(b);
+  if (aPulse !== bPulse) return bPulse - aPulse;
 
   const aKey = String(a.github || '').trim().toLowerCase();
   const bKey = String(b.github || '').trim().toLowerCase();
@@ -1142,6 +1282,142 @@ function compareByRecentContribution(a, b) {
 
 function sortContributors(contributors) {
   return contributors.slice().sort(compareByRecentContribution);
+}
+
+function syncHonorRibbonActive(activeKey = '') {
+  if (!elements.honorRibbonList) return;
+  const target = String(activeKey || '').trim().toLowerCase();
+  elements.honorRibbonList.querySelectorAll('.honor-pill').forEach((btn) => {
+    btn.classList.toggle('is-spotlight-active', Boolean(target) && btn.dataset.honorTarget === target);
+  });
+}
+
+function renderHonorRibbon() {
+  if (!elements.honorRibbon || !elements.honorRibbonList) return;
+
+  const top5 = state.wallContributors
+    .map((profile) => ({ profile, score: getProfileScore(profile), key: profileKey(profile) }))
+    .filter(({ score, key }) => Boolean(key && score && score.isTop5))
+    .sort((a, b) => (a.score.rank || 99) - (b.score.rank || 99))
+    .slice(0, 5);
+
+  if (!top5.length) {
+    elements.honorRibbon.hidden = true;
+    elements.honorRibbonList.innerHTML = '';
+    return;
+  }
+
+  elements.honorRibbon.hidden = false;
+  elements.honorRibbonList.style.setProperty('--honor-count', String(top5.length));
+  elements.honorRibbonList.innerHTML = top5.map(({ profile, score, key }) => {
+    const rank = score.rank || 1;
+    const rankNum = String(rank).padStart(2, '0');
+    const handle = htmlEscape(profile.github || profile.name || key);
+    const avatar = htmlEscape(avatarForProfile(profile));
+    const breakdown = formatScoreBreakdownText(score);
+    const title = `#${rank} @${profile.github || profile.name} · ${score.points}分（${score.tierLabel}）｜${breakdown}｜点击定位并释放破框大招`;
+    const crownSvg = rank === 1
+      ? '<svg class="honor-pill-crown" viewBox="0 0 16 16" aria-hidden="true"><path d="M2.2 12.2h11.6L14.5 5 11 7.6 8 3.2 5 7.6 1.5 5Z" /></svg>'
+      : '';
+    const ctaText = rank === 1 ? '放招 ↗' : '↗';
+    return `
+      <button
+        type="button"
+        class="honor-pill is-rank-${rank}${score.vfxTier >= 3 ? ' is-tier-3' : ''}"
+        data-honor-target="${htmlEscape(key)}"
+        title="${htmlEscape(title)}"
+      >
+        <span class="honor-pill-top">
+          <span class="honor-pill-rank">${rankNum}</span>
+          ${crownSvg}
+          <img class="honor-pill-avatar" src="${avatar}" alt="" width="24" height="24" loading="lazy" decoding="async" data-fallback-src="${AVATAR_WARNING_FALLBACK}" />
+          <span class="honor-pill-handle">@${handle}</span>
+        </span>
+        <span class="honor-pill-bottom">
+          <span class="honor-pill-pts">${score.points}分 · ${htmlEscape(score.tierShort || '0阶')}</span>
+          <span class="honor-pill-cta" aria-hidden="true">${ctaText}</span>
+        </span>
+      </button>
+    `;
+  }).join('');
+
+  if (elements.honorRibbonHint) {
+    const isSpotlight = state.wallFilter === 'leaderboard';
+    elements.honorRibbonHint.classList.toggle('is-spotlight-mode', isSpotlight);
+    if (elements.honorRibbonHintText) {
+      elements.honorRibbonHintText.textContent = isSpotlight ? '聚光灯点名中' : '≥5分 · 点选直达';
+    }
+  }
+}
+
+function setWallFilter(filterName) {
+  const nextFilter = filterName || 'all';
+  state.wallFilter = nextFilter;
+  $$('.wall-filter-pill').forEach((item) => {
+    const active = (item.dataset.wallFilter || 'all') === nextFilter;
+    item.classList.toggle('is-active', active);
+    item.setAttribute('aria-pressed', String(active));
+  });
+  state.vfxEngine?.setDirectorMode(nextFilter === 'leaderboard' ? 'spotlight' : 'ambient');
+  renderWall();
+}
+
+function focusHonorTarget(targetKey) {
+  const key = String(targetKey || '').trim().toLowerCase();
+  if (!key || !elements.wall) return;
+
+  const findCard = () => Array.from(elements.wall.querySelectorAll('.profile-card')).find(
+    (el) => el.dataset.profileKey === key
+  );
+
+  let card = findCard();
+  if (!card) {
+    if (elements.wallSearch && elements.wallSearch.value) {
+      elements.wallSearch.value = '';
+    }
+    if (state.wallFilter !== 'all' && state.wallFilter !== 'leaderboard') {
+      setWallFilter('all');
+    } else {
+      renderWall();
+    }
+    card = findCard();
+  }
+  if (!card) return;
+
+  const vpRect = elements.wallViewport ? elements.wallViewport.getBoundingClientRect() : { top: 0, bottom: window.innerHeight };
+  const cardRect = card.getBoundingClientRect();
+  const alreadyVisible = cardRect.top >= vpRect.top + 16 && cardRect.bottom <= vpRect.bottom - 16;
+
+  card.scrollIntoView({ behavior: 'smooth', block: 'center', inline: 'nearest' });
+
+  elements.wall.querySelectorAll('.profile-card.is-honor-spotlight').forEach((el) => el.classList.remove('is-honor-spotlight'));
+  card.classList.add('is-honor-spotlight');
+  window.clearTimeout(state.honorSpotlightTimer);
+  state.honorSpotlightTimer = window.setTimeout(() => {
+    card.classList.remove('is-honor-spotlight');
+  }, 1900);
+
+  const fireBurst = () => {
+    if (!document.body.contains(card)) return;
+    const tier = Number(card.dataset.starVfxTier || 0);
+    if (tier > 0) {
+      state.vfxEngine?.focusTriggerCard(card, { intensity: 1.28 });
+    }
+  };
+
+  if (alreadyVisible) {
+    fireBurst();
+  } else {
+    window.setTimeout(fireBurst, 300);
+  }
+
+  const profile = state.wallContributors.find((p) => profileKey(p) === key);
+  if (profile) {
+    const score = getProfileScore(profile);
+    const recipe = recipeForProfile(profile);
+    const lineageText = recipe?.vfx ? ` · ${recipe.vfx.lineage}「${recipe.vfx.label}」` : '';
+    toast(`🏆 #${score.rank || 1} @${profile.github || profile.name}（${score.points}分${lineageText}）`, 3200);
+  }
 }
 
 function wallSearchText(profile) {
@@ -1169,12 +1445,24 @@ function filteredWallContributors() {
   const query = currentWallQuery();
   const filter = state.wallFilter;
 
-  return state.wallContributors.filter((profile) => {
+  const list = state.wallContributors.filter((profile) => {
     if (filter === 'starred' && !recipeForProfile(profile)) return false;
     if (filter === 'cheers' && !(Array.isArray(profile.cheers) && profile.cheers.length > 0)) return false;
     if (query && !wallSearchText(profile).includes(query)) return false;
     return true;
   });
+
+  if (filter === 'leaderboard') {
+    return list.slice().sort((a, b) => {
+      const sa = getProfileScore(a);
+      const sb = getProfileScore(b);
+      if (sb.points !== sa.points) return sb.points - sa.points;
+      if (Number(sb.starred) !== Number(sa.starred)) return Number(sb.starred) - Number(sa.starred);
+      return (sa.rank || 999) - (sb.rank || 999);
+    });
+  }
+
+  return list;
 }
 
 function updateWallMeta({ total, filtered, starredCount, query }) {
@@ -1213,6 +1501,7 @@ function renderWall() {
     starredCount,
     query
   });
+  renderHonorRibbon();
 
   if (!total) {
     elements.wall.innerHTML = '<div class="empty-wall">还没有贡献者。复制模板，创建你的 profile 文件，然后运行 npm run validate。</div>';
@@ -1230,6 +1519,42 @@ function renderWall() {
   }
 
   elements.wall.innerHTML = filtered.map(cardMarkup).join('');
+  state.vfxEngine?.notifyWallRendered();
+}
+
+function detectTierEvolutions(payload) {
+  const current = new Map();
+  for (const profile of payload.contributors || []) {
+    const key = profileKey(profile);
+    if (!key) continue;
+    const score = getProfileScore(profile);
+    current.set(key, {
+      tier: score.vfxTier || 0,
+      points: score.points || 0,
+      display: profile.github || profile.name || key,
+      tierLabel: score.tierLabel
+    });
+  }
+
+  if (!state.bootstrappedTiers) {
+    state.knownTiersByHandle = current;
+    state.bootstrappedTiers = true;
+    return false;
+  }
+
+  let evolved = false;
+  for (const [key, info] of current.entries()) {
+    const prev = state.knownTiersByHandle.get(key);
+    if (prev && (info.tier > prev.tier || info.points > prev.points)) {
+      markProfileFresh(key, info.tier > prev.tier ? '✨ 刚进化' : '✨ 刚加分');
+      if (info.tier > prev.tier) {
+        addFeed(`@${info.display} 升阶至「${info.tierLabel}」`, payload.generatedAt, 'star');
+      }
+      evolved = true;
+    }
+  }
+  state.knownTiersByHandle = current;
+  return evolved;
 }
 
 function updateWall(payload) {
@@ -1245,18 +1570,32 @@ function updateWall(payload) {
   });
   state.commitRankByAuthor = rankMap;
 
-  state.wallContributors = sortContributors(payload.contributors || []);
-  assignStarRecipes(state.wallContributors);
+  const rawContributors = payload.contributors || [];
+  assignStarRecipes(rawContributors);
+  detectNewStars(payload);
+  detectTierEvolutions(payload);
+
+  state.wallContributors = sortContributors(rawContributors);
+
+  // In demo-tiers preview mode, showcase the transient '✨ 刚上墙' badge on the newest Row-1 arrival once
+  if (demoTiersEnabled() && !state.demoFreshSeeded && state.wallContributors.length) {
+    state.demoFreshSeeded = true;
+    markProfileFresh(profileKey(state.wallContributors[0]), '✨ 刚上墙');
+  }
+
   renderWall();
 }
 
 function detectNewContributors(payload) {
-  const incoming = new Set((payload.contributors || []).map((person) => String(person.file || person.github || person.name).toLowerCase()));
+  const incoming = new Set((payload.contributors || []).map((person) => profileKey(person)).filter(Boolean));
   const newHandles = [];
 
   for (const handle of incoming) {
     if (handle && !state.knownHandles.has(handle)) {
-      newHandles.push(handle.replace(/\.json$/i, ''));
+      newHandles.push(handle);
+      if (state.lastOk !== null) {
+        markProfileFresh(handle, '✨ 刚上墙');
+      }
     }
   }
 
@@ -1270,10 +1609,10 @@ function detectNewContributors(payload) {
 function detectNewCheers(payload) {
   const allCheers = [];
   (payload.contributors || []).forEach((profile) => {
-    const owner = String(profile.file || profile.github || profile.name || '').toLowerCase();
+    const owner = profileKey(profile);
     (profile.cheers || []).forEach((cheer) => {
       const key = `${owner}|${String(cheer.from || '').toLowerCase()}|${String(cheer.message || '').trim()}`;
-      allCheers.push({ key, profile, cheer });
+      allCheers.push({ key, owner, profile, cheer });
     });
   });
 
@@ -1288,7 +1627,8 @@ function detectNewCheers(payload) {
 
   if (!fresh.length) return;
 
-  fresh.forEach(({ profile, cheer }) => {
+  fresh.forEach(({ owner, profile, cheer }) => {
+    markProfileFresh(owner, '✨ 刚收寄语', Date.parse(cheer.ts || '') || Date.now());
     const to = profile.github || profile.name || 'unknown';
     addFeed(`@${cheer.from} → @${to}: ${cheer.message}`, cheer.ts || payload.generatedAt, 'cheer');
   });
@@ -1297,7 +1637,7 @@ function detectNewCheers(payload) {
 function detectNewStars(payload) {
   const starredNow = new Map();
   (payload.contributors || []).forEach((profile) => {
-    const key = String(profile.github || profile.file || profile.name || '').trim().toLowerCase();
+    const key = profileKey(profile);
     if (key && state.starRecipes.has(key)) {
       starredNow.set(key, profile.github || profile.name || key);
     }
@@ -1312,6 +1652,7 @@ function detectNewStars(payload) {
   for (const [key, display] of starredNow.entries()) {
     if (!state.knownStarredHandles.has(key)) {
       state.knownStarredHandles.add(key);
+      markProfileFresh(key, '✨ 刚进化');
       addFeed(`@${display} 解锁了星标限定特效`, payload.generatedAt, 'star');
     }
   }
@@ -1525,11 +1866,10 @@ function applyState(payload) {
   updateGithubSync(payload.github);
   updateStats(payload);
   updateValidation(payload);
-  updateWall(payload);
-  syncGithubEvents(payload);
   detectNewContributors(payload);
   detectNewCheers(payload);
-  detectNewStars(payload);
+  updateWall(payload);
+  syncGithubEvents(payload);
 
   const fp = String(payload.fingerprint || '');
   if (state.lastOk !== payload.ok) {
@@ -1795,18 +2135,33 @@ function bindCheersOverlay() {
       const starBtn = event.target.closest('.star-emblem-btn');
       if (starBtn && elements.wall.contains(starBtn)) {
         event.preventDefault();
+        const card = starBtn.closest('.profile-card.is-starred');
         const owner = starBtn.getAttribute('data-star-owner') || '';
-        const serial = starBtn.getAttribute('data-star-serial') || '';
+        const points = Number(starBtn.getAttribute('data-star-points') || 0);
+        const tier = Number(starBtn.getAttribute('data-star-tier') || 0);
+        const tierLabel = starBtn.getAttribute('data-star-tier-label') || '星标闪卡';
+        const breakdown = starBtn.getAttribute('data-star-breakdown') || '';
+        const nextHint = starBtn.getAttribute('data-star-next') || '';
         const recipe = starBtn.getAttribute('data-star-recipe') || '';
-        toast(`✦ @${owner} 星标闪卡 #${serial}（${TOTAL_STAR_COMBINATIONS.toLocaleString('zh-CN')} 种组合）：${recipe}`, 4400);
+        if (card && tier > 0) state.vfxEngine?.triggerSurge(card);
+        const icon = tier >= 3 ? '👑' : (tier === 2 ? '⚡' : (tier === 1 ? '✦' : '★'));
+        toast(`${icon} @${owner} · ${points}分（${tierLabel}）｜${breakdown}｜${nextHint}｜${recipe}`, 5200);
         return;
       }
 
       const trigger = event.target.closest('[data-cheers-trigger]');
-      if (!trigger || !elements.wall.contains(trigger)) return;
-      event.preventDefault();
-      const profile = findContributorByHandle(trigger.getAttribute('data-cheers-trigger'));
-      if (profile) openCheersOverlay(profile);
+      if (trigger && elements.wall.contains(trigger)) {
+        event.preventDefault();
+        const profile = findContributorByHandle(trigger.getAttribute('data-cheers-trigger'));
+        if (profile) openCheersOverlay(profile);
+        return;
+      }
+
+      if (event.target.closest('a, button')) return;
+      const vfxCard = event.target.closest('.profile-card.is-starred');
+      if (vfxCard && elements.wall.contains(vfxCard) && Number(vfxCard.dataset.starVfxTier || 0) > 0) {
+        state.vfxEngine?.triggerSurge(vfxCard);
+      }
     });
   }
 }
@@ -1816,6 +2171,7 @@ function setMotionPaused(paused, { persist = true } = {}) {
   if (elements.wall) {
     elements.wall.classList.toggle('is-motion-paused', state.motionPaused);
   }
+  state.vfxEngine?.setPaused(state.motionPaused);
   if (elements.toggleWallMotion) {
     elements.toggleWallMotion.textContent = state.motionPaused ? '开启动效' : '暂停动效';
     elements.toggleWallMotion.classList.toggle('is-paused', state.motionPaused);
@@ -1877,6 +2233,7 @@ function bindStarCardTilt() {
       clearTilt(activeCard);
       activeCard = card;
       if (activeCard) activeCard.classList.add('is-tilting');
+      state.vfxEngine?.setHoveredCard(activeCard);
     }
     if (!activeCard) return;
 
@@ -1896,6 +2253,7 @@ function bindStarCardTilt() {
     }
     clearTilt(activeCard);
     activeCard = null;
+    state.vfxEngine?.setHoveredCard(null);
   });
 }
 
@@ -1918,15 +2276,17 @@ function bindWallControls() {
 
   $$('.wall-filter-pill').forEach((button) => {
     button.addEventListener('click', () => {
-      state.wallFilter = button.dataset.wallFilter || 'all';
-      $$('.wall-filter-pill').forEach((item) => {
-        const active = item === button;
-        item.classList.toggle('is-active', active);
-        item.setAttribute('aria-pressed', String(active));
-      });
-      renderWall();
+      setWallFilter(button.dataset.wallFilter || 'all');
     });
   });
+
+  if (elements.honorRibbonList) {
+    elements.honorRibbonList.addEventListener('click', (event) => {
+      const pill = event.target.closest('[data-honor-target]');
+      if (!pill || !elements.honorRibbonList.contains(pill)) return;
+      focusHonorTarget(pill.getAttribute('data-honor-target'));
+    });
+  }
 
   if (elements.toggleWallMotion) {
     try {
@@ -2027,6 +2387,22 @@ async function bootstrapState() {
   }
 }
 
+function initVfxEngine() {
+  if (!elements.vfxOverlay || typeof window.PulseWallVfxEngine !== 'function') return;
+  state.vfxEngine = new window.PulseWallVfxEngine({
+    canvas: elements.vfxOverlay,
+    wallEl: elements.wall,
+    viewportEl: elements.wallViewport,
+    onSpotlightChange: (card) => {
+      syncHonorRibbonActive(card?.dataset?.profileKey || '');
+    }
+  });
+  if (state.motionPaused) {
+    state.vfxEngine.setPaused(true);
+  }
+}
+
+initVfxEngine();
 bindAvatarFallback();
 bindActivityPanel();
 bindCheersOverlay();
