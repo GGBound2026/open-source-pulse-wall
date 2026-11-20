@@ -25,7 +25,7 @@
 - 老师 / 维护者：CODEOWNERS 已自动指派 `@nanzhi84` 与 `@YJLEC`，无需手动添加
 - 同学：@____
 
-> 提示：请在右侧栏 `Reviewers` 手动选择或在上方 `@` 至少一位同学参与互评。通过 `pr-guard` 与 `validate` 检查、且无人提出 `Request changes` 时，自动合并队列会在约 5 分钟后自动合入 `main`（若是新注册的 GitHub 账号触发了平台安全限制，机器人会自动提醒老师手动协助合并）。
+> 提示：请在右侧栏 `Reviewers` 手动选择或在上方 `@` 至少一位同学参与互评。通过 `pr-guard` 与 `validate` 检查、且无人提出 `Request changes` 时，自动合并队列会在约 10 分钟后自动合入 `main`（若是新注册的 GitHub 账号触发了平台安全限制，机器人会自动提醒老师手动协助合并）。
 
 ## 我希望大家重点 review 什么
 

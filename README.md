@@ -107,7 +107,7 @@ git push origin cheer/octocat
 - **邀请同学 Review**：在你的 PR 页面右侧栏点击 `Reviewers` 齿轮图标，选择至少 1 位同学（也可在 PR 描述里 `@同学用户名` 请对方帮忙看）；老师 `@nanzhi84` 与 `@YJLEC` 会由 `CODEOWNERS` 自动指派。
 - **给同学做 Review**：点进任意同学的开放 PR，切到 `Files changed` 查看改动，留下一条友好的评论或 `Approve`。
 - **修改后重新通知 Reviewer**：如果你根据意见更新了代码，记得点右侧 Reviewer 头像旁的 **循环箭头**（Re-request review），对方才会再次收到通知。
-- **自动审查与合并机制**：PR 提交后会自动运行 `pr-guard`（路径与格式检查）和 `validate`（测试与全量数据校验）。当两项检查全部通过、没有未解除的 `Request changes` 审查意见、且未标记 `hold` / `do-not-merge` 标签时，串行自动合并队列会在约 **5 分钟后自动合入 `main`** 并触发展示墙更新；如果是**刚注册的 GitHub 账号**触发了平台首次外部 PR 审批限制，机器人会自动 `@` 老师协助批准运行或手动合并。
+- **自动审查与合并机制**：PR 提交后会自动运行 `pr-guard`（路径与格式检查）和 `validate`（测试与全量数据校验）。当两项检查全部通过、没有未解除的 `Request changes` 审查意见、且未标记 `hold` / `do-not-merge` 标签时，串行自动合并队列会在约 **10 分钟后自动合入 `main`** 并触发展示墙更新；如果是**刚注册的 GitHub 账号**触发了平台首次外部 PR 审批限制，机器人会自动 `@` 老师协助批准运行或手动合并。
 
 ### 第五步（可选）：体验皮肤与积分玩法
 
@@ -164,7 +164,7 @@ open-source-pulse-wall/
 │   └── workflows/
 │       ├── validate.yml            # PR 与主干自动运行测试与数据校验
 │       ├── pr-guard.yml            # 防篡改路径锁 + 自动格式审查评论 Bot
-│       ├── auto-merge-queue.yml    # 串行自动合并队列（5 分钟静置 + 复检 + 触发部署 + 新号提醒老师）
+│       ├── auto-merge-queue.yml    # 串行自动合并队列（10 分钟静置 + 复检 + 触发部署 + 新号提醒老师）
 │       └── pages.yml               # 合并 main / 收到 Star 时自动构建并发布展示墙
 ├── cloudflare/
 │   └── worker.mjs                  # 3 分钟快照缓存 API + 积分聚合 + Star 自动同步

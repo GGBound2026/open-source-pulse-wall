@@ -65,7 +65,7 @@ test('evaluatePrGuard passes valid profile + cheer PR and formats success commen
   assert.match(comment, /自动格式与路径审查通过/);
   assert.match(comment, /`abcdef1`/);
   assert.match(comment, /@Alice/);
-  assert.match(comment, /约 5 分钟后将此 PR 合入/);
+  assert.match(comment, /约 10 分钟后将此 PR 合入/);
 
   const draftComment = formatGuardComment(result, { headSha: 'abcdef1234567890', isDraft: true });
   assert.match(draftComment, /Draft PR/);
@@ -224,7 +224,7 @@ test('hasBlockingReview respects latest non-comment review state per reviewer', 
   );
 });
 
-test('evaluateAutoMergeCandidate enforces reviews, hold labels, 5-min delay, and new-account maintainer notice', () => {
+test('evaluateAutoMergeCandidate enforces reviews, hold labels, 10-min delay, and new-account maintainer notice', () => {
   const basePr = {
     number: 42,
     state: 'open',
@@ -302,20 +302,20 @@ test('evaluateAutoMergeCandidate enforces reviews, hold labels, 5-min delay, and
   assert.match(noticeBody, /@nanzhi84 @YJLEC/);
   assert.match(noticeBody, /Approve and run/);
 
-  // Before 5 minutes -> wait
+  // Before 10 minutes -> wait
   const cooling = evaluateAutoMergeCandidate({
     pr: basePr,
     checkRuns: [guardGreen, validateGreen],
-    nowMs: Date.parse('2026-11-20T10:03:00Z')
+    nowMs: Date.parse('2026-11-20T10:08:00Z')
   });
   assert.equal(cooling.action, 'wait');
   assert.equal(cooling.reason, 'cooling_down');
 
-  // After 5 minutes -> merge
+  // After 10 minutes -> merge
   const ready = evaluateAutoMergeCandidate({
     pr: basePr,
     checkRuns: [guardGreen, validateGreen],
-    nowMs: Date.parse('2026-11-20T10:05:15Z')
+    nowMs: Date.parse('2026-11-20T10:10:15Z')
   });
   assert.equal(ready.action, 'merge');
   assert.equal(ready.reason, 'ready');

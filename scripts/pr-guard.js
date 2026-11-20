@@ -18,7 +18,7 @@ const {
 const COMMENT_MARKER = '<!-- open-source-pulse-wall:pr-guard -->';
 const NOTICE_MARKER_PREFIX = '<!-- open-source-pulse-wall:auto-merge-notice:';
 const HOLD_LABELS = ['hold', 'do-not-merge', 'wip'];
-const AUTO_MERGE_DELAY_MS = 5 * 60 * 1000;
+const AUTO_MERGE_DELAY_MS = 10 * 60 * 1000;
 const VALIDATE_MISSING_GRACE_MS = 90 * 1000;
 
 function mapGithubStatus(status) {
@@ -524,11 +524,11 @@ function formatGuardComment(
 
   if (result.ok) {
     let statusLine =
-      '当 `validate` 检查全部通过、没有未解除的 `Request changes` 审查意见且未添加暂缓合并标签（`hold` / `do-not-merge`）时，自动合并队列将在约 5 分钟后将此 PR 合入 `main`（若期间推送了新修改，将重新审查并重新计时）。';
+      '当 `validate` 检查全部通过、没有未解除的 `Request changes` 审查意见且未添加暂缓合并标签（`hold` / `do-not-merge`）时，自动合并队列将在约 10 分钟后将此 PR 合入 `main`（若期间推送了新修改，将重新审查并重新计时）。';
 
     if (isDraft) {
       statusLine =
-        '当前为 **Draft PR**，不会自动合并。当你准备好后请点击 **Ready for review**，检查通过后约 5 分钟会自动合入 `main`。';
+        '当前为 **Draft PR**，不会自动合并。当你准备好后请点击 **Ready for review**，检查通过后约 10 分钟会自动合入 `main`。';
     } else if (approvalRequired) {
       const mentions = formatMaintainerMentions(maintainers);
       const runLink = workflowRunUrl ? `（[查看等待审批的检查](${workflowRunUrl})）` : '';

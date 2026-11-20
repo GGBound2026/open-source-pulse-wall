@@ -15,7 +15,7 @@ const {
   parseMaintainers
 } = require('./pr-guard');
 
-const DEFAULT_MAX_LOOP_MS = 11 * 60 * 1000;
+const DEFAULT_MAX_LOOP_MS = 15 * 60 * 1000;
 const DEFAULT_MAX_CHAIN_DEPTH = 20;
 const MIN_POLL_SLEEP_MS = 15 * 1000;
 const MAX_POLL_SLEEP_MS = 30 * 1000;
