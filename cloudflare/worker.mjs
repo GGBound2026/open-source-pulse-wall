@@ -1,6 +1,7 @@
 const GITHUB_API_BASE = 'https://api.github.com';
 const GITHUB_GRAPHQL_URL = 'https://api.github.com/graphql';
 const DEFAULT_REPOSITORY = 'nanzhi84/open-source-pulse-wall';
+const DEFAULT_PAGES_STATE_URL = 'https://pulse-wall.yoryon.com/contributors.json';
 const DEFAULT_COOLDOWN_MS = 180000;
 
 const COMMIT_GRAPH_LIMIT = 40;
@@ -644,6 +645,41 @@ async function fetchStargazersViaGraphql(owner, name, token, maxItems = STARGAZE
   }
 
   return { data: logins.slice(0, maxItems), truncated, warning: '' };
+}
+
+async function fetchStargazersFromPagesFallback(repository, pagesStateUrl = '') {
+  const targetUrl = String(
+    pagesStateUrl ||
+    (repository.toLowerCase() === DEFAULT_REPOSITORY.toLowerCase() ? DEFAULT_PAGES_STATE_URL : '')
+  ).trim();
+  if (!targetUrl) return { data: [], truncated: false, warning: '' };
+
+  try {
+    const separator = targetUrl.includes('?') ? '&' : '?';
+    const response = await fetch(`${targetUrl}${separator}t=${Date.now()}`, {
+      headers: {
+        Accept: 'application/json',
+        'User-Agent': 'open-source-pulse-wall-worker',
+        'Cache-Control': 'no-cache'
+      }
+    });
+    if (!response.ok) {
+      return { data: [], truncated: false, warning: `Pages fallback HTTP ${response.status}` };
+    }
+    const payload = await response.json();
+    const payloadRepo = String(payload?.github?.repository || '').trim().toLowerCase();
+    if (payloadRepo && payloadRepo !== repository.toLowerCase()) {
+      return { data: [], truncated: false, warning: '' };
+    }
+    const logins = extractStargazerLogins(payload?.github?.stargazers || []);
+    return {
+      data: logins,
+      truncated: Boolean(payload?.github?.stargazersTruncated),
+      warning: ''
+    };
+  } catch (error) {
+    return { data: [], truncated: false, warning: `Pages fallback: ${error.message}` };
+  }
 }
 
 async function fetchProfileEntriesViaContents(encodedRepo, token) {
@@ -1451,7 +1487,7 @@ function buildActivityEvents({ commits, issues, pullRequests }) {
   return events;
 }
 
-async function fetchPackedWallState({ repository, token = '' }) {
+async function fetchPackedWallState({ repository, token = '', pagesStateUrl = '' }) {
   if (!REPO_OWNER_NAME.test(repository)) {
     throw new Error('仓库标识必须使用 owner/repo 格式');
   }
@@ -1501,6 +1537,18 @@ async function fetchPackedWallState({ repository, token = '' }) {
       finalStargazersResult = {
         ...finalStargazersResult,
         warning: `${finalStargazersResult.warning} | GraphQL: ${error.message}`
+      };
+    }
+  }
+
+  if ((!Array.isArray(finalStargazersResult.data) || !finalStargazersResult.data.length) && finalStargazersResult.warning) {
+    const pagesStargazers = await fetchStargazersFromPagesFallback(repository, pagesStateUrl);
+    if (pagesStargazers.data.length) {
+      finalStargazersResult = pagesStargazers;
+    } else if (pagesStargazers.warning) {
+      finalStargazersResult = {
+        ...finalStargazersResult,
+        warning: `${finalStargazersResult.warning} | ${pagesStargazers.warning}`
       };
     }
   }
@@ -1605,7 +1653,7 @@ async function fetchPackedWallState({ repository, token = '' }) {
 }
 
 function cacheRequestFor(repository) {
-  return new Request(`https://pulse-wall-cache.internal/__v9/${encodeURIComponent(repository)}`, {
+  return new Request(`https://pulse-wall-cache.internal/__v11/${encodeURIComponent(repository)}`, {
     method: 'GET'
   });
 }
@@ -1657,11 +1705,11 @@ async function writeCachedBundle(repository, bundle) {
   }
 }
 
-async function refreshOnce(repository, token) {
+async function refreshOnce(repository, token, pagesStateUrl = '') {
   if (inFlightRefresh) return inFlightRefresh;
 
   inFlightRefresh = (async () => {
-    const state = await fetchPackedWallState({ repository, token });
+    const state = await fetchPackedWallState({ repository, token, pagesStateUrl });
     const bundle = { refreshedAt: Date.now(), state };
     await writeCachedBundle(repository, bundle);
     return bundle;
@@ -1695,6 +1743,7 @@ export default {
 
     const url = new URL(request.url);
     const repository = String(env.GITHUB_REPOSITORY || DEFAULT_REPOSITORY).trim();
+    const pagesStateUrl = String(env.PAGES_STATE_URL || '').trim();
     const cooldownMs = Math.max(1000, Number(env.REFRESH_COOLDOWN_MS || DEFAULT_COOLDOWN_MS) || DEFAULT_COOLDOWN_MS);
     const token = String(env.GITHUB_TOKEN || '').trim();
 
@@ -1724,7 +1773,7 @@ export default {
       }
 
       try {
-        const fresh = await refreshOnce(repository, token);
+        const fresh = await refreshOnce(repository, token, pagesStateUrl);
         return jsonResponse(
           enrichState(fresh.state, {
             refreshedAt: fresh.refreshedAt,
@@ -1775,7 +1824,7 @@ export default {
       }
 
       try {
-        const fresh = await refreshOnce(repository, token);
+        const fresh = await refreshOnce(repository, token, pagesStateUrl);
         return jsonResponse({
           ok: true,
           cached: false,
