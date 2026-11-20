@@ -306,8 +306,7 @@ function scoreForProfile(profile, fallbackCheersMap = null, demoSlot = -1) {
     const meta = resolveTierMeta(pts, true);
     const cheerPts = Math.min(3, Math.max(0, pts - 1));
     const rem = Math.max(0, pts - 1 - cheerPts);
-    const pairPts = Math.min(6, Math.floor(rem / 2) * 2);
-    const relicPts = Math.max(0, rem - pairPts);
+    const pairPts = Math.floor(rem / 2) * 2;
     return {
       points: pts,
       starred: true,
@@ -319,10 +318,7 @@ function scoreForProfile(profile, fallbackCheersMap = null, demoSlot = -1) {
         cheers: cheerPts,
         cheerTargets: [],
         pair: pairPts,
-        pairPartners: [],
-        relic: relicPts,
-        relicIds: [],
-        relicLate: []
+        pairPartners: []
       }
     };
   }
@@ -353,10 +349,7 @@ function scoreForProfile(profile, fallbackCheersMap = null, demoSlot = -1) {
       cheers: cheerPts,
       cheerTargets: sentTargets,
       pair: 0,
-      pairPartners: [],
-      relic: 0,
-      relicIds: [],
-      relicLate: []
+      pairPartners: []
     }
   };
 }
@@ -367,7 +360,6 @@ function formatScoreBreakdownText(score) {
   if (b.star) parts.push(`⭐Star +${b.star}`);
   if (b.cheers) parts.push(`💬寄语 +${b.cheers}`);
   if (b.pair) parts.push(`🤝结对 +${b.pair}`);
-  if (b.relic) parts.push(`🔍寻宝 +${b.relic}`);
   return parts.length ? parts.join(' · ') : '尚未获得积分';
 }
 
@@ -1885,8 +1877,7 @@ function preserveStargazersWhenDegraded(payload) {
     const starPts = 1;
     const cheersPts = Number(prevBreakdown.cheers || 0);
     const pairPts = Number(prevBreakdown.pair || 0);
-    const relicPts = Number(prevBreakdown.relic || 0);
-    const points = starPts + cheersPts + pairPts + relicPts;
+    const points = starPts + cheersPts + pairPts;
     const tier = resolveTierMeta(points, true);
 
     return {

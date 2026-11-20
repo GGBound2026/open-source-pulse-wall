@@ -6,7 +6,7 @@
 
 - [ ] 新增 / 更新自己的 profile
 - [ ] 给同学的 profile 加寄语 cheer
-- [ ] 结对编程 `Co-authored-by` / 考古彩蛋
+- [ ] 结对编程 `Co-authored-by`
 - [ ] 修复 bug / 文档
 - [ ] 其他：_____
 

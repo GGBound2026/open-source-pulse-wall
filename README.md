@@ -145,7 +145,6 @@ cp data/profiles/_template.json data/profiles/<你的GitHub用户名>.json
 | `name` | 是 | 填什么都可以，建议填真名让大家认识你（最多 40 个字符，请勿保留默认值「你的名字」） |
 | `motto` | 是 | 一句话介绍或座右铭（最多 120 个字符） |
 | `city` | 否 | 所在城市或课堂位置（最多 40 个字符） |
-| `relic` | 否 | 进阶玩法可选：填入通过 Git 考古挖出的暗号（字符串或最多 2 个元素的数组，详见 [SCORING.md](./SCORING.md)） |
 
 本地运行校验（仅需 Node.js 18+，无需 `npm install`），通过后推送并发起 PR：
 
@@ -198,7 +197,7 @@ git push origin cheer/octocat
 
 ### 第五步：现场互助与积分玩法（可选）
 
-这一步完全可选，不影响培训完成。完成主线后可以点一下仓库右上角的 **Star** 开启专属皮肤与排行榜，并在现场互相帮助还没有跑通流程的同学——和同学一起用 `Co-authored-by` 结对提交，或翻一翻 Git 历史找考古彩蛋，就能攒分升级卡片动画。详细规则和命令示例见 [SCORING.md](./SCORING.md)。
+这一步完全可选，不影响培训完成。完成主线后可以点一下仓库右上角的 **Star** 开启专属皮肤与排行榜，并在现场互相帮助还没有跑通流程的同学——和同学一起用 `Co-authored-by` 结对提交，就能攒分升级卡片动画。详细规则和命令示例见 [SCORING.md](./SCORING.md)。
 
 ## 遇到分支落后或冲突怎么办？
 
@@ -229,7 +228,6 @@ git fetch upstream                            # 拉取主仓库最新提交
 git merge upstream/main                       # 将主仓库最新主干合并到当前分支
 git rebase upstream/main                      # 进阶：线性变基，配合 --force-with-lease 推送
 git push --force-with-lease origin <branch>   # rebase 后的安全推送命令
-git log -S "<关键词>" -p                      # 进阶：Git 历史考古，检索曾经出现过的字符串变更
 ```
 
 ## 拓展阅读：从零看懂 Git 底层原理
@@ -264,7 +262,6 @@ open-source-pulse-wall/
 │   │   └── _template.json
 │   ├── cheers/                     # 独立寄语 data/cheers/<目标用户名全小写>/<你的GitHub用户名>.json
 │   │   └── _template.json
-│   └── relics.json                 # Git 考古彩蛋哈希配置（仅存 SHA-256，不存明文）
 ├── public/
 │   ├── index.html                  # 展示墙主页面（含 Top 5 排行榜）
 │   ├── styles.css                  # 页面样式与星标卡片皮肤

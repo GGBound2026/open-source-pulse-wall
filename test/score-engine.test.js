@@ -2,7 +2,6 @@ const assert = require('node:assert/strict');
 const test = require('node:test');
 
 const {
-  sha256HexSync,
   computeContributorScores,
   resolveVfxTier
 } = require('../scripts/score-engine');
@@ -26,23 +25,12 @@ test('resolveVfxTier enforces Star hard gate and exact 1 / 3 / 6 / 10 thresholds
   assert.equal(resolveVfxTier(14, true).vfxTier, 3);
 });
 
-test('validateProfile accepts optional relic string or up to 2 strings and rejects invalid values', () => {
-  assert.equal(validateProfile({ name: 'Alice', motto: 'Hi', relic: 'PULSE-2026' }, 'alice.json').errors.length, 0);
-  assert.equal(
-    validateProfile({ name: 'Alice', motto: 'Hi', relic: ['CODE-1', 'CODE-2'] }, 'alice.json').errors.length,
-    0
-  );
-  assert.ok(validateProfile({ name: 'Alice', motto: 'Hi', relic: '' }, 'alice.json').errors.length > 0);
-  assert.ok(
-    validateProfile({ name: 'Alice', motto: 'Hi', relic: ['A', 'B', 'C'] }, 'alice.json').errors.length > 0
-  );
-  assert.ok(validateProfile({ name: 'Alice', motto: 'Hi', relic: 123 }, 'alice.json').errors.length > 0);
+test('validateProfile rejects removed relic field as unknown key', () => {
+  const result = validateProfile({ name: 'Alice', motto: 'Hi', relic: 'PULSE-2026' }, 'alice.json');
+  assert.match(result.errors.join('\n'), /未允许的字段.*relic/);
 });
 
-test('computeContributorScores enforces star cap, cheer cap 3, pair deduplication, multi-partner pair stacking, first-blood relic, and Star-gated Top 5 >= 1 threshold', () => {
-  const secret1 = 'PULSE-ARCHAEOLOGY-01';
-  const secretHash1 = sha256HexSync(secret1);
-
+test('computeContributorScores enforces star cap, cheer cap 3, pair deduplication, multi-partner pair stacking, and Star-gated Top 5 >= 1 threshold', () => {
   const contributors = [
     {
       name: 'Alice',
@@ -50,7 +38,6 @@ test('computeContributorScores enforces star cap, cheer cap 3, pair deduplicatio
       file: 'alice.json',
       starred: true,
       joinedAt: '2026-11-10T00:00:00Z',
-      relic: secret1, // copycat merged AFTER bob
       cheers: [
         { from: 'bob', message: 'Nice!' },
         { from: 'dave', message: 'Great!' }
@@ -62,7 +49,6 @@ test('computeContributorScores enforces star cap, cheer cap 3, pair deduplicatio
       file: 'bob.json',
       starred: true,
       joinedAt: '2026-11-11T00:00:00Z',
-      relic: secret1.toLowerCase(), // first-blood claimant!
       cheers: [
         { from: 'alice', message: 'Go Bob 1!' },
         { from: 'alice', message: 'Go Bob 2!' } // duplicate target from alice -> counts once
@@ -153,26 +139,14 @@ test('computeContributorScores enforces star cap, cheer cap 3, pair deduplicatio
     }
   ];
 
-  const relicDefinitions = [
-    { id: 'relic-01', label: '远古暗号 #1', sha256: secretHash1, points: 2 }
-  ];
-
-  // Bob injected secret1 at 10:05, Alice copied it at 10:12 (even though Alice joined a day earlier!)
-  const relicClaimTimes = {
-    'data/profiles/bob.json': { [secretHash1]: { committedDate: '2026-11-15T10:05:00Z' } },
-    'data/profiles/alice.json': { [secretHash1]: { committedDate: '2026-11-15T10:12:00Z' } }
-  };
-
-  const { contributors: scored, relics } = computeContributorScores({
+  const { contributors: scored } = computeContributorScores({
     contributors,
-    commits,
-    relicDefinitions,
-    relicClaimTimes
+    commits
   });
 
   const byHandle = new Map(scored.map((c) => [c.github, c]));
 
-  // Alice: Star (+1) + Cheers (4 targets capped at +3) + Pairs (bob, carol, dave = +6) + Relic (0, late!) = 10 pts -> Tier 3!
+  // Alice: Star (+1) + Cheers (4 targets capped at +3) + Pairs (bob, carol, dave = +6) = 10 pts -> Tier 3!
   const alice = byHandle.get('alice');
   assert.equal(alice.score.points, 10);
   assert.equal(alice.score.vfxTier, 3);
@@ -180,20 +154,13 @@ test('computeContributorScores enforces star cap, cheer cap 3, pair deduplicatio
   assert.equal(alice.score.breakdown.star, 1);
   assert.equal(alice.score.breakdown.cheers, 3);
   assert.equal(alice.score.breakdown.pair, 6);
-  assert.equal(alice.score.breakdown.relic, 0);
-  assert.equal(alice.score.breakdown.relicLate.length, 1);
-  assert.equal(alice.score.breakdown.relicLate[0].winner, 'bob');
   assert.equal(alice.score.isTop5, true);
-  assert.equal(Object.hasOwn(alice, 'relic'), false); // plaintext stripped!
 
-  // Bob: Star (+1) + Cheers (alice = +1) + Pairs (alice = +2) + Relic (FIRST BLOOD = +2) = 6 pts -> Tier 2!
+  // Bob: Star (+1) + Cheers (alice = +1) + Pairs (alice = +2) = 4 pts -> Tier 1!
   const bob = byHandle.get('bob');
-  assert.equal(bob.score.points, 6);
-  assert.equal(bob.score.vfxTier, 2);
-  assert.equal(bob.score.breakdown.relic, 2);
-  assert.deepEqual(bob.score.breakdown.relicIds, ['relic-01']);
+  assert.equal(bob.score.points, 4);
+  assert.equal(bob.score.vfxTier, 1);
   assert.equal(bob.score.isTop5, true);
-  assert.equal(Object.hasOwn(bob, 'relic'), false);
 
   // Dave: Star (+1) + Cheers (alice = +1) + Pairs (alice, eve = +4) = 6 pts -> Tier 2!
   const dave = byHandle.get('dave');
@@ -201,21 +168,18 @@ test('computeContributorScores enforces star cap, cheer cap 3, pair deduplicatio
   assert.equal(dave.score.vfxTier, 2);
   assert.equal(dave.score.isTop5, true);
 
-  // Carol: Star (+1) + Cheers (0) + Pairs (alice = +2) = 3 pts -> Tier 1! (Starred & >= 1 pt, rank 4 -> Top 5!)
+  // Carol: Star (+1) + Cheers (0) + Pairs (alice = +2) = 3 pts -> Tier 1!
   const carol = byHandle.get('carol');
   assert.equal(carol.score.points, 3);
   assert.equal(carol.score.vfxTier, 1);
   assert.equal(carol.score.isTop5, true);
 
-  // Eve: Unstarred (0) + Pairs (dave = +2; empty commit with bob ignored!) = 2 pts -> Locked (vfxTier 0) & NOT Top 5!
+  // Eve: Unstarred (0) + Pairs (dave = +2; empty commit with bob ignored!) = 2 pts -> Locked & NOT Top 5!
   const eve = byHandle.get('eve');
   assert.equal(eve.score.points, 2);
   assert.equal(eve.score.vfxTier, 0);
   assert.equal(eve.score.tierId, 'locked');
   assert.equal(eve.score.isTop5, false);
-
-  assert.equal(relics[0].claimed, true);
-  assert.equal(relics[0].claimedBy, 'bob');
 });
 
 test('computeContributorScores blocks mass Co-authored-by farming (>2 partners) and avoids phantom co-author cross-pairs', () => {
@@ -229,8 +193,6 @@ test('computeContributorScores blocks mass Co-authored-by farming (>2 partners) 
   }));
 
   const commits = [
-    // Valid 3-person pair commit (primary alice + 2 co-authors bob, carol):
-    // must credit (alice, bob) and (alice, carol), but NOT (bob, carol)!
     {
       sha: 'pair-two',
       author: 'alice',
@@ -243,7 +205,6 @@ test('computeContributorScores blocks mass Co-authored-by farming (>2 partners) 
         'Co-authored-by: Carol <carol@users.noreply.github.com>'
       ].join('\n')
     },
-    // Abuse commit: dave tags 3 classmates in one commit -> ENTIRE commit ignored!
     {
       sha: 'mass-farm',
       author: 'dave',

@@ -440,7 +440,7 @@
       dom.gridVfx.innerHTML = `
         <div class="tier-zero-note">
           <strong>⭐ 0 阶 · 1–2 分（已点亮仓库 Star）：仅解锁星标典藏卡皮肤，无破框 Canvas 特效</strong>
-          不点亮 Star 属于硬限制（保持普通卡片）；点亮 Star 得 1 分后立刻解锁 8 典藏材质 × 8 微雕纹理 × 8 悬空星标徽章 + 微弱斜向扫光 + 3D 倾角反光。再给 2 位同学送寄语（或参与 1 次结对编程 / 挖出 Git 考古暗号）满 3 分后，立刻开启 1 阶破框特效！
+          不点亮 Star 属于硬限制（保持普通卡片）；点亮 Star 得 1 分后立刻解锁 8 典藏材质 × 8 微雕纹理 × 8 悬空星标徽章 + 微弱斜向扫光 + 3D 倾角反光。再给 2 位同学送寄语（或参与 1 次结对编程）满 3 分后，立刻开启 1 阶破框特效！
         </div>
         ${Array.from({ length: 4 }, (_, idx) => `
           <article class="vfx-specimen is-tier-0" data-star-vfx="none" data-star-vfx-tier="0">

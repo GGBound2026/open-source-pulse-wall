@@ -1,12 +1,9 @@
 #!/usr/bin/env node
 
-const crypto = require('crypto');
-
 const STAR_POINTS = 1;
 const CHEER_POINTS_CAP = 3;
 const PAIR_POINTS_PER_PARTNER = 2;
 const MAX_COAUTHORS_PER_COMMIT = 2;
-const RELIC_DEFAULT_POINTS = 2;
 const TOP5_LIMIT = 5;
 const TOP5_MIN_POINTS = 1;
 
@@ -16,26 +13,6 @@ const VFX_TIER_THRESHOLDS = {
   tier2: 6,
   tier3: 10
 };
-
-function sha256HexSync(value) {
-  return crypto.createHash('sha256').update(String(value || ''), 'utf8').digest('hex');
-}
-
-function normalizeRelicCodes(rawRelic) {
-  const list = Array.isArray(rawRelic)
-    ? rawRelic
-    : (typeof rawRelic === 'string' ? [rawRelic] : []);
-  const seen = new Set();
-  const codes = [];
-  for (const item of list) {
-    if (typeof item !== 'string') continue;
-    const normalized = item.trim().toUpperCase();
-    if (!normalized || seen.has(normalized)) continue;
-    seen.add(normalized);
-    codes.push(normalized);
-  }
-  return codes;
-}
 
 function extractGithubLoginFromEmail(email) {
   const raw = String(email || '').trim().toLowerCase();
@@ -124,38 +101,10 @@ function resolveVfxTier(points, starred) {
   };
 }
 
-function normalizeRelicDefinitions(rawDefinitions = []) {
-  const list = Array.isArray(rawDefinitions)
-    ? rawDefinitions
-    : (Array.isArray(rawDefinitions?.relics) ? rawDefinitions.relics : []);
-  const seenIds = new Set();
-  const defs = [];
-  for (const item of list) {
-    if (!item || typeof item !== 'object') continue;
-    const id = String(item.id || '').trim();
-    const sha256 = String(item.sha256 || '').trim().toLowerCase();
-    if (!id || !/^[a-f0-9]{64}$/.test(sha256) || seenIds.has(id)) continue;
-    seenIds.add(id);
-    defs.push({
-      id,
-      label: String(item.label || id).trim(),
-      sha256,
-      points: Math.max(1, Number(item.points) || RELIC_DEFAULT_POINTS)
-    });
-  }
-  return defs;
-}
-
 function computeContributorScores({
   contributors = [],
-  commits = [],
-  relicDefinitions = [],
-  relicClaimTimes = {},
-  hashFn = sha256HexSync
+  commits = []
 } = {}) {
-  const defs = normalizeRelicDefinitions(relicDefinitions);
-  const defByHash = new Map(defs.map((d) => [d.sha256, d]));
-
   const handleSet = new Set();
   const displayHandleByKey = new Map();
   const nameCounts = new Map();
@@ -179,7 +128,7 @@ function computeContributorScores({
     if (count === 1) uniqueNameMap.set(nameKey, nameToKey.get(nameKey));
   }
 
-  // 1) Icebreaker cheers sent: +1 per distinct classmate cheered (max 3)
+  // 1) Cheers sent: +1 per distinct classmate cheered (max 3)
   const cheeredTargetsByUser = new Map();
   for (const targetProfile of contributors) {
     const targetKey = String(targetProfile.github || '').trim().toLowerCase();
@@ -251,90 +200,7 @@ function computeContributorScores({
     }
   }
 
-  // 3) Git Archaeology Relic Hunt (+2 per relic, strictly FIRST-BLOOD claimant into main!)
-  const relicClaimsById = new Map();
-  for (const profile of contributors) {
-    const key = String(profile.github || '').trim().toLowerCase();
-    if (!key) continue;
-    const codes = normalizeRelicCodes(profile.relic);
-    if (!codes.length) continue;
-
-    const file = String(profile.file || '').trim();
-    const claimBucket =
-      relicClaimTimes[`data/profiles/${file}`] ||
-      relicClaimTimes[file] ||
-      relicClaimTimes[key] ||
-      {};
-
-    for (const code of codes) {
-      const hash = hashFn(code);
-      const def = defByHash.get(hash);
-      if (!def) continue;
-
-      const meta = claimBucket[hash] || claimBucket[def.id] || {};
-      const claimedAtStr = String(meta.committedDate || profile.joinedAt || '').trim();
-      const claimedTs = claimedAtStr ? Date.parse(claimedAtStr) : Number.POSITIVE_INFINITY;
-      const validTs = Number.isNaN(claimedTs) ? Number.POSITIVE_INFINITY : claimedTs;
-
-      if (!relicClaimsById.has(def.id)) relicClaimsById.set(def.id, []);
-      relicClaimsById.get(def.id).push({
-        def,
-        key,
-        handle: displayHandleByKey.get(key) || profile.github || key,
-        file,
-        claimedAt: claimedAtStr,
-        claimedTs: validTs,
-        orderHint: typeof meta.commitOrder === 'number' ? meta.commitOrder : Number.POSITIVE_INFINITY
-      });
-    }
-  }
-
-  const relicPointsByUser = new Map();
-  const relicIdsByUser = new Map();
-  const relicLateByUser = new Map();
-  const relicStatusList = [];
-
-  for (const def of defs) {
-    const claims = relicClaimsById.get(def.id) || [];
-    if (!claims.length) {
-      relicStatusList.push({
-        id: def.id,
-        label: def.label,
-        points: def.points,
-        claimed: false,
-        claimedBy: ''
-      });
-      continue;
-    }
-
-    claims.sort((a, b) => {
-      if (a.claimedTs !== b.claimedTs) return a.claimedTs - b.claimedTs;
-      if (a.orderHint !== b.orderHint) return a.orderHint - b.orderHint;
-      return a.file.localeCompare(b.file);
-    });
-
-    const winner = claims[0];
-    relicPointsByUser.set(winner.key, (relicPointsByUser.get(winner.key) || 0) + def.points);
-    if (!relicIdsByUser.has(winner.key)) relicIdsByUser.set(winner.key, []);
-    relicIdsByUser.get(winner.key).push(def.id);
-
-    for (let i = 1; i < claims.length; i += 1) {
-      const late = claims[i];
-      if (!relicLateByUser.has(late.key)) relicLateByUser.set(late.key, []);
-      relicLateByUser.get(late.key).push({ id: def.id, winner: winner.handle });
-    }
-
-    relicStatusList.push({
-      id: def.id,
-      label: def.label,
-      points: def.points,
-      claimed: true,
-      claimedBy: winner.handle,
-      claimedAt: winner.claimedAt
-    });
-  }
-
-  // 4) Combine per-contributor score & rank
+  // 3) Combine per-contributor score & rank
   const scored = contributors.map((profile) => {
     const key = String(profile.github || '').trim().toLowerCase();
     const starred = Boolean(profile.starred);
@@ -350,17 +216,11 @@ function computeContributorScores({
       .sort((a, b) => a.localeCompare(b));
     const pairPts = pairPartners.length * PAIR_POINTS_PER_PARTNER;
 
-    const relicPts = relicPointsByUser.get(key) || 0;
-    const relicIds = relicIdsByUser.get(key) || [];
-    const relicLate = relicLateByUser.get(key) || [];
-
-    const points = starPts + cheerPts + pairPts + relicPts;
+    const points = starPts + cheerPts + pairPts;
     const tier = resolveVfxTier(points, starred);
 
     return {
       ...profile,
-      // Never leak raw secret plaintext relic codes into public API payloads!
-      ...(profile.relic !== undefined ? { relic: undefined } : {}),
       score: {
         points,
         starred,
@@ -372,18 +232,10 @@ function computeContributorScores({
           cheers: cheerPts,
           cheerTargets,
           pair: pairPts,
-          pairPartners,
-          relic: relicPts,
-          relicIds,
-          relicLate
+          pairPartners
         }
       }
     };
-  });
-
-  // Remove undefined relic keys cleanly
-  scored.forEach((p) => {
-    if ('relic' in p && p.relic === undefined) delete p.relic;
   });
 
   // Compute leaderboard rank & Top 5 (requires Star + >= 1 point)
@@ -414,8 +266,7 @@ function computeContributorScores({
   });
 
   return {
-    contributors: scored,
-    relics: relicStatusList
+    contributors: scored
   };
 }
 
@@ -424,14 +275,10 @@ module.exports = {
   CHEER_POINTS_CAP,
   PAIR_POINTS_PER_PARTNER,
   MAX_COAUTHORS_PER_COMMIT,
-  RELIC_DEFAULT_POINTS,
   TOP5_LIMIT,
   TOP5_MIN_POINTS,
   VFX_TIER_THRESHOLDS,
-  sha256HexSync,
-  normalizeRelicCodes,
   parseCoAuthorsFromMessage,
   resolveVfxTier,
-  normalizeRelicDefinitions,
   computeContributorScores
 };
