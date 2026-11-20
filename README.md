@@ -3,6 +3,7 @@
 一个一节课就能跑通完整开源闭环的 Git 协作实践项目。从 **Fork** 出发，亲手走完 **Clone → Branch → Validate → Commit → Push → Pull Request → Review → Merge** 全流程；每一次合并与互动都会实时点亮课堂展示墙。
 
 - **在线协作展示墙**（课堂大屏直达）：<https://pulse-wall.yoryon.com/>
+- **进阶积分与星标特效玩法**（⭐ 点 Star 解锁专属皮肤与破框大招）：[查看完整积分规则（SCORING.md）](./SCORING.md)
 - **拓展阅读 · 从零理解 Git 底层原理**：<https://yoryon.com/c/git-from-scratch/>
 
 ## 课堂四项任务
@@ -11,6 +12,9 @@
 2. **给同学写寄语**（Cheers）：在 `data/cheers/<同学用户名>/` 下留下一句鼓励，互相点亮寄语角标。
 3. **提一个 Issue**：用仓库内置模板提问、报 Bug 或提改进想法。
 4. **参与 PR Review**：邀请至少一位同学 Review 你的 PR，并给同学的 PR 留下一条 Review 评论。
+
+> **⭐ 别忘了点 Star 开启进阶玩法！**  
+> 点击本仓库右上角 **Star** 即可激活你的专属四维星标卡面、Top 5 荣耀领奖台与 **0 阶 → 三阶** 破框特效进化体系（未点 Star 仅展示标准暖纸卡面）。通过**寄语互动**、**`Co-authored-by` 结对编程**与 **Git 考古彩蛋**累计积分，还能触发 12 脉专属召唤物与三阶邻格交互大招——详见 👉 **[进阶积分与星标特效玩法指南（SCORING.md）](./SCORING.md)**。
 
 ## 贡献步骤指南
 
@@ -52,6 +56,7 @@ cp data/profiles/_template.json data/profiles/<你的GitHub用户名>.json
 | `name` | 是 | 填什么都可以，建议填真名让大家认识你（最多 40 个字符，请勿保留默认值「你的名字」） |
 | `motto` | 是 | 一句话介绍或座右铭（最多 120 个字符） |
 | `city` | 否 | 所在城市或课堂位置（最多 40 个字符） |
+| `relic` | 否 | 进阶玩法可选：填入通过 Git 考古挖出的暗号（字符串或最多 2 个元素的数组，详见 [SCORING.md](./SCORING.md)） |
 
 本地运行校验（仅需 Node.js 18+，无需 `npm install`），通过后推送并发起 PR：
 
@@ -102,6 +107,11 @@ git push origin cheer/octocat
 - **给同学做 Review**：点进任意同学的开放 PR，切到 `Files changed` 查看改动，留下一条友好的评论或 `Approve`。
 - **修改后重新通知 Reviewer**：如果你根据意见更新了代码，记得点右侧 Reviewer 头像旁的 **循环箭头**（Re-request review），对方才会再次收到通知。
 
+### 第五步（进阶玩法）：点亮 Star，冲刺破框特效与 Top 5
+
+- **开启星标皮肤**：点击本仓库右上角 **Star**（总开关），约 30 秒后刷新展示墙即可点亮你的专属收藏卡面并进入 Top 5 排行榜。
+- **冲刺高阶破框大招**：通过给多位同学写寄语、`Co-authored-by` 结对编程与 Git 考古彩蛋累计积分，解锁 **一阶 → 二阶 → 三阶** 12 脉专属破框特效与邻格交互。完整规则与命令示例见 👉 **[SCORING.md](./SCORING.md)**。
+
 ## 遇到分支落后或冲突怎么办？
 
 当主仓库 `main` 已经合入了新提交、你需要同步最新代码（或 PR 提示 `This branch has conflicts that must be resolved`）时，推荐使用最稳妥的 `merge` 流程：
@@ -127,6 +137,7 @@ git fetch upstream                            # 拉取主仓库最新提交
 git merge upstream/main                       # 将主仓库最新主干合并到当前分支
 git rebase upstream/main                      # 进阶：线性变基（需配合 --force-with-lease 推送）
 git push --force-with-lease origin <branch>   # rebase 后的安全推送命令
+git log -S "<关键词>" -p                      # 进阶：Git 历史考古，检索曾经出现过的字符串变更
 ```
 
 ## 拓展阅读：从零看懂 Git 底层原理
@@ -143,6 +154,8 @@ git push --force-with-lease origin <branch>   # rebase 后的安全推送命令
 
 ```text
 open-source-pulse-wall/
+├── README.md                       # 课堂入门与标准 PR 贡献指南
+├── SCORING.md                      # 进阶积分、Star 皮肤与 12 脉破框特效玩法指南
 ├── .github/
 │   ├── CODEOWNERS                  # 自动指派仓库维护者 Review
 │   ├── ISSUE_TEMPLATE/             # 提问 / Bug / 想法 / 求助 模板
@@ -150,16 +163,21 @@ open-source-pulse-wall/
 │   └── workflows/
 │       ├── validate.yml            # PR 与主干自动运行测试与数据校验
 │       ├── pr-guard.yml            # 防篡改路径锁 + 自动审查评论 Bot
-│       └── pages.yml               # 自动构建并发布展示墙
+│       └── pages.yml               # 合并 main / 收到 Star 时自动构建并发布展示墙
 ├── cloudflare/
-│   └── worker.mjs                  # 3 分钟快照缓存 API + PR 贡献者自动识别
+│   └── worker.mjs                  # 3 分钟快照缓存 API + 积分聚合 + Star 自动同步
 ├── data/
 │   ├── profiles/                   # 每位贡献者的个人卡片 data/profiles/<GitHub用户名>.json
 │   │   └── _template.json
-│   └── cheers/                     # 独立寄语 data/cheers/<目标用户名>/<你的GitHub用户名>.json
-│       └── _template.json
-├── public/                         # 手绘纸面风展示墙（index.html）
-├── scripts/                        # 校验脚本、静态构建与状态聚合器
+│   ├── cheers/                     # 独立寄语 data/cheers/<目标用户名>/<你的GitHub用户名>.json
+│   │   └── _template.json
+│   └── relics.json                 # Git 考古彩蛋哈希配置（仅存 SHA-256，不存明文）
+├── public/
+│   ├── index.html                  # 暖纸建筑画廊风展示墙（含 Top 5 领奖台与聚光灯模式）
+│   ├── styles.css                  # 页面排版、星标卡面与四维视觉样式
+│   ├── app.js                      # 展示墙渲染、筛选排序与交互逻辑
+│   └── vfx-engine.js               # 12 脉三阶 Canvas 破框特效引擎与邻格交互
+├── scripts/                        # 校验脚本、积分引擎、静态构建与部署工具
 └── test/                           # 自动化测试套件
 ```
 
