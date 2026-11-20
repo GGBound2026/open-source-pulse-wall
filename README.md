@@ -17,31 +17,28 @@
 
 ## 贡献步骤指南
 
-### 第零步：安装与配置 Git（已安装可跳过）
+### 第零步：安装与配置 Git
 
-先打开终端（Windows 用 **PowerShell**，macOS / Linux 用 **终端**），输入 `git --version` 检查是否已安装 Git。若尚未安装，按系统在终端运行以下命令（全程纯命令行，无需安装图形界面客户端）：
+打开终端输入 `git --version`，已安装可直接跳过。
 
-**Windows（PowerShell）**
+**Windows**
 
 ```powershell
 winget install --id Git.Git -e --source winget --silent --accept-package-agreements --accept-source-agreements
 ```
 
-> 安装完成后**关闭并重新打开 PowerShell**，输入 `git --version` 确认生效。
+安装完成后重开终端生效。
 
-**macOS（终端 · 通过 Homebrew）**
-
-先安装命令行包管理器 Homebrew（已安装可跳过；装完后按终端末尾 `Next steps` 提示将 `brew` 加入环境变量），再用 `brew` 安装 Git：
+**macOS**
 
 ```bash
-# 1. 若未安装 Homebrew，先执行官方安装脚本（会提示输入开机密码，输入时不显示字符属正常现象）
+# 未安装 Homebrew 先执行此句，装完按终端末尾 Next steps 提示配置 PATH
 /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
 
-# 2. 安装 Git
 brew install git
 ```
 
-**Linux（终端）**
+**Linux**
 
 ```bash
 # Ubuntu / Debian
@@ -51,15 +48,13 @@ sudo apt update && sudo apt install -y git
 sudo dnf install -y git
 ```
 
-**首次使用必做：验证安装并配置身份**
+**配置身份**
 
 ```bash
 git --version
 git config --global user.name "你的GitHub用户名"
 git config --global user.email "你的GitHub绑定邮箱"
 ```
-
-> 邮箱建议填写你注册 GitHub 时绑定的邮箱（或 GitHub 设置里提供的 `<ID>+<用户名>@users.noreply.github.com`），这样你的每次提交都能准确关联到 GitHub 头像与贡献记录。
 
 ### 第一步：Fork & Clone
 
@@ -115,8 +110,8 @@ git push origin add-my-profile
 ### 第三步：给同学写寄语（Cheers）
 
 等你的卡片合并后，给至少一位已经上墙的同学留一句寄语。每条寄语是一个独立 JSON 小文件：
-- **目标目录名**（`<同学用户名全小写>`）：**必须全部小写**（例如给 `Divine-Ashes` 写寄语，目录为 `data/cheers/divine-ashes/`），防止并发提交产生大小写重复目录。
-- **文件名**：**必须使用你自己的 GitHub 用户名**（`<你的GitHub用户名>.json`，CI 会校验文件名与你的 PR 提交账号一致）。因为每位同学的 GitHub 用户名全局唯一，多人同时给同一位同学写寄语完全不会发生 Git 冲突，后续你也可以直接修改自己的同名文件来更新寄语：
+- **目标目录名**：必须全小写，例如给 `Divine-Ashes` 写寄语时目录为 `data/cheers/divine-ashes/`。
+- **文件名**：必须使用你自己的 GitHub 用户名 `data/cheers/<目标用户名>/<你的GitHub用户名>.json`。多人同时给同一位同学写寄语不会冲突，后续也可以直接修改同名文件更新寄语：
 
 ```bash
 git fetch upstream
@@ -124,7 +119,7 @@ git checkout main
 git merge upstream/main
 git checkout -b cheer/octocat
 
-mkdir -p data/cheers/octocat   # Windows PowerShell 直接运行 mkdir data/cheers/octocat（无需 -p）
+mkdir -p data/cheers/octocat   # PowerShell 去掉 -p
 cp data/cheers/_template.json data/cheers/octocat/<你的GitHub用户名>.json
 ```
 
