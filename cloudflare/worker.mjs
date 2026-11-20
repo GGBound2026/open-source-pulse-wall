@@ -315,6 +315,27 @@ function normalizeCheers(rawCheers) {
     .filter(Boolean);
 }
 
+const MIGRATED_CHEERS_COMMIT_TS = Date.parse('2026-11-17T16:55:21Z');
+const MIGRATED_CHEER_ORIGINAL_TS = {
+  'data/cheers/nanzhi84/devillord6321.json': '2026-05-10T07:49:02Z',
+  'data/cheers/devillord6321/yjlec.json': '2026-05-10T08:52:05Z',
+  'data/cheers/yjlec/huahai1412.json': '2026-05-10T10:00:59Z',
+  'data/cheers/yanyingtong2025/yz730.json': '2026-05-10T10:05:07Z',
+  'data/cheers/devillord6321/yanyingtong2025.json': '2026-05-10T10:06:16Z',
+  'data/cheers/sczohc/lyifan903-creator.json': '2026-05-10T10:35:36Z',
+  'data/cheers/kkkkkkdddddd/139502.json': '2026-05-10T10:36:26Z',
+  'data/cheers/nanzhi84/itamannafeiyang-svg.json': '2026-05-10T10:39:44Z',
+  'data/cheers/yanyingtong2025/divine-ashes.json': '2026-05-10T10:45:03Z'
+};
+
+function resolveMigratedCheerTs(relPath, rawTs) {
+  const cleaned = String(rawTs || '').trim();
+  const mapped = MIGRATED_CHEER_ORIGINAL_TS[String(relPath || '').trim().toLowerCase()];
+  if (!mapped) return cleaned;
+  if (!cleaned) return mapped;
+  return Date.parse(cleaned) === MIGRATED_CHEERS_COMMIT_TS ? mapped : cleaned;
+}
+
 function attachCheerEntries(profiles, cheerEntries = [], fileContributors = {}) {
   if (!Array.isArray(cheerEntries) || !cheerEntries.length) return profiles;
 
@@ -342,25 +363,26 @@ function attachCheerEntries(profiles, cheerEntries = [], fileContributors = {}) 
     if (!targetProfile || !message) continue;
 
     const resolvedMeta = fileContributors[item.relPath] || {};
+    const resolvedTs = resolveMigratedCheerTs(item.relPath, resolvedMeta.ts);
     const stem = String(item.file || '').replace(/\.json$/i, '').trim();
     let from = '';
     let ts = '';
 
     if (item.from) {
       from = String(item.from).trim();
-      ts = String(item.ts || resolvedMeta.ts || '').trim();
+      ts = String(item.ts || resolvedTs || '').trim();
     } else if (resolvedMeta.viaPr && resolvedMeta.github) {
       from = resolvedMeta.github;
-      ts = String(item.ts || resolvedMeta.ts || '').trim();
+      ts = String(item.ts || resolvedTs || '').trim();
     } else if (stem && knownHandles.has(stem.toLowerCase())) {
       from = knownHandles.get(stem.toLowerCase());
-      ts = String(item.ts || resolvedMeta.ts || '').trim();
+      ts = String(item.ts || resolvedTs || '').trim();
     } else if (resolvedMeta.github) {
       from = resolvedMeta.github;
-      ts = String(item.ts || resolvedMeta.ts || '').trim();
+      ts = String(item.ts || resolvedTs || '').trim();
     } else {
       from = stem || 'contributor';
-      ts = String(item.ts || '').trim();
+      ts = String(item.ts || resolveMigratedCheerTs(item.relPath, '') || '').trim();
     }
 
     if (!from) continue;
@@ -1653,7 +1675,7 @@ async function fetchPackedWallState({ repository, token = '', pagesStateUrl = ''
 }
 
 function cacheRequestFor(repository) {
-  return new Request(`https://pulse-wall-cache.internal/__v12/${encodeURIComponent(repository)}`, {
+  return new Request(`https://pulse-wall-cache.internal/__v13/${encodeURIComponent(repository)}`, {
     method: 'GET'
   });
 }
