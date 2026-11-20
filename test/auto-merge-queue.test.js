@@ -3,6 +3,7 @@ const test = require('node:test');
 
 const { COMMENT_MARKER } = require('../scripts/pr-guard');
 const {
+  fetchPrChangedFilesAndContents,
   upsertCommentByMarker,
   processAutoMergeQueue
 } = require('../scripts/auto-merge-queue');
@@ -341,4 +342,72 @@ test('processAutoMergeQueue chains continuation safely when loop budget expires 
   assert.equal(dispatches.length, 1);
   assert.equal(dispatches[0].workflow_id, 'auto-merge-queue.yml');
   assert.deepEqual(dispatches[0].inputs, { chain_depth: '3' });
+});
+
+test('fetchPrChangedFilesAndContents reads blobs from base repo first (avoiding cross-fork 403) and falls back to raw_url', async () => {
+  const blobRequests = [];
+  const sampleJson = `${JSON.stringify({ name: 'ForkUser', motto: 'Hi' }, null, 2)}\n`;
+  const github = {
+    async paginate(fn, params) {
+      return fn(params);
+    },
+    rest: {
+      pulls: {
+        async listFiles() {
+          return [
+            {
+              status: 'added',
+              filename: 'data/profiles/forkuser.json',
+              sha: 'blob-fork-1',
+              raw_url: 'https://github.com/nanzhi84/open-source-pulse-wall/raw/abc/data/profiles/forkuser.json'
+            },
+            {
+              status: 'added',
+              filename: 'data/cheers/bob/forkuser.json',
+              sha: 'blob-missing',
+              raw_url: 'https://github.com/nanzhi84/open-source-pulse-wall/raw/abc/data/cheers/bob/forkuser.json'
+            }
+          ];
+        }
+      },
+      git: {
+        async getBlob({ owner, repo, file_sha }) {
+          blobRequests.push({ owner, repo, file_sha });
+          if (owner !== 'nanzhi84') {
+            throw new Error('403 Resource not accessible by integration');
+          }
+          if (file_sha === 'blob-fork-1') {
+            return { data: { content: encodeBase64(sampleJson) } };
+          }
+          throw new Error('404 Not Found');
+        }
+      },
+      repos: {
+        async getContent() {
+          throw new Error('404 Not Found');
+        }
+      }
+    }
+  };
+
+  const cheerJson = `${JSON.stringify({ message: 'Great!' }, null, 2)}\n`;
+  const { fileContents } = await fetchPrChangedFilesAndContents({
+    github,
+    owner: 'nanzhi84',
+    repo: 'open-source-pulse-wall',
+    pr: {
+      number: 99,
+      head: {
+        sha: 'abc123',
+        repo: { owner: { login: 'forkuser' }, name: 'open-source-pulse-wall' }
+      }
+    },
+    fetchFn: async () => new Response(cheerJson, { status: 200 })
+  });
+
+  // First file loaded straight from base repo without touching fork repo
+  assert.equal(blobRequests[0].owner, 'nanzhi84');
+  assert.equal(fileContents['data/profiles/forkuser.json'], sampleJson);
+  // Second file gracefully fell back to raw_url after API 404/403
+  assert.equal(fileContents['data/cheers/bob/forkuser.json'], cheerJson);
 });

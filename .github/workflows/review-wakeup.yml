@@ -1,0 +1,19 @@
+name: Review wakeup
+
+on:
+  pull_request_review:
+    types:
+      - submitted
+      - dismissed
+
+jobs:
+  signal:
+    if: >-
+      github.event.pull_request.base.ref == 'main' &&
+      (github.event.action == 'dismissed' || github.event.review.state != 'commented')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - name: Notify auto-merge queue of review state change
+        run: echo "Review ${{ github.event.action }} (${{ github.event.review.state }}) on PR #${{ github.event.pull_request.number }}"

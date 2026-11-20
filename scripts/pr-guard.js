@@ -49,6 +49,9 @@ function normalizeGithubPrFiles(apiFiles = []) {
     if (file.previous_filename) {
       mapped.previousPath = String(file.previous_filename).replace(/\\/g, '/').replace(/^\/+/, '');
     }
+    if (file.raw_url) {
+      mapped.rawUrl = String(file.raw_url);
+    }
     return mapped;
   });
 }

@@ -1,9 +1,14 @@
 const assert = require('node:assert/strict');
+const { execFileSync } = require('node:child_process');
+const fs = require('node:fs');
+const os = require('node:os');
+const path = require('node:path');
 const test = require('node:test');
 
 const {
   parseNameStatusZ,
-  validatePrDiff
+  validatePrDiff,
+  readGitChangedFiles
 } = require('../scripts/validate-pr-diff');
 
 test('parseNameStatusZ parses add, modify, delete, rename, and copy entries', () => {
@@ -132,4 +137,47 @@ test('rejects misplaced files in data/profiles/ and data/cheers/', () => {
 
   assert.equal(result.ok, false);
   assert.equal(result.errors.length, 4);
+});
+
+test('readGitChangedFiles ignores unrelated commits added to main when HEAD is a synthetic PR merge commit', (t) => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'pulse-wall-diff-'));
+  t.after(() => fs.rmSync(dir, { recursive: true, force: true }));
+
+  const git = (...args) =>
+    execFileSync('git', args, {
+      cwd: dir,
+      encoding: 'utf8',
+      env: {
+        ...process.env,
+        GIT_AUTHOR_NAME: 'Test',
+        GIT_AUTHOR_EMAIL: 'test@example.com',
+        GIT_COMMITTER_NAME: 'Test',
+        GIT_COMMITTER_EMAIL: 'test@example.com'
+      }
+    }).trim();
+
+  git('init', '-b', 'main');
+  fs.mkdirSync(path.join(dir, 'data', 'profiles'), { recursive: true });
+  fs.writeFileSync(path.join(dir, 'README.md'), 'v1\n');
+  git('add', '.');
+  git('commit', '-m', 'init');
+  const staleBaseSha = git('rev-parse', 'HEAD');
+
+  // Student branch adds own profile from staleBaseSha
+  git('checkout', '-b', 'student-pr');
+  fs.writeFileSync(path.join(dir, 'data', 'profiles', 'alice.json'), '{"name":"Alice","motto":"Hi"}\n');
+  git('add', '.');
+  git('commit', '-m', 'feat: add alice');
+
+  // Meanwhile main advances with an unrelated README.md edit
+  git('checkout', 'main');
+  fs.writeFileSync(path.join(dir, 'README.md'), 'v2\n');
+  git('add', '.');
+  git('commit', '-m', 'docs: update readme on main');
+
+  // GitHub creates synthetic merge commit: main (parent 1) + student-pr (parent 2)
+  git('merge', '--no-ff', 'student-pr', '-m', 'Merge pull request');
+
+  const changed = readGitChangedFiles({ baseSha: staleBaseSha, headSha: 'HEAD', cwd: dir });
+  assert.deepEqual(changed, [{ status: 'A', path: 'data/profiles/alice.json' }]);
 });

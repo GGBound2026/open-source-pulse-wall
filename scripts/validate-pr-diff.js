@@ -230,14 +230,35 @@ function validatePrDiff({ prAuthor, changedFiles = [], maintainers = DEFAULT_MAI
   };
 }
 
-function readGitChangedFiles({ baseSha, headSha = 'HEAD', cwd = ROOT } = {}) {
-  if (!baseSha) {
-    throw new Error('缺少 PR_BASE_SHA，无法计算 PR 变更范围');
+function isMergeCommit(ref, cwd) {
+  try {
+    execFileSync('git', ['rev-parse', '--verify', '--quiet', `${ref}^2`], {
+      cwd,
+      stdio: 'ignore'
+    });
+    return true;
+  } catch {
+    return false;
   }
+}
+
+function readGitChangedFiles({ baseSha, headSha = 'HEAD', cwd = ROOT } = {}) {
+  // On GitHub pull_request events, checkout points at the synthetic merge commit
+  // refs/pull/<n>/merge where HEAD^1 is current base (main) and HEAD^2 is PR head.
+  // Diffing HEAD^1..HEAD avoids polluting the PR diff with commits merged into main
+  // after PR_BASE_SHA was recorded.
+  const diffRange = isMergeCommit(headSha, cwd)
+    ? [`${headSha}^1`, headSha]
+    : (() => {
+        if (!baseSha) {
+          throw new Error('缺少 PR_BASE_SHA，无法计算 PR 变更范围');
+        }
+        return [`${baseSha}...${headSha}`];
+      })();
 
   const output = execFileSync(
     'git',
-    ['diff', '--name-status', '-z', `${baseSha}...${headSha}`],
+    ['diff', '--name-status', '-z', ...diffRange],
     {
       cwd,
       encoding: 'utf8',

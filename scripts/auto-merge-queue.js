@@ -25,13 +25,17 @@ function defaultSleep(ms) {
 }
 
 function defaultRefreshMain(workspace) {
-  execFileSync('git', ['pull', '--ff-only', 'origin', 'main'], {
+  execFileSync('git', ['fetch', '--depth=1', 'origin', 'main'], {
+    cwd: workspace,
+    stdio: 'pipe'
+  });
+  execFileSync('git', ['reset', '--hard', 'FETCH_HEAD'], {
     cwd: workspace,
     stdio: 'pipe'
   });
 }
 
-async function fetchPrChangedFilesAndContents({ github, owner, repo, pr, core }) {
+async function fetchPrChangedFilesAndContents({ github, owner, repo, pr, core, fetchFn = global.fetch }) {
   const apiFiles = await github.paginate(github.rest.pulls.listFiles, {
     owner,
     repo,
@@ -45,6 +49,7 @@ async function fetchPrChangedFilesAndContents({ github, owner, repo, pr, core })
   const headOwner = pr.head?.repo?.owner?.login || owner;
   const headRepo = pr.head?.repo?.name || repo;
   const headSha = pr.head?.sha || '';
+  const hasDistinctHeadRepo = Boolean(headOwner && headRepo && (headOwner !== owner || headRepo !== repo));
 
   for (const file of changedFiles) {
     if (file.status === 'D') continue;
@@ -55,27 +60,70 @@ async function fetchPrChangedFilesAndContents({ github, owner, repo, pr, core })
 
     if (!isTargetJson) continue;
 
-    try {
-      if (file.sha) {
+    let loaded = false;
+    const attempts = [];
+
+    // 1. Prefer base repository object store (same-repo GITHUB_TOKEN never hits cross-fork 403, works even if fork is deleted)
+    if (file.sha) {
+      attempts.push(async () => {
+        const blob = await github.rest.git.getBlob({
+          owner,
+          repo,
+          file_sha: file.sha
+        });
+        return Buffer.from(blob.data.content || '', 'base64').toString('utf8');
+      });
+    }
+
+    if (headSha) {
+      attempts.push(async () => {
+        const contentRes = await github.rest.repos.getContent({
+          owner,
+          repo,
+          path: file.path,
+          ref: headSha
+        });
+        if (!Array.isArray(contentRes.data) && typeof contentRes.data.content === 'string') {
+          return Buffer.from(contentRes.data.content, 'base64').toString('utf8');
+        }
+        throw new Error('Unexpected getContent payload');
+      });
+    }
+
+    // 2. Fallback to fork repository API if distinct
+    if (hasDistinctHeadRepo && file.sha) {
+      attempts.push(async () => {
         const blob = await github.rest.git.getBlob({
           owner: headOwner,
           repo: headRepo,
           file_sha: file.sha
         });
-        fileContents[file.path] = Buffer.from(blob.data.content || '', 'base64').toString('utf8');
-      } else if (headSha) {
-        const contentRes = await github.rest.repos.getContent({
-          owner: headOwner,
-          repo: headRepo,
-          path: file.path,
-          ref: headSha
-        });
-        if (!Array.isArray(contentRes.data) && contentRes.data.content) {
-          fileContents[file.path] = Buffer.from(contentRes.data.content, 'base64').toString('utf8');
-        }
+        return Buffer.from(blob.data.content || '', 'base64').toString('utf8');
+      });
+    }
+
+    // 3. Final fallback to public raw_url from pulls.listFiles (no token header needed for public repo)
+    if (file.rawUrl && typeof fetchFn === 'function') {
+      attempts.push(async () => {
+        const res = await fetchFn(file.rawUrl);
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        return res.text();
+      });
+    }
+
+    let lastError = null;
+    for (const attempt of attempts) {
+      try {
+        fileContents[file.path] = await attempt();
+        loaded = true;
+        break;
+      } catch (err) {
+        lastError = err;
       }
-    } catch (readError) {
-      core?.warning?.(`Failed to fetch content for ${file.path}: ${readError.message}`);
+    }
+
+    if (!loaded && lastError) {
+      core?.warning?.(`Failed to fetch content for ${file.path}: ${lastError.message}`);
     }
   }
 
