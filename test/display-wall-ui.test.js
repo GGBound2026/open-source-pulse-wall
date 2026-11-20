@@ -6,19 +6,21 @@ const test = require('node:test');
 const ROOT = path.resolve(__dirname, '..');
 const INDEX_PATH = path.join(ROOT, 'public', 'index.html');
 const APP_PATH = path.join(ROOT, 'public', 'app.js');
+const STYLES_PATH = path.join(ROOT, 'public', 'styles.css');
 
-test('home page is a display-first collaboration wall with bounded detail entry points', () => {
+test('home page is a full-width contributor hall without PR board or git history timeline', () => {
   const html = fs.readFileSync(INDEX_PATH, 'utf8');
 
   assert.match(html, /GitHub 协作展示墙/);
   assert.match(html, /class="[^"]*pulse-dashboard[^"]*"/);
   assert.match(html, /class="[^"]*dashboard-main[^"]*"/);
-  assert.match(html, /全部贡献者/);
-  assert.match(html, /查看全部 PR/);
-  assert.match(html, /最近 Issue/);
-  assert.match(html, /完整时间线/);
+  assert.match(html, /id="refreshWall"/);
+  assert.match(html, /立即刷新/);
+  assert.match(html, /data-wall-filter="starred"/);
+  assert.match(html, /data-wall-filter="cheers"/);
+  assert.match(html, /id="toggleWallMotion"/);
+  assert.doesNotMatch(html, /PR 协作看板|Git 历史时间线|id="board"|id="history"|id="wallDrawerOverlay"/);
   assert.doesNotMatch(html, /待回答问题|热门想法|Bug 反馈/);
-  assert.doesNotMatch(html, /如何在本地跑通整套开发环境|支持插件化架构|Awesome Pulse Wall 插件集|作品展示/);
 });
 
 test('home page links the contribution entry directly to GitHub README', () => {
@@ -30,32 +32,23 @@ test('home page links the contribution entry directly to GitHub README', () => {
   assert.match(html, /href="https:\/\/github\.com\/nanzhi84\/open-source-pulse-wall#贡献步骤指南"/);
   assert.match(html, /<strong>开始贡献<\/strong>/);
   assert.match(html, /<small>README<\/small>/);
-});
-
-test('display wall keeps expanding data surfaces bounded by default', () => {
-  const script = fs.readFileSync(APP_PATH, 'utf8');
-
-  assert.doesNotMatch(script, /const WALL_PREVIEW_LIMIT = 12;/);
-  assert.match(script, /const WALL_PREVIEW_LIMIT = 6;/);
-  assert.match(script, /const VISIBLE_FEED_ITEMS = 6;/);
-  assert.match(script, /const HISTORY_PREVIEW_LIMIT = 6;/);
-  assert.match(script, /cardMarkup\(profile, \{ compact: true \}\)/);
-  assert.match(script, /options\.compact \? '' : cheersMarkup\(profile, options\)/);
-  assert.match(script, /function profileSourceUrl\(file\)/);
-  assert.match(script, /\/data\/profiles\/\$\{encodeURIComponent\(filename\)\}/);
-});
-
-test('all-contributors drawer separates status, source, badge, and profile link columns', () => {
-  const script = fs.readFileSync(APP_PATH, 'utf8');
-  const html = fs.readFileSync(INDEX_PATH, 'utf8');
-
-  assert.match(script, /class="wall-drawer-meta"/);
-  assert.match(script, /class="wall-drawer-recent-text"/);
-  assert.match(script, /class="wall-drawer-source"/);
-  assert.match(script, /class="wall-drawer-profile-link"/);
-  assert.match(script, /class="wall-drawer-badge is-clickable" data-cheers-trigger=/);
-  assert.match(script, /\[elements\.wall, elements\.wallDrawerList\]/);
-  assert.doesNotMatch(script, /查看 \$\{file\} 的完整 JSON/);
   assert.match(html, /class="guide-entry"[\s\S]*id="openTopRepo"[\s\S]*class="star-badge"/);
-  assert.doesNotMatch(html, /id="refreshTop"|id="refreshBoard"|id="openBoardRepo"/);
+});
+
+test('contributor wall renders all contributors with inline peer cheers and combinable star effects', () => {
+  const script = fs.readFileSync(APP_PATH, 'utf8');
+  const styles = fs.readFileSync(STYLES_PATH, 'utf8');
+
+  assert.doesNotMatch(script, /WALL_PREVIEW_LIMIT/);
+  assert.match(script, /const VISIBLE_FEED_ITEMS = 3;/);
+  assert.match(script, /cheersMarkup\(profile\)/);
+  assert.match(script, /data-cheers-trigger=/);
+  assert.match(script, /const STAR_THEMES = \[/);
+  assert.match(script, /const STAR_FRAMES = \[/);
+  assert.match(script, /const STAR_AURAS = \[/);
+  assert.match(script, /const STAR_PATTERNS = \[/);
+  assert.match(script, /const STAR_BADGES = \[/);
+  assert.match(script, /assignStarRecipes/);
+  assert.match(styles, /grid-template-columns:\s*repeat\(4,\s*minmax\(0,\s*1fr\)\)/);
+  assert.match(styles, /@media \(prefers-reduced-motion: no-preference\)/);
 });

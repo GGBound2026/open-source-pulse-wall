@@ -3,7 +3,7 @@
 const crypto = require('crypto');
 const fs = require('fs');
 const path = require('path');
-const { loadEnvFile } = require('./load-env');
+const { loadEnvFile, resolveGithubToken } = require('./load-env');
 
 loadEnvFile(path.resolve(__dirname, '..'));
 const {
@@ -15,7 +15,7 @@ const {
 const ROOT = path.resolve(__dirname, '..');
 const PUBLIC_DIR = path.join(ROOT, 'public');
 const DIST_DIR = path.join(ROOT, 'dist');
-const GITHUB_TOKEN = String(process.env.GITHUB_TOKEN || '').trim();
+const GITHUB_TOKEN = resolveGithubToken();
 
 function assertBuildConfig(repository) {
   if (!repository) {

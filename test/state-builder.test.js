@@ -90,6 +90,16 @@ test('uses paginated GitHub collections instead of treating the first page as to
       return jsonResponse([pr(2)]);
     }
 
+    if (parsed.pathname === '/repos/acme/wall/stargazers') {
+      const page = Number(parsed.searchParams.get('page') || '1');
+      if (page === 1) {
+        return jsonResponse([{ login: 'Alice' }], {
+          link: '<https://api.github.com/repos/acme/wall/stargazers?per_page=100&page=2>; rel="next"'
+        });
+      }
+      return jsonResponse([{ login: 'bob' }]);
+    }
+
     throw new Error(`Unexpected URL ${url}`);
   };
 
@@ -100,8 +110,10 @@ test('uses paginated GitHub collections instead of treating the first page as to
     assert.equal(state.openIssuesTotal, 2);
     assert.equal(state.pullRequestsTotal, 2);
     assert.equal(state.defaultBranch, 'trunk');
+    assert.deepEqual(state.stargazers, ['Alice', 'bob']);
     assert.ok(calls.some((call) => call.includes('/issues') && call.includes('page=2')));
     assert.ok(calls.some((call) => call.includes('/pulls') && call.includes('page=2')));
+    assert.ok(calls.some((call) => call.includes('/stargazers') && call.includes('page=2')));
   } finally {
     global.fetch = originalFetch;
   }
@@ -132,6 +144,10 @@ test('omits removed community lanes and keeps recent pure issues and pull reques
     }
 
     if (parsed.pathname === '/repos/acme/wall/pulls') {
+      return jsonResponse([]);
+    }
+
+    if (parsed.pathname === '/repos/acme/wall/stargazers') {
       return jsonResponse([]);
     }
 

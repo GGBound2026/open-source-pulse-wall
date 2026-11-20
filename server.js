@@ -3,7 +3,7 @@
 const http = require('http');
 const fs = require('fs');
 const path = require('path');
-const { loadEnvFile } = require('./scripts/load-env');
+const { loadEnvFile, resolveGithubToken } = require('./scripts/load-env');
 
 loadEnvFile(__dirname);
 const {
@@ -20,7 +20,7 @@ const PORT = Number(process.env.PORT || 3008);
 const ROOT = __dirname;
 const PUBLIC_DIR = path.join(ROOT, 'public');
 const POLL_INTERVAL_MS = 700;
-const GITHUB_TOKEN = String(process.env.GITHUB_TOKEN || '').trim();
+const GITHUB_TOKEN = resolveGithubToken();
 const AUTHENTICATED_GITHUB_SYNC_INTERVAL_MS = 30000;
 const UNAUTHENTICATED_GITHUB_SYNC_INTERVAL_MS = 300000;
 // Authenticated sync can poll quickly; unauthenticated REST calls are limited to 60 req/h.

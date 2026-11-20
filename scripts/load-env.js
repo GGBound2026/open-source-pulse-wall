@@ -2,6 +2,7 @@
 
 const fs = require('fs');
 const path = require('path');
+const { execFileSync } = require('child_process');
 
 /**
  * Loads KEY=value pairs from root/.env into process.env when the key is unset.
@@ -42,4 +43,26 @@ function loadEnvFile(root) {
   }
 }
 
-module.exports = { loadEnvFile };
+function resolveGithubToken() {
+  const fromEnv = String(process.env.GITHUB_TOKEN || '').trim();
+  if (fromEnv) return fromEnv;
+
+  try {
+    const token = execFileSync('gh', ['auth', 'token'], {
+      encoding: 'utf8',
+      timeout: 3000,
+      windowsHide: true,
+      stdio: ['ignore', 'pipe', 'ignore']
+    }).trim();
+    if (token) {
+      process.env.GITHUB_TOKEN = token;
+      return token;
+    }
+  } catch {
+    // Ignore when GitHub CLI is absent or not signed in.
+  }
+
+  return '';
+}
+
+module.exports = { loadEnvFile, resolveGithubToken };

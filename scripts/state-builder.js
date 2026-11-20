@@ -14,6 +14,7 @@ const ACTIVITY_FEED_LIMIT = 8;
 const CONTRIBUTORS_FETCH_LIMIT = 100;
 const ISSUES_FETCH_LIMIT = 100;
 const PULLS_FETCH_LIMIT = 100;
+const STARGAZERS_FETCH_LIMIT = 500;
 const ISSUES_DISPLAY_LIMIT = 10;
 const PULLS_DISPLAY_LIMIT = 10;
 
@@ -23,6 +24,7 @@ function buildUnconfiguredGithubState() {
     ok: false,
     repository: '',
     stars: null,
+    stargazers: [],
     contributorCount: null,
     cloneUrl: '',
     htmlUrl: '',
@@ -593,7 +595,7 @@ async function fetchGithubState({ repository, token = '' }) {
     fetchFileContributorsViaGraphql(repository, trackedPaths, token).catch(() => ({}))
   ]);
 
-  const [issuesResult, pullsResult] = await Promise.all([
+  const [issuesResult, pullsResult, stargazersResult] = await Promise.all([
     fetchOptionalCollection(
       `/repos/${encodedRepo}/issues?state=all&sort=updated&direction=desc&per_page=100`,
       token,
@@ -603,9 +605,15 @@ async function fetchGithubState({ repository, token = '' }) {
       `/repos/${encodedRepo}/pulls?state=open&sort=created&direction=desc&per_page=100`,
       token,
       { maxItems: PULLS_FETCH_LIMIT }
+    ),
+    fetchOptionalCollection(
+      `/repos/${encodedRepo}/stargazers?per_page=100`,
+      token,
+      { maxItems: STARGAZERS_FETCH_LIMIT }
     )
   ]);
 
+  const stargazers = extractStargazerLogins(stargazersResult.data);
   const commitNodes = Array.isArray(commits) ? commits.map(normalizeCommitNode) : [];
   const latestCommitAt = commitNodes.length ? commitNodes[0].time : '';
   const issueNodes = issuesResult.data.map(normalizeIssueNode);
@@ -625,6 +633,8 @@ async function fetchGithubState({ repository, token = '' }) {
     ok: true,
     repository: repo.full_name || repository,
     stars: Number(repo.stargazers_count || 0),
+    stargazers,
+    stargazersTruncated: stargazersResult.truncated,
     contributorCount: contributorsResult.data.length,
     contributorCountTruncated: contributorsResult.truncated,
     cloneUrl: repo.clone_url || '',
@@ -778,7 +788,23 @@ function attachCheerEntries(profiles, cheerEntries = [], fileContributors = {}) 
   return profiles;
 }
 
-function normalizeContributors(contributors, fileContributors = {}, cheerEntries = []) {
+function extractStargazerLogins(items) {
+  if (!Array.isArray(items)) return [];
+  const seen = new Set();
+  const logins = [];
+  for (const item of items) {
+    const login = String(typeof item === 'string' ? item : (item?.login || item?.user?.login || '')).trim();
+    if (!login) continue;
+    const key = login.toLowerCase();
+    if (seen.has(key)) continue;
+    seen.add(key);
+    logins.push(login);
+  }
+  return logins;
+}
+
+function normalizeContributors(contributors, fileContributors = {}, cheerEntries = [], stargazers = []) {
+  const stargazerSet = new Set(extractStargazerLogins(stargazers).map((login) => login.toLowerCase()));
   const normalized = contributors
     .map((item) => {
       const file = String(item.file || '').trim();
@@ -790,6 +816,7 @@ function normalizeContributors(contributors, fileContributors = {}, cheerEntries
         item.avatar ||
         (/^[A-Za-z0-9-]+$/.test(github) ? `https://github.com/${encodeURIComponent(github)}.png?size=160` : '')
       ).trim();
+      const starred = Boolean(item.starred) || (Boolean(github) && stargazerSet.has(github.toLowerCase()));
 
       return {
         name: String(item.name || '').trim(),
@@ -798,6 +825,7 @@ function normalizeContributors(contributors, fileContributors = {}, cheerEntries
         city: String(item.city || '').trim(),
         avatar,
         joinedAt: String(resolved.ts || item.joinedAt || '').trim(),
+        starred,
         cheers: normalizeCheers(item.cheers),
         file
       };
@@ -839,7 +867,8 @@ function buildContributorState({ githubState = buildUnconfiguredGithubState(), f
   const normalized = normalizeContributors(
     result.contributors,
     githubState?.fileContributors || {},
-    result.cheerEntries || []
+    result.cheerEntries || [],
+    githubState?.stargazers || []
   );
   const ok = result.errors.length === 0;
   const contributors = ok ? normalized : fallbackContributors;

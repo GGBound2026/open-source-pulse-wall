@@ -1,24 +1,83 @@
 const MAX_FEED_ITEMS = 30;
-const VISIBLE_FEED_ITEMS = 6;
-const WALL_PREVIEW_LIMIT = 6;
-const WALL_PAGE_SIZE = 20;
-const WALL_DRAWER_PAGE_SIZE = 20;
+const VISIBLE_FEED_ITEMS = 3;
+const REFRESH_LABEL_DEFAULT = '立即刷新';
+const STATE_CACHE_KEY = 'pulse-wall:state:v4';
+const REFRESH_COOLDOWN_STORAGE_KEY = 'pulse-wall:refresh-cooldown-until';
+const MOTION_PREF_STORAGE_KEY = 'pulse-wall:motion-paused';
 
-const GRAPH_ROW_HEIGHT = 56;
-const GRAPH_LANE_WIDTH = 22;
-const GRAPH_NODE_RADIUS = 6;
-const GRAPH_PADDING_TOP = 16;
-const GRAPH_PADDING_LEFT = 18;
-const GRAPH_PALETTE = ['#3b6064', '#a36a3b', '#5b8a3a', '#8a3b6a', '#3b6a8a', '#6a8a3b', '#8a5b3b'];
-const REFRESH_LABEL_DEFAULT = '立即拉取';
-const HISTORY_PREVIEW_LIMIT = 6;
-const STATE_CACHE_KEY = 'pulse-wall:state:v2';
+const STAR_THEMES = [
+  { id: 'prism', label: '棱镜虹彩', tone: 'light' },
+  { id: 'goldleaf', label: '鎏金典藏', tone: 'light' },
+  { id: 'aurora', label: '翡翠极光', tone: 'dark' },
+  { id: 'sakura', label: '落樱玫瑰金', tone: 'light' },
+  { id: 'celestial', label: '午夜星穹', tone: 'dark' },
+  { id: 'opalescent', label: '月白欧泊', tone: 'light' },
+  { id: 'amber', label: '琥珀鎏铜', tone: 'light' },
+  { id: 'obsidian', label: '黑曜紫晶', tone: 'dark' }
+];
+
+// Dimension 2 (Around the frame #1): Out-of-frame sculptural border & corner ornaments
+const STAR_FRAMES = [
+  { id: 'aurora-blades', label: '棱光星翼角' },
+  { id: 'royal-filigree', label: '巴洛克金角' },
+  { id: 'botanical-vine', label: '破框蔓金叶' },
+  { id: 'celestial-wings', label: '环框星轨环' },
+  { id: 'cyber-brackets', label: '悬浮全息护角' },
+  { id: 'sakura-petals', label: '绕框花瓣簇' },
+  { id: 'tarot-crown', label: '塔罗星冠框' },
+  { id: 'crystal-shards', label: '悬浮碎钻棱' }
+];
+
+// Dimension 3 (Around the frame #2): Animated perimeter energy aura & running border light
+const STAR_AURAS = [
+  { id: 'prism-orbit', label: '虹彩流光环' },
+  { id: 'molten-gold', label: '熔金奔跑边' },
+  { id: 'emerald-plasma', label: '极光外溢场' },
+  { id: 'comet-chase', label: '双彗星巡边' },
+  { id: 'starlight-halo', label: '星尘外光环' },
+  { id: 'sakura-mist', label: '绯霞霓虹晕' },
+  { id: 'electric-cyan', label: '星蓝离子边' },
+  { id: 'royal-radiance', label: '鎏金日冕晕' }
+];
+
+// Dimension 4: Surface vector watermark pattern
+const STAR_PATTERNS = [
+  { id: 'constellation', label: '星图连线' },
+  { id: 'sunburst', label: '破晓芒光' },
+  { id: 'botanical', label: '鎏金叶脉' },
+  { id: 'nebula-rings', label: '星轨同心环' },
+  { id: 'sacred-geo', label: '菱格星纹' },
+  { id: 'aurora-waves', label: '流云光带' },
+  { id: 'compass-rose', label: '航海星盘' },
+  { id: 'prism-facets', label: '晶格折面' }
+];
+
+// Dimension 5: Break-the-frame overhanging corner emblem
+const STAR_BADGES = [
+  { id: 'crystal-star', label: '水晶棱镜星' },
+  { id: 'wax-seal', label: '复古火漆印' },
+  { id: 'shooting-star', label: '璀璨流星章' },
+  { id: 'crescent-crest', label: '新月星辰章' },
+  { id: 'ribbon-medal', label: '丝带星勋章' },
+  { id: 'enamel-charm', label: '珐琅星挂坠' },
+  { id: 'prism-diamond', label: '八芒星菱钻' },
+  { id: 'laurel-star', label: '月桂星冠章' }
+];
+
+const TOTAL_STAR_COMBINATIONS =
+  STAR_THEMES.length *
+  STAR_FRAMES.length *
+  STAR_AURAS.length *
+  STAR_PATTERNS.length *
+  STAR_BADGES.length;
 
 const state = {
   knownHandles: new Set(),
   knownGithubEvents: new Set(),
   knownCheerKeys: new Set(),
+  knownStarredHandles: new Set(),
   bootstrappedCheers: false,
+  bootstrappedStars: false,
   feed: [],
   lastOk: null,
   lastFingerprint: '',
@@ -27,21 +86,16 @@ const state = {
   dataMode: '',
   activityReturnFocus: null,
   cheersReturnFocus: null,
-  wallDrawerReturnFocus: null,
   wallContributors: [],
-  wallExpanded: false,
-  wallVisibleCount: WALL_PREVIEW_LIMIT,
-  wallDrawerVisibleCount: WALL_DRAWER_PAGE_SIZE,
-  wallDrawerFilter: 'all',
+  wallFilter: 'all',
+  starRecipes: new Map(),
+  stargazerSet: new Set(),
   githubHtmlUrl: '',
   githubDefaultBranch: 'main',
   refreshing: false,
   refreshCooldownTimer: null,
-  knownCommitShas: new Set(),
   commitRankByAuthor: new Map(),
-  bootstrappedHistory: false,
-  historyExpanded: false,
-  lastHistoryPayload: null
+  motionPaused: false
 };
 
 const AVATARS = Array.from({ length: 11 }, (_, index) => {
@@ -56,17 +110,21 @@ const $$ = (selector) => Array.from(document.querySelectorAll(selector));
 const elements = {
   connectionDot: $('#connectionDot'),
   connectionText: $('#connectionText'),
-  syncNote: $('#syncNote'),
   starCount: $('#starCount'),
+  starBadgeLink: $('#starBadgeLink'),
   statCount: $('#statCount'),
   statCountNote: $('#statCountNote'),
+  statCardCount: $('#statCardCount'),
   statValidation: $('#statValidation'),
   statStacks: $('#statStacks'),
   statPulse: $('#statPulse'),
+  statCardPulse: $('#statCardPulse'),
   statIssues: $('#statIssues'),
   statIssuesNote: $('#statIssuesNote'),
+  statCardIssues: $('#statCardIssues'),
   statReview: $('#statReview'),
   statReviewNote: $('#statReviewNote'),
+  statCardReview: $('#statCardReview'),
   validationBox: $('#validationBox'),
   liveFeed: $('#liveFeed'),
   wall: $('#contributorsWall'),
@@ -84,34 +142,12 @@ const elements = {
   cheersFullList: $('#cheersFullList'),
   closeCheers: $('#closeCheers'),
   wallSummary: $('#wallSummary'),
-  toggleWallMode: $('#toggleWallMode'),
-  wallControls: $('#wallControls'),
   wallSearch: $('#wallSearch'),
-  wallFilterStatus: $('#wallFilterStatus'),
   clearWallSearch: $('#clearWallSearch'),
-  loadMoreWall: $('#loadMoreWall'),
-  wallDrawerOverlay: $('#wallDrawerOverlay'),
-  wallDrawer: $('#wallDrawer'),
-  closeWallDrawer: $('#closeWallDrawer'),
-  wallDrawerSearch: $('#wallDrawerSearch'),
-  wallDrawerSort: $('#wallDrawerSort'),
-  wallDrawerList: $('#wallDrawerList'),
-  wallDrawerCount: $('#wallDrawerCount'),
-  wallDrawerPageNote: $('#wallDrawerPageNote'),
-  wallDrawerLoadMore: $('#wallDrawerLoadMore'),
-  gitGraph: $('#gitGraph'),
-  historySummary: $('#historySummary'),
-  historyCount: $('#historyCount'),
-  refreshHistory: $('#refreshHistory'),
-  refreshHistoryLabel: $('#refreshHistoryLabel'),
-  openTopRepo: $('#openTopRepo'),
-  openHistoryRepo: $('#openHistoryRepo'),
-  toggleHistoryMode: $('#toggleHistoryMode'),
-  boardSummary: $('#boardSummary'),
-  issuesList: $('#issuesList'),
-  pullsList: $('#pullsList'),
-  openIssuesLink: $('#openIssuesLink'),
-  openPullsLink: $('#openPullsLink')
+  toggleWallMotion: $('#toggleWallMotion'),
+  refreshWall: $('#refreshWall'),
+  refreshWallLabel: $('#refreshWallLabel'),
+  openTopRepo: $('#openTopRepo')
 };
 
 function htmlEscape(value) {
@@ -140,22 +176,167 @@ function formatRelativeTime(iso) {
 
   const diff = Date.now() - date.getTime();
   if (diff < 60_000) return '刚刚';
-  if (diff < 3_600_000) return `${Math.floor(diff / 60_000)} 分钟前`;
-  if (diff < 86_400_000) return `${Math.floor(diff / 3_600_000)} 小时前`;
-  if (diff < 30 * 86_400_000) return `${Math.floor(diff / 86_400_000)} 天前`;
+  if (diff < 3_600_000) return `${Math.floor(diff / 60_000)}m前`;
+  if (diff < 86_400_000) return `${Math.floor(diff / 3_600_000)}h前`;
+  if (diff < 30 * 86_400_000) return `${Math.floor(diff / 86_400_000)}天前`;
 
   return date.toLocaleDateString('zh-CN', { year: 'numeric', month: '2-digit', day: '2-digit' });
 }
 
-function toast(message) {
+function toast(message, duration = 2800) {
   if (!elements.toast) return;
   elements.toast.textContent = message;
   elements.toast.classList.add('show');
   window.clearTimeout(toast.timer);
-  toast.timer = window.setTimeout(() => elements.toast.classList.remove('show'), 2100);
+  toast.timer = window.setTimeout(() => elements.toast.classList.remove('show'), duration);
+}
+
+function hashString(input, seed = 2166136261) {
+  let hash = seed >>> 0;
+  const text = String(input || '');
+  for (let i = 0; i < text.length; i += 1) {
+    hash ^= text.charCodeAt(i);
+    hash = Math.imul(hash, 16777619) >>> 0;
+  }
+  return hash >>> 0;
+}
+
+function demoStarsEnabled() {
+  try {
+    return new URLSearchParams(window.location.search).get('demo-stars') === '1';
+  } catch {
+    return false;
+  }
+}
+
+function isProfileStarred(profile) {
+  if (profile.starred === true) return true;
+  const handle = String(profile.github || '').trim().toLowerCase();
+  if (handle && state.stargazerSet.has(handle)) return true;
+  if (demoStarsEnabled()) {
+    const key = handle || String(profile.file || profile.name || '').toLowerCase();
+    return hashString(key, 0x9e3779b9) % 10 < 6;
+  }
+  return false;
+}
+
+function buildRecipeFromIndices(seedKey, indices) {
+  const theme = STAR_THEMES[indices[0]];
+  const frame = STAR_FRAMES[indices[1]];
+  const aura = STAR_AURAS[indices[2]];
+  const pattern = STAR_PATTERNS[indices[3]];
+  const badge = STAR_BADGES[indices[4]];
+  const codeHash = hashString(`${seedKey}:${indices.join('-')}`, 0x811c9dc5);
+  const serial = (codeHash & 0xffff).toString(16).toUpperCase().padStart(4, '0');
+  const hueShift = ((codeHash >>> 16) % 25) - 12;
+  const sparkSeed = (codeHash >>> 24) % 100;
+
+  return {
+    key: indices.join(':'),
+    serial,
+    uid: `${serial.toLowerCase()}-${indices.join('')}`,
+    theme,
+    frame,
+    aura,
+    pattern,
+    badge,
+    hueShift,
+    sparkSeed,
+    summary: `${theme.label} × ${frame.label} × ${aura.label} × ${pattern.label} × ${badge.label}`
+  };
+}
+
+function pickLeastUsedIndex(preferred, size, stepSeed, counts) {
+  let minCount = Infinity;
+  for (let i = 0; i < size; i += 1) {
+    if (counts[i] < minCount) minCount = counts[i];
+  }
+  if (counts[preferred] === minCount) return preferred;
+
+  const stride = (stepSeed % (size - 1)) + 1;
+  for (let probe = 1; probe < size; probe += 1) {
+    const candidate = (preferred + probe * stride) % size;
+    if (counts[candidate] === minCount) return candidate;
+  }
+  for (let i = 0; i < size; i += 1) {
+    const candidate = (preferred + i) % size;
+    if (counts[candidate] === minCount) return candidate;
+  }
+  return preferred;
+}
+
+function assignStarRecipes(contributors) {
+  const map = new Map();
+  const usedCombos = new Set();
+  const sizes = [
+    STAR_THEMES.length,
+    STAR_FRAMES.length,
+    STAR_AURAS.length,
+    STAR_PATTERNS.length,
+    STAR_BADGES.length
+  ];
+  const dimCounts = sizes.map((size) => new Array(size).fill(0));
+
+  const ordered = contributors
+    .slice()
+    .sort((a, b) => String(a.github || a.file || a.name).toLowerCase().localeCompare(
+      String(b.github || b.file || b.name).toLowerCase()
+    ));
+
+  for (const profile of ordered) {
+    const key = String(profile.github || profile.file || profile.name || '').trim().toLowerCase();
+    if (!key || !isProfileStarred(profile)) continue;
+
+    const h1 = hashString(key, 0x811c9dc5);
+    const h2 = hashString(`${key}#pulse-star`, 0x9e3779b9);
+    const h3 = hashString(`wall:${key}:aura`, 0x85ebca6b);
+
+    const preferred = [
+      h1 % sizes[0],
+      (h1 >>> 8) % sizes[1],
+      h2 % sizes[2],
+      (h2 >>> 10) % sizes[3],
+      h3 % sizes[4]
+    ];
+    const stepSeeds = [
+      (h1 >>> 16),
+      (h2 >>> 16),
+      (h3 >>> 8),
+      (h3 >>> 16),
+      (h1 >>> 24)
+    ];
+
+    let indices = preferred.map((pref, dim) =>
+      pickLeastUsedIndex(pref, sizes[dim], stepSeeds[dim], dimCounts[dim])
+    );
+
+    let attempt = 0;
+    while (usedCombos.has(indices.join(':')) && attempt < 256) {
+      attempt += 1;
+      const dim = attempt % 5;
+      indices = indices.slice();
+      indices[dim] = (indices[dim] + 1) % sizes[dim];
+    }
+
+    const comboKey = indices.join(':');
+    usedCombos.add(comboKey);
+    indices.forEach((idx, dim) => {
+      dimCounts[dim][idx] += 1;
+    });
+    map.set(key, buildRecipeFromIndices(key, indices));
+  }
+
+  state.starRecipes = map;
+}
+
+function recipeForProfile(profile) {
+  const key = String(profile.github || profile.file || profile.name || '').trim().toLowerCase();
+  if (!key) return null;
+  return state.starRecipes.get(key) || null;
 }
 
 const EVENT_ICON_PATHS = {
+  star: '<path d="m12 2.8 2.85 5.78 6.38.93-4.62 4.5 1.09 6.35L12 17.36l-5.7 3 1.09-6.35-4.62-4.5 6.38-.93Z" />',
   cheer: '<path d="M5 6h11a3 3 0 0 1 3 3v5a3 3 0 0 1-3 3h-3l-4 3v-3H5a3 3 0 0 1-3-3V9a3 3 0 0 1 3-3Z" />',
   issue_opened: '<circle cx="12" cy="12" r="9" /><circle cx="12" cy="12" r="3" />',
   issue_closed: '<circle cx="12" cy="12" r="9" /><path d="m8 12 3 3 5-6" />',
@@ -174,24 +355,30 @@ function eventIconMarkup(type) {
   return `<span class="event-icon" aria-hidden="true"><svg viewBox="0 0 24 24">${path}</svg></span>`;
 }
 
-function feedMarkup(items) {
+function feedMarkup(items, { compact = false } = {}) {
   return items
     .map((item) => {
       const type = htmlEscape(item.type || 'generic');
-      return `<li data-event-type="${type}">${eventIconMarkup(item.type || 'generic')}<time>${formatTime(item.time)}</time><span>${htmlEscape(item.message)}</span></li>`;
+      const timeLabel = compact ? (formatRelativeTime(item.time) || formatTime(item.time)) : formatTime(item.time);
+      if (compact) {
+        return `<li data-event-type="${type}"><span class="feed-dot" aria-hidden="true"></span><span class="feed-text">${htmlEscape(item.message)}</span><span class="feed-sep" aria-hidden="true">·</span><time>${htmlEscape(timeLabel)}</time></li>`;
+      }
+      return `<li data-event-type="${type}">${eventIconMarkup(item.type || 'generic')}<span class="feed-text">${htmlEscape(item.message)}</span><time>${htmlEscape(timeLabel)}</time></li>`;
     })
     .join('');
 }
 
 function renderFeed() {
   if (elements.liveFeed) {
-    elements.liveFeed.innerHTML = feedMarkup(state.feed.slice(0, VISIBLE_FEED_ITEMS));
+    elements.liveFeed.innerHTML = state.feed.length
+      ? feedMarkup(state.feed.slice(0, VISIBLE_FEED_ITEMS), { compact: true })
+      : '<li class="empty-activity"><span class="feed-text">等待新的协作动态…</span></li>';
   }
 
   if (elements.activityList) {
     elements.activityList.classList.toggle('is-empty', !state.feed.length);
     elements.activityList.innerHTML = state.feed.length
-      ? feedMarkup(state.feed)
+      ? feedMarkup(state.feed, { compact: false })
       : '<li class="empty-activity"><span>暂无活动记录</span></li>';
   }
 
@@ -229,6 +416,11 @@ function setConnection(status, text) {
 function updateGithubSync(github) {
   state.githubHtmlUrl = safeHttpUrl(github?.htmlUrl || '') || '';
   state.githubDefaultBranch = String(github?.defaultBranch || 'main').trim() || 'main';
+  state.stargazerSet = new Set(
+    (Array.isArray(github?.stargazers) ? github.stargazers : [])
+      .map((login) => String(login || '').trim().toLowerCase())
+      .filter(Boolean)
+  );
 
   const isSynced = Boolean(github?.ok);
 
@@ -236,28 +428,21 @@ function updateGithubSync(github) {
     elements.starCount.textContent = isSynced ? formatNumber(github.stars) : '--';
   }
 
-  if (elements.syncNote) {
-    elements.syncNote.textContent = isSynced
-      ? `与 GitHub ${github.repository} 同步正常`
-      : (github?.message || '等待 GitHub 同步配置');
-  }
-
   if (elements.openTopRepo && state.githubHtmlUrl) {
     elements.openTopRepo.href = state.githubHtmlUrl;
   }
 
+  if (elements.starBadgeLink && state.githubHtmlUrl) {
+    elements.starBadgeLink.href = state.githubHtmlUrl;
+  }
+
+  if (elements.refreshWall) {
+    elements.refreshWall.hidden = !canManualRefresh();
+  }
 }
 
 function githubProfileUrl(github) {
   return `https://github.com/${encodeURIComponent(github || '')}`;
-}
-
-function profileSourceUrl(file) {
-  const filename = String(file || '').trim();
-  if (!state.githubHtmlUrl || !/^[A-Za-z0-9_.-]+\.json$/.test(filename)) return '';
-
-  const branch = encodeURIComponent(state.githubDefaultBranch || 'main');
-  return `${state.githubHtmlUrl}/blob/${branch}/data/profiles/${encodeURIComponent(filename)}`;
 }
 
 function safeHttpUrl(value) {
@@ -284,7 +469,7 @@ function safeHttpsUrl(value) {
   }
 }
 
-function optimizeAvatarUrl(rawUrl, size = 96) {
+function optimizeAvatarUrl(rawUrl, size = 112) {
   const safe = safeHttpsUrl(rawUrl);
   if (!safe) return '';
   try {
@@ -307,105 +492,556 @@ function optimizeAvatarUrl(rawUrl, size = 96) {
 function avatarForProfile(profile) {
   const explicitAvatar = String(profile.avatar || '').trim();
   if (AVATARS.includes(explicitAvatar)) return explicitAvatar;
-  const avatarUrl = optimizeAvatarUrl(explicitAvatar, 96);
+  const avatarUrl = optimizeAvatarUrl(explicitAvatar, 112);
   if (avatarUrl) return avatarUrl;
 
   const handle = String(profile.github || '').trim();
   if (/^[A-Za-z0-9-]+$/.test(handle)) {
-    return `https://github.com/${encodeURIComponent(handle)}.png?size=96`;
+    return `https://github.com/${encodeURIComponent(handle)}.png?size=112`;
   }
 
   return AVATARS[0];
 }
 
-function cheersMarkup(profile, options = {}) {
-  const cheers = Array.isArray(profile.cheers) ? profile.cheers : [];
-  if (!cheers.length) {
-    if (options.preview) {
+// ============================================================================
+// BREAK-THE-FRAME BORDER SCULPTURAL ORNAMENTS (8 DISTINCT STYLES AROUND FRAME)
+// ============================================================================
+function starFrameArtMarkup(frameId, uid) {
+  const g = `sf-${uid}`;
+  switch (frameId) {
+    case 'aurora-blades':
       return `
-        <div class="cheers-block is-empty" aria-label="同学寄语">
-          <span class="cheers-label">寄语 0</span>
-          <p class="cheers-hint">合并 PR 后，同学可以来你的卡片留下加油寄语</p>
-        </div>
-      `;
-    }
-    return '';
+        <div class="star-frame-art frame-aurora-blades" aria-hidden="true">
+          <svg class="f-corner f-tl" viewBox="0 0 64 64">
+            <defs><linearGradient id="${g}a" x1="0%" y1="0%" x2="100%" y2="100%"><stop offset="0%" stop-color="#e0f2fe"/><stop offset="50%" stop-color="#c084fc"/><stop offset="100%" stop-color="#38bdf8"/></linearGradient></defs>
+            <path d="M2 38 L10 10 L38 2 L24 14 L14 24 Z" fill="url(#${g}a)" stroke="#ffffff" stroke-width="1" opacity="0.95"/>
+            <path d="M12 12 L48 8 M12 12 L8 48" stroke="url(#${g}a)" stroke-width="1.6" opacity="0.8"/>
+            <path d="M10 4 L12 9 L17 11 L12 13 L10 18 L8 13 L3 11 L8 9 Z" fill="#ffffff"/>
+          </svg>
+          <svg class="f-corner f-br" viewBox="0 0 64 64">
+            <path d="M62 26 L54 54 L26 62 L40 50 L50 40 Z" fill="url(#${g}a)" stroke="#ffffff" stroke-width="1" opacity="0.95"/>
+            <path d="M52 52 L16 56 M52 52 L56 16" stroke="url(#${g}a)" stroke-width="1.6" opacity="0.8"/>
+            <path d="M54 46 L56 51 L61 53 L56 55 L54 60 L52 55 L47 53 L52 51 Z" fill="#ffffff"/>
+          </svg>
+          <svg class="f-crest-top" viewBox="0 0 88 22">
+            <path d="M4 13 L36 13 L44 3 L52 13 L84 13" fill="none" stroke="url(#${g}a)" stroke-width="1.6"/>
+            <path d="M44 1 L47 9 L55 12 L47 15 L44 21 L41 15 L33 12 L41 9 Z" fill="#ffffff" stroke="url(#${g}a)" stroke-width="0.9"/>
+          </svg>
+        </div>`;
+    case 'royal-filigree':
+      return `
+        <div class="star-frame-art frame-royal-filigree" aria-hidden="true">
+          <svg class="f-corner f-tl" viewBox="0 0 64 64">
+            <defs><linearGradient id="${g}b" x1="0%" y1="0%" x2="100%" y2="100%"><stop offset="0%" stop-color="#fef3c7"/><stop offset="50%" stop-color="#d49b35"/><stop offset="100%" stop-color="#8f5c14"/></linearGradient></defs>
+            <path d="M6 52 C6 26 14 14 26 10 C18 20 18 30 28 30 C34 30 38 24 34 18 C30 12 20 12 12 12 C24 6 38 6 54 6" fill="none" stroke="url(#${g}b)" stroke-width="2.2" stroke-linecap="round"/>
+            <path d="M10 10 L18 18 M6 22 C14 22 22 14 22 6" fill="none" stroke="url(#${g}b)" stroke-width="1.5"/>
+            <circle cx="11" cy="11" r="3.4" fill="#fef3c7" stroke="#9e6a19" stroke-width="1.2"/>
+          </svg>
+          <svg class="f-corner f-bl" viewBox="0 0 64 64">
+            <path d="M6 12 C6 38 14 50 26 54 C18 44 18 34 28 34 C34 34 38 40 34 46 C30 52 20 52 12 52 C24 58 38 58 54 58" fill="none" stroke="url(#${g}b)" stroke-width="2.2" stroke-linecap="round"/>
+            <circle cx="11" cy="53" r="3" fill="#fef3c7" stroke="#9e6a19" stroke-width="1.2"/>
+          </svg>
+          <svg class="f-corner f-br" viewBox="0 0 64 64">
+            <path d="M58 12 C58 38 50 50 38 54 C46 44 46 34 36 34 C30 34 26 40 30 46 C34 52 44 52 52 52 C40 58 26 58 10 58" fill="none" stroke="url(#${g}b)" stroke-width="2.2" stroke-linecap="round"/>
+            <circle cx="53" cy="53" r="3.4" fill="#fef3c7" stroke="#9e6a19" stroke-width="1.2"/>
+          </svg>
+          <svg class="f-crest-bottom" viewBox="0 0 92 20">
+            <path d="M6 10 Q28 10 38 16 Q46 4 54 16 Q64 10 86 10" fill="none" stroke="url(#${g}b)" stroke-width="1.8"/>
+            <polygon points="46,2 51,10 46,18 41,10" fill="#fef3c7" stroke="#a66d18" stroke-width="1.2"/>
+          </svg>
+        </div>`;
+    case 'botanical-vine':
+      return `
+        <div class="star-frame-art frame-botanical-vine" aria-hidden="true">
+          <svg class="f-vine f-vine-tl" viewBox="0 0 92 92">
+            <defs><linearGradient id="${g}c" x1="0%" y1="0%" x2="100%" y2="100%"><stop offset="0%" stop-color="#fde68a"/><stop offset="52%" stop-color="#c99a3e"/><stop offset="100%" stop-color="#6ee7b7"/></linearGradient></defs>
+            <path d="M12 84 C8 50 18 22 48 12 C62 8 76 8 88 11" fill="none" stroke="url(#${g}c)" stroke-width="2" stroke-linecap="round"/>
+            <path d="M17 58 C2 48 2 34 14 28 C24 38 25 48 17 58Z" fill="url(#${g}c)" opacity="0.88"/>
+            <path d="M28 32 C16 18 20 6 34 4 C40 16 37 26 28 32Z" fill="url(#${g}c)" opacity="0.92"/>
+            <path d="M46 16 C48 4 60 0 70 6 C62 16 54 18 46 16Z" fill="url(#${g}c)" opacity="0.85"/>
+            <path d="M26 46 C38 42 46 34 46 24 C34 26 27 34 26 46Z" fill="url(#${g}c)" opacity="0.65"/>
+            <circle cx="10" cy="70" r="2.3" fill="#fef9c3"/>
+            <circle cx="76" cy="12" r="2.2" fill="#fef9c3"/>
+          </svg>
+          <svg class="f-vine f-vine-br" viewBox="0 0 92 92">
+            <path d="M80 8 C84 42 74 70 44 80 C30 84 16 84 4 81" fill="none" stroke="url(#${g}c)" stroke-width="2" stroke-linecap="round"/>
+            <path d="M75 34 C90 44 90 58 78 64 C68 54 67 44 75 34Z" fill="url(#${g}c)" opacity="0.88"/>
+            <path d="M64 60 C76 74 72 86 58 88 C52 76 55 66 64 60Z" fill="url(#${g}c)" opacity="0.92"/>
+            <path d="M46 76 C44 88 32 92 22 86 C30 76 38 74 46 76Z" fill="url(#${g}c)" opacity="0.85"/>
+            <circle cx="82" cy="22" r="2.3" fill="#fef9c3"/>
+          </svg>
+        </div>`;
+    case 'celestial-wings':
+      return `
+        <div class="star-frame-art frame-celestial-wings" aria-hidden="true">
+          <svg class="f-orbit-ring" viewBox="0 0 360 250" preserveAspectRatio="none">
+            <defs><linearGradient id="${g}d" x1="0%" y1="0%" x2="100%" y2="100%"><stop offset="0%" stop-color="#fde68a"/><stop offset="50%" stop-color="#93c5fd"/><stop offset="100%" stop-color="#f9a8d4"/></linearGradient></defs>
+            <ellipse cx="180" cy="125" rx="176" ry="86" transform="rotate(-9 180 125)" fill="none" stroke="url(#${g}d)" stroke-width="1.6" opacity="0.86"/>
+            <ellipse cx="180" cy="125" rx="170" ry="78" transform="rotate(6 180 125)" fill="none" stroke="url(#${g}d)" stroke-width="1.1" stroke-dasharray="5 6" opacity="0.65"/>
+            <path d="M14 148 L18 156 L26 160 L18 164 L14 172 L10 164 L2 160 L10 156 Z" fill="#fef08a"/>
+            <path d="M346 76 L349 83 L356 86 L349 89 L346 96 L343 89 L336 86 L343 83 Z" fill="#e0f2fe"/>
+          </svg>
+        </div>`;
+    case 'cyber-brackets':
+      return `
+        <div class="star-frame-art frame-cyber-brackets" aria-hidden="true">
+          <span class="cyber-corner cc-tl"></span>
+          <span class="cyber-corner cc-tr"></span>
+          <span class="cyber-corner cc-bl"></span>
+          <span class="cyber-corner cc-br"></span>
+          <span class="cyber-rail rail-left"></span>
+          <span class="cyber-rail rail-right"></span>
+        </div>`;
+    case 'sakura-petals':
+      return `
+        <div class="star-frame-art frame-sakura-petals" aria-hidden="true">
+          <svg class="f-blossom f-blossom-tl" viewBox="0 0 76 76">
+            <defs><linearGradient id="${g}e" x1="0%" y1="0%" x2="100%" y2="100%"><stop offset="0%" stop-color="#fff1f2"/><stop offset="55%" stop-color="#fda4af"/><stop offset="100%" stop-color="#f472b6"/></linearGradient></defs>
+            <g transform="translate(24 22)">
+              <path d="M0 -14 C6 -14 8 -4 0 0 C-8 -4 -6 -14 0 -14Z" fill="url(#${g}e)" stroke="#fff" stroke-width="0.7"/>
+              <path d="M0 -14 C6 -14 8 -4 0 0 C-8 -4 -6 -14 0 -14Z" fill="url(#${g}e)" stroke="#fff" stroke-width="0.7" transform="rotate(72)"/>
+              <path d="M0 -14 C6 -14 8 -4 0 0 C-8 -4 -6 -14 0 -14Z" fill="url(#${g}e)" stroke="#fff" stroke-width="0.7" transform="rotate(144)"/>
+              <path d="M0 -14 C6 -14 8 -4 0 0 C-8 -4 -6 -14 0 -14Z" fill="url(#${g}e)" stroke="#fff" stroke-width="0.7" transform="rotate(216)"/>
+              <path d="M0 -14 C6 -14 8 -4 0 0 C-8 -4 -6 -14 0 -14Z" fill="url(#${g}e)" stroke="#fff" stroke-width="0.7" transform="rotate(288)"/>
+              <circle cx="0" cy="0" r="3" fill="#fde047"/>
+            </g>
+            <path d="M48 10 C56 6 62 12 56 18 C50 22 44 16 48 10Z" fill="#fbcfe8" stroke="#fff" stroke-width="0.6"/>
+            <path d="M10 48 C16 44 22 50 18 58 C12 60 6 54 10 48Z" fill="#fda4af" stroke="#fff" stroke-width="0.6"/>
+          </svg>
+          <svg class="f-blossom f-blossom-br" viewBox="0 0 76 76">
+            <g transform="translate(52 54)">
+              <path d="M0 -13 C5 -13 7 -3 0 0 C-7 -3 -5 -13 0 -13Z" fill="url(#${g}e)" stroke="#fff" stroke-width="0.7"/>
+              <path d="M0 -13 C5 -13 7 -3 0 0 C-7 -3 -5 -13 0 -13Z" fill="url(#${g}e)" stroke="#fff" stroke-width="0.7" transform="rotate(72)"/>
+              <path d="M0 -13 C5 -13 7 -3 0 0 C-7 -3 -5 -13 0 -13Z" fill="url(#${g}e)" stroke="#fff" stroke-width="0.7" transform="rotate(144)"/>
+              <path d="M0 -13 C5 -13 7 -3 0 0 C-7 -3 -5 -13 0 -13Z" fill="url(#${g}e)" stroke="#fff" stroke-width="0.7" transform="rotate(216)"/>
+              <path d="M0 -13 C5 -13 7 -3 0 0 C-7 -3 -5 -13 0 -13Z" fill="url(#${g}e)" stroke="#fff" stroke-width="0.7" transform="rotate(288)"/>
+              <circle cx="0" cy="0" r="2.8" fill="#fde047"/>
+            </g>
+            <path d="M24 62 C30 58 36 62 31 68 C26 70 20 66 24 62Z" fill="#fbcfe8" stroke="#fff" stroke-width="0.6"/>
+          </svg>
+        </div>`;
+    case 'tarot-crown':
+      return `
+        <div class="star-frame-art frame-tarot-crown" aria-hidden="true">
+          <svg class="f-crown-top" viewBox="0 0 112 28">
+            <defs><linearGradient id="${g}f" x1="0%" y1="0%" x2="100%" y2="0%"><stop offset="0%" stop-color="#f6d57a"/><stop offset="50%" stop-color="#fff7d6"/><stop offset="100%" stop-color="#d49b35"/></linearGradient></defs>
+            <path d="M6 20 L38 20 Q48 20 56 6 Q64 20 74 20 L106 20" fill="none" stroke="url(#${g}f)" stroke-width="1.8"/>
+            <path d="M56 2 L59 11 L68 14 L59 17 L56 25 L53 17 L44 14 L53 11 Z" fill="url(#${g}f)" stroke="#8c5e14" stroke-width="0.8"/>
+            <circle cx="30" cy="20" r="2.4" fill="#fef3c7"/>
+            <circle cx="82" cy="20" r="2.4" fill="#fef3c7"/>
+          </svg>
+          <span class="tarot-inner-line"></span>
+          <span class="tarot-corner tc-tl">✦</span>
+          <span class="tarot-corner tc-bl">✦</span>
+          <span class="tarot-corner tc-br">✦</span>
+        </div>`;
+    case 'crystal-shards':
+    default:
+      return `
+        <div class="star-frame-art frame-crystal-shards" aria-hidden="true">
+          <svg class="f-shard f-shard-tl" viewBox="0 0 56 56">
+            <defs><linearGradient id="${g}g" x1="0%" y1="0%" x2="100%" y2="100%"><stop offset="0%" stop-color="#ffffff"/><stop offset="45%" stop-color="#bae6fd"/><stop offset="100%" stop-color="#c084fc"/></linearGradient></defs>
+            <polygon points="18,4 28,16 16,32 6,20" fill="url(#${g}g)" stroke="#ffffff" stroke-width="1"/>
+            <polygon points="36,8 44,14 38,24 30,18" fill="url(#${g}g)" stroke="#ffffff" stroke-width="0.9" opacity="0.88"/>
+            <polygon points="10,36 16,42 10,50 4,44" fill="#e0f2fe" stroke="#ffffff" stroke-width="0.8" opacity="0.85"/>
+          </svg>
+          <svg class="f-shard f-shard-br" viewBox="0 0 56 56">
+            <polygon points="38,52 28,40 40,24 50,36" fill="url(#${g}g)" stroke="#ffffff" stroke-width="1"/>
+            <polygon points="20,48 12,42 18,32 26,38" fill="url(#${g}g)" stroke="#ffffff" stroke-width="0.9" opacity="0.88"/>
+            <polygon points="46,20 40,14 46,6 52,12" fill="#f5d0fe" stroke="#ffffff" stroke-width="0.8" opacity="0.85"/>
+          </svg>
+        </div>`;
+  }
+}
+
+function starOuterSparksMarkup(auraId, shift) {
+  // Perimeter coordinates positioned just OUTSIDE or straddling the card border!
+  const slots = [
+    { x: '-7px', y: `${16 + (shift % 18)}%`, size: 11, delay: 0.2 },
+    { x: 'calc(100% - 4px)', y: `${34 + (shift % 22)}%`, size: 10, delay: 1.4 },
+    { x: `${18 + (shift % 26)}%`, y: '-7px', size: 12, delay: 0.8 },
+    { x: `${56 + (shift % 22)}%`, y: 'calc(100% - 5px)', size: 11, delay: 2.1 },
+    { x: '-6px', y: `${68 + (shift % 16)}%`, size: 8, delay: 2.9 },
+    { x: `${32 + (shift % 30)}%`, y: 'calc(100% - 4px)', size: 9, delay: 1.7 },
+    { x: 'calc(100% - 5px)', y: `${72 + (shift % 14)}%`, size: 12, delay: 0.5 },
+    { x: `${64 + (shift % 18)}%`, y: '-6px', size: 9, delay: 2.5 }
+  ];
+  const nodes = slots
+    .map((slot, idx) => {
+      const kind = (idx + shift) % 3 === 0 ? 'is-diamond' : ((idx + shift) % 3 === 1 ? 'is-dot' : 'is-star');
+      return `<i class="outer-spark ${kind}" style="--sx:${slot.x};--sy:${slot.y};--ss:${slot.size}px;--sd:-${slot.delay}s"></i>`;
+    })
+    .join('');
+  return `<div class="star-outer-sparks aura-${htmlEscape(auraId)}" aria-hidden="true">${nodes}</div>`;
+}
+
+function starPatternSvg(patternId) {
+  switch (patternId) {
+    case 'constellation':
+      return `
+        <svg class="star-pattern-svg" viewBox="0 0 320 220" preserveAspectRatio="xMidYMid slice" aria-hidden="true">
+          <g fill="none" stroke="currentColor" stroke-width="0.9" opacity="0.72">
+            <path d="M22 52 L74 32 L128 66 L192 28 L256 54 L298 22" stroke-dasharray="3 4" />
+            <path d="M74 32 L106 116 L180 132 L256 54" opacity="0.55" />
+            <path d="M192 28 L224 114 L290 144" stroke-dasharray="2 4" opacity="0.5" />
+            <path d="M28 158 L106 116 L154 188" opacity="0.45" />
+          </g>
+          <g fill="currentColor">
+            <circle cx="22" cy="52" r="2.2" />
+            <circle cx="74" cy="32" r="2.8" />
+            <circle cx="128" cy="66" r="2" />
+            <circle cx="192" cy="28" r="3" />
+            <circle cx="256" cy="54" r="2.4" />
+            <circle cx="298" cy="22" r="1.8" />
+            <circle cx="106" cy="116" r="2.3" />
+            <circle cx="180" cy="132" r="2" />
+            <circle cx="224" cy="114" r="2.5" />
+            <circle cx="290" cy="144" r="1.8" />
+            <circle cx="28" cy="158" r="2" />
+            <circle cx="154" cy="188" r="2.2" />
+          </g>
+        </svg>`;
+    case 'sunburst':
+      return `
+        <svg class="star-pattern-svg" viewBox="0 0 320 220" preserveAspectRatio="xMidYMid slice" aria-hidden="true">
+          <g stroke="currentColor" stroke-width="0.9" opacity="0.65">
+            <line x1="278" y1="26" x2="112" y2="-10" />
+            <line x1="278" y1="26" x2="78" y2="24" />
+            <line x1="278" y1="26" x2="72" y2="74" />
+            <line x1="278" y1="26" x2="104" y2="128" />
+            <line x1="278" y1="26" x2="152" y2="178" />
+            <line x1="278" y1="26" x2="210" y2="212" />
+            <line x1="278" y1="26" x2="274" y2="220" />
+            <line x1="278" y1="26" x2="332" y2="180" />
+            <circle cx="278" cy="26" r="46" fill="none" stroke-dasharray="3 5" opacity="0.5" />
+            <circle cx="278" cy="26" r="88" fill="none" stroke-dasharray="2 6" opacity="0.35" />
+          </g>
+        </svg>`;
+    case 'botanical':
+      return `
+        <svg class="star-pattern-svg" viewBox="0 0 320 220" preserveAspectRatio="xMidYMid slice" aria-hidden="true">
+          <g fill="none" stroke="currentColor" stroke-width="1.15" stroke-linecap="round" stroke-linejoin="round" opacity="0.72">
+            <path d="M-4 14 C36 28 64 56 84 102" />
+            <path d="M18 24 C42 12 64 16 74 34 C54 44 32 42 18 24Z" />
+            <path d="M40 46 C68 38 92 48 96 68 C74 74 52 66 40 46Z" />
+            <path d="M36 52 C14 58 2 76 6 94 C26 92 40 76 36 52Z" />
+            <path d="M62 76 C44 92 42 114 54 128 C72 116 76 96 62 76Z" />
+            <path d="M324 212 C282 196 254 168 238 124" />
+            <path d="M294 196 C272 204 252 196 246 178 C268 172 286 178 294 196Z" />
+            <path d="M268 168 C242 174 222 162 220 144 C242 140 262 150 268 168Z" />
+          </g>
+        </svg>`;
+    case 'nebula-rings':
+      return `
+        <svg class="star-pattern-svg" viewBox="0 0 320 220" preserveAspectRatio="xMidYMid slice" aria-hidden="true">
+          <g fill="none" stroke="currentColor" opacity="0.62">
+            <ellipse cx="164" cy="112" rx="142" ry="52" transform="rotate(-14 164 112)" stroke-width="0.9" stroke-dasharray="5 5" />
+            <ellipse cx="164" cy="112" rx="108" ry="36" transform="rotate(-14 164 112)" stroke-width="0.85" />
+            <ellipse cx="164" cy="112" rx="158" ry="66" transform="rotate(11 164 112)" stroke-width="0.7" stroke-dasharray="2 6" />
+          </g>
+          <g fill="currentColor" opacity="0.75">
+            <circle cx="52" cy="82" r="2.4" />
+            <circle cx="276" cy="138" r="2.2" />
+            <circle cx="222" cy="58" r="1.8" />
+          </g>
+        </svg>`;
+    case 'sacred-geo':
+      return `
+        <svg class="star-pattern-svg" viewBox="0 0 320 220" preserveAspectRatio="xMidYMid slice" aria-hidden="true">
+          <g fill="none" stroke="currentColor" stroke-width="0.7" opacity="0.46">
+            <path d="M0 55 L80 0 L160 55 L240 0 L320 55 M0 110 L80 55 L160 110 L240 55 L320 110 M0 165 L80 110 L160 165 L240 110 L320 165 M0 220 L80 165 L160 220 L240 165 L320 220" />
+            <path d="M0 0 L80 55 L160 0 L240 55 L320 0 M0 55 L80 110 L160 55 L240 110 L320 55 M0 110 L80 165 L160 110 L240 165 L320 110 M0 165 L80 220 L160 165 L240 220 L320 165" />
+          </g>
+          <g fill="currentColor" opacity="0.6">
+            <path d="M80 49 L82 53 L86 55 L82 57 L80 61 L78 57 L74 55 L78 53 Z" />
+            <path d="M240 49 L242 53 L246 55 L242 57 L240 61 L238 57 L234 55 L238 53 Z" />
+            <path d="M160 104 L162 108 L166 110 L162 112 L160 116 L158 112 L154 110 L158 108 Z" />
+          </g>
+        </svg>`;
+    case 'aurora-waves':
+      return `
+        <svg class="star-pattern-svg" viewBox="0 0 320 220" preserveAspectRatio="xMidYMid slice" aria-hidden="true">
+          <g fill="none" stroke="currentColor" stroke-width="1.1" opacity="0.56">
+            <path d="M-10 42 C58 14, 118 76, 196 42 C252 16, 286 48, 330 28" />
+            <path d="M-10 74 C66 44, 126 106, 206 72 C262 46, 294 78, 330 58" opacity="0.82" />
+            <path d="M-10 108 C72 78, 134 140, 214 106 C270 80, 298 112, 330 92" opacity="0.62" />
+            <path d="M-10 144 C78 114, 142 174, 222 140 C276 116, 304 146, 330 128" opacity="0.44" />
+          </g>
+        </svg>`;
+    case 'compass-rose':
+      return `
+        <svg class="star-pattern-svg" viewBox="0 0 320 220" preserveAspectRatio="xMidYMid slice" aria-hidden="true">
+          <g fill="none" stroke="currentColor" stroke-width="0.9" opacity="0.64">
+            <circle cx="272" cy="172" r="56" />
+            <circle cx="272" cy="172" r="44" stroke-dasharray="3 4" />
+            <circle cx="272" cy="172" r="14" />
+            <path d="M272 104 L278 166 L340 172 L278 178 L272 240 L266 178 L204 172 L266 166 Z" />
+            <path d="M234 134 L272 172 L310 210 M310 134 L272 172 L234 210" opacity="0.55" />
+          </g>
+        </svg>`;
+    case 'prism-facets':
+    default:
+      return `
+        <svg class="star-pattern-svg" viewBox="0 0 320 220" preserveAspectRatio="xMidYMid slice" aria-hidden="true">
+          <g fill="none" stroke="currentColor" stroke-width="0.85" opacity="0.52">
+            <polygon points="18,16 112,4 74,78" />
+            <polygon points="112,4 214,32 144,94 74,78" />
+            <polygon points="214,32 310,14 276,104 144,94" />
+            <polygon points="74,78 144,94 98,176 14,142" />
+            <polygon points="144,94 276,104 236,196 98,176" />
+            <polygon points="276,104 324,186 236,196" />
+          </g>
+        </svg>`;
+  }
+}
+
+function starBadgeSvg(badgeId, uid) {
+  const g1 = `sb1-${uid}`;
+  const g2 = `sb2-${uid}`;
+  switch (badgeId) {
+    case 'crystal-star':
+      return `
+        <svg viewBox="0 0 44 44" aria-hidden="true">
+          <defs>
+            <linearGradient id="${g1}" x1="0%" y1="0%" x2="100%" y2="100%">
+              <stop offset="0%" stop-color="#c4f5ff" />
+              <stop offset="48%" stop-color="#d8b4fe" />
+              <stop offset="100%" stop-color="#fbcfe8" />
+            </linearGradient>
+            <linearGradient id="${g2}" x1="100%" y1="0%" x2="0%" y2="100%">
+              <stop offset="0%" stop-color="#ffffff" stop-opacity="0.98" />
+              <stop offset="100%" stop-color="#38bdf8" stop-opacity="0.72" />
+            </linearGradient>
+          </defs>
+          <path d="M22 3 L27.2 14.5 L39.8 16.1 L30.4 24.8 L32.8 37.4 L22 31.2 L11.2 37.4 L13.6 24.8 L4.2 16.1 L16.8 14.5 Z" fill="url(#${g1})" stroke="#ffffff" stroke-width="1.6" stroke-linejoin="round" />
+          <path d="M22 3 L22 22 L39.8 16.1 Z M22 22 L11.2 37.4 L13.6 24.8 Z" fill="url(#${g2})" opacity="0.75" />
+          <path d="M22 11.5 L24 18 L30.5 19 L25.4 23 L26.7 29.5 L22 26.2 L17.3 29.5 L18.6 23 L13.5 19 L20 18 Z" fill="#ffffff" opacity="0.68" />
+        </svg>`;
+    case 'wax-seal':
+      return `
+        <svg viewBox="0 0 44 44" aria-hidden="true">
+          <defs>
+            <radialGradient id="${g1}" cx="36%" cy="32%" r="68%">
+              <stop offset="0%" stop-color="#e35d47" />
+              <stop offset="60%" stop-color="#a12628" />
+              <stop offset="100%" stop-color="#691518" />
+            </radialGradient>
+            <linearGradient id="${g2}" x1="0%" y1="0%" x2="100%" y2="100%">
+              <stop offset="0%" stop-color="#fef08a" />
+              <stop offset="100%" stop-color="#d9961f" />
+            </linearGradient>
+          </defs>
+          <path d="M22 3.5 C27 3.1 30.6 5.4 34.4 8.2 C38.2 11.4 40.6 15.8 40 21.8 C39.6 27.4 38 32.8 33.4 36.2 C29 39.4 24.8 40.8 19.6 40 C14 39.2 8 36.8 5.6 31 C3.2 25.4 4 18 7 12.2 C10 6.6 16.2 4 22 3.5 Z" fill="url(#${g1})" stroke="#4c1012" stroke-width="1.2" />
+          <circle cx="22" cy="22" r="13.5" fill="none" stroke="url(#${g2})" stroke-width="1.5" opacity="0.92" />
+          <path d="M22 12.2 L24.8 18.2 L31.2 19 L26.4 23.4 L27.6 29.8 L22 26.6 L16.4 29.8 L17.6 23.4 L12.8 19 L19.2 18.2 Z" fill="url(#${g2})" />
+        </svg>`;
+    case 'shooting-star':
+      return `
+        <svg viewBox="0 0 44 44" aria-hidden="true">
+          <defs>
+            <linearGradient id="${g1}" x1="100%" y1="0%" x2="0%" y2="100%">
+              <stop offset="0%" stop-color="#fef08a" />
+              <stop offset="52%" stop-color="#5eead4" />
+              <stop offset="100%" stop-color="#38bdf8" stop-opacity="0" />
+            </linearGradient>
+            <linearGradient id="${g2}" x1="0%" y1="0%" x2="100%" y2="100%">
+              <stop offset="0%" stop-color="#ffffff" />
+              <stop offset="58%" stop-color="#fef08a" />
+              <stop offset="100%" stop-color="#34d399" />
+            </linearGradient>
+          </defs>
+          <path d="M41 4 C31 9 23 15 14 24" stroke="url(#${g1})" stroke-width="5" stroke-linecap="round" fill="none" />
+          <path d="M39 11 C31 15 25 20 19 27" stroke="url(#${g1})" stroke-width="2.4" stroke-linecap="round" fill="none" opacity="0.86" />
+          <path d="M16.5 14.5 L19.6 22 L27.5 23 L21.5 28.4 L23 36.4 L16.5 32.2 L10 36.4 L11.5 28.4 L5.5 23 L13.4 22 Z" fill="url(#${g2})" stroke="#ffffff" stroke-width="1.2" stroke-linejoin="round" />
+        </svg>`;
+    case 'crescent-crest':
+      return `
+        <svg viewBox="0 0 44 44" aria-hidden="true">
+          <defs>
+            <linearGradient id="${g1}" x1="0%" y1="0%" x2="100%" y2="100%">
+              <stop offset="0%" stop-color="#fef9c3" />
+              <stop offset="52%" stop-color="#f5c451" />
+              <stop offset="100%" stop-color="#b7791f" />
+            </linearGradient>
+          </defs>
+          <circle cx="22" cy="22" r="17.5" fill="rgba(18, 25, 50, 0.90)" stroke="url(#${g1})" stroke-width="1.8" />
+          <path d="M24.4 10.8 A11.2 11.2 0 1 0 31.4 29.6 A8.6 8.6 0 1 1 24.4 10.8 Z" fill="url(#${g1})" />
+          <path d="M29 13 L30.4 17 L34.4 18 L30.9 20 L30.8 23.8 L28 21 L24.4 21.8 L26.2 18.4 L24.6 15 L28.2 16.2 Z" fill="#fef9c3" />
+        </svg>`;
+    case 'ribbon-medal':
+      return `
+        <svg viewBox="0 0 44 44" aria-hidden="true">
+          <defs>
+            <linearGradient id="${g1}" x1="0%" y1="0%" x2="100%" y2="100%">
+              <stop offset="0%" stop-color="#fef0b8" />
+              <stop offset="52%" stop-color="#d48c3e" />
+              <stop offset="100%" stop-color="#8c4a18" />
+            </linearGradient>
+            <linearGradient id="${g2}" x1="0%" y1="0%" x2="0%" y2="100%">
+              <stop offset="0%" stop-color="#c95f36" />
+              <stop offset="100%" stop-color="#7c2e16" />
+            </linearGradient>
+          </defs>
+          <path d="M14 26 L11 41 L17.6 37 L21.2 41.2 L22 28 Z" fill="url(#${g2})" />
+          <path d="M30 26 L33 41 L26.4 37 L22.8 41.2 L22 28 Z" fill="url(#${g2})" />
+          <circle cx="22" cy="18" r="13.6" fill="url(#${g1})" stroke="#fff8e3" stroke-width="1.4" />
+          <circle cx="22" cy="18" r="10.4" fill="none" stroke="#fff4d6" stroke-width="1" stroke-dasharray="2 2" />
+          <path d="M22 10.2 L24.2 15.2 L29.6 15.8 L25.6 19.6 L26.7 25 L22 22.2 L17.3 25 L18.4 19.6 L14.4 15.8 L19.8 15.2 Z" fill="#fffaf0" />
+        </svg>`;
+    case 'enamel-charm':
+      return `
+        <svg viewBox="0 0 44 44" aria-hidden="true">
+          <defs>
+            <linearGradient id="${g1}" x1="0%" y1="0%" x2="100%" y2="100%">
+              <stop offset="0%" stop-color="#ffe4e6" />
+              <stop offset="52%" stop-color="#f472b6" />
+              <stop offset="100%" stop-color="#be185d" />
+            </linearGradient>
+            <linearGradient id="${g2}" x1="0%" y1="0%" x2="100%" y2="100%">
+              <stop offset="0%" stop-color="#fef3c7" />
+              <stop offset="100%" stop-color="#c48a37" />
+            </linearGradient>
+          </defs>
+          <circle cx="22" cy="6.6" r="3.6" fill="none" stroke="url(#${g2})" stroke-width="2.2" />
+          <path d="M22 10 L26.4 19 L36.4 20.4 L29 27.4 L30.8 37.2 L22 32.6 L13.2 37.2 L15 27.4 L7.6 20.4 L17.6 19 Z" fill="url(#${g1})" stroke="url(#${g2})" stroke-width="2.2" stroke-linejoin="round" />
+          <path d="M18 21.2 Q22 18.2 26.8 20.6" fill="none" stroke="#ffffff" stroke-width="1.6" stroke-linecap="round" opacity="0.88" />
+        </svg>`;
+    case 'prism-diamond':
+      return `
+        <svg viewBox="0 0 44 44" aria-hidden="true">
+          <defs>
+            <linearGradient id="${g1}" x1="0%" y1="0%" x2="100%" y2="100%">
+              <stop offset="0%" stop-color="#fef08a" />
+              <stop offset="50%" stop-color="#c084fc" />
+              <stop offset="100%" stop-color="#38bdf8" />
+            </linearGradient>
+          </defs>
+          <path d="M22 2.5 L26.2 17.8 L41.5 22 L26.2 26.2 L22 41.5 L17.8 26.2 L2.5 22 L17.8 17.8 Z" fill="url(#${g1})" stroke="#ffffff" stroke-width="1.4" stroke-linejoin="round" />
+          <path d="M22 10.5 L29.5 22 L22 33.5 L14.5 22 Z" fill="#ffffff" opacity="0.62" />
+          <circle cx="22" cy="22" r="3.2" fill="#ffffff" />
+        </svg>`;
+    case 'laurel-star':
+    default:
+      return `
+        <svg viewBox="0 0 44 44" aria-hidden="true">
+          <defs>
+            <linearGradient id="${g1}" x1="0%" y1="0%" x2="100%" y2="100%">
+              <stop offset="0%" stop-color="#fef08a" />
+              <stop offset="55%" stop-color="#d4a342" />
+              <stop offset="100%" stop-color="#8b651f" />
+            </linearGradient>
+          </defs>
+          <circle cx="22" cy="22" r="17.5" fill="rgba(34, 54, 42, 0.92)" stroke="url(#${g1})" stroke-width="1.7" />
+          <path d="M14.2 31 C9.2 27 8.8 19.2 13 13.4 M29.8 31 C34.8 27 35.2 19.2 31 13.4" fill="none" stroke="url(#${g1})" stroke-width="2" stroke-linecap="round" />
+          <path d="M22 12 L24.5 17.8 L30.8 18.6 L26 22.8 L27.4 29 L22 25.8 L16.6 29 L18 22.8 L13.2 18.6 L19.5 17.8 Z" fill="url(#${g1})" />
+        </svg>`;
+  }
+}
+
+function cheersMarkup(profile) {
+  const cheers = Array.isArray(profile.cheers) ? profile.cheers : [];
+  const triggerKey = String(profile.file || profile.github || profile.name || '').trim();
+
+  if (!cheers.length) {
+    return `
+      <div class="cheers-block is-empty" aria-label="同学寄语">
+        <span class="cheers-empty-line">
+          <svg class="cheers-icon" viewBox="0 0 24 24" aria-hidden="true">
+            <path d="M5 6h14a2 2 0 0 1 2 2v7a2 2 0 0 1-2 2h-6l-4 3v-3H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2Z" />
+          </svg>
+          <span>寄语 0 · 合并 PR 后等同学来留言</span>
+        </span>
+      </div>
+    `;
   }
 
   const ordered = cheers.slice().reverse();
-  const triggerKey = String(profile.file || profile.github || profile.name || '').trim();
-  const triggerAttr = !options.preview && triggerKey
-    ? ` data-cheers-trigger="${htmlEscape(triggerKey)}"`
+  const previewItems = ordered.slice(0, 2);
+  const triggerAttr = triggerKey ? ` data-cheers-trigger="${htmlEscape(triggerKey)}"` : '';
+  const viewAllBtn = triggerKey
+    ? `<button type="button" class="cheers-view-all"${triggerAttr} aria-label="查看 ${htmlEscape(profile.name || profile.github)} 的全部 ${ordered.length} 条寄语">查看全部 ›</button>`
     : '';
-  const previewItems = ordered.slice(0, options.preview ? 4 : 1);
-  const moreCount = ordered.length - previewItems.length;
+
   const items = previewItems
     .map((cheer) => `
       <li>
-        <span class="cheer-from">@${htmlEscape(cheer.from)}</span>
+        <span class="cheer-from">@${htmlEscape(cheer.from)}:</span>
         <span class="cheer-message">${htmlEscape(cheer.message)}</span>
       </li>
     `)
     .join('');
-  const moreLine = moreCount > 0
-    ? (!options.preview && triggerKey
-      ? `<li class="cheers-more"><button type="button" class="cheers-more-button"${triggerAttr}>还有 ${moreCount} 条寄语 · 查看全部</button></li>`
-      : `<li class="cheers-more">还有 ${moreCount} 条寄语</li>`)
-    : '';
 
   return `
     <div class="cheers-block" aria-label="同学寄语">
       <div class="cheers-head">
-        <span class="cheers-label">寄语 ${ordered.length}</span>
-        <svg class="cheers-icon" viewBox="0 0 24 24" aria-hidden="true">
-          <path d="M5 6h11a3 3 0 0 1 3 3v5a3 3 0 0 1-3 3h-3l-4 3v-3H5a3 3 0 0 1-3-3V9a3 3 0 0 1 3-3Z" />
-          <path d="M7 10h7M7 13h5" />
-        </svg>
+        <span class="cheers-label">
+          <svg class="cheers-icon" viewBox="0 0 24 24" aria-hidden="true">
+            <path d="M5 6h14a2 2 0 0 1 2 2v7a2 2 0 0 1-2 2h-6l-4 3v-3H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2Z" />
+            <path d="M8 10.5h8M8 13.5h5" />
+          </svg>
+          <span>寄语 ${ordered.length}</span>
+        </span>
+        ${viewAllBtn}
       </div>
-      <ul class="cheers-list">${items}${moreLine}</ul>
+      <ul class="cheers-list">${items}</ul>
     </div>
   `;
 }
 
-function cardMarkup(profile, options = {}) {
+function cardMarkup(profile) {
   const name = htmlEscape(profile.name || 'Anonymous');
-  const github = htmlEscape(profile.github || 'unknown');
+  const githubRaw = String(profile.github || 'unknown');
+  const github = htmlEscape(githubRaw);
   const motto = htmlEscape(profile.motto || '今天完成我的第一个开源 PR');
   const city = htmlEscape(profile.city || '教室');
-  const profileUrl = profile.github ? githubProfileUrl(profile.github) : '';
-  const footerLink = profileUrl
-    ? `<a href="${htmlEscape(profileUrl)}" target="_blank" rel="noreferrer">GitHub</a>`
-    : '<span>GitHub</span>';
   const avatar = htmlEscape(avatarForProfile(profile));
   const cheerCount = Array.isArray(profile.cheers) ? profile.cheers.length : 0;
-  const cheerKey = String(profile.file || profile.github || profile.name || '').trim();
-  const cheerBadge = cheerCount > 0
-    ? (!options.preview && cheerKey
-      ? `<button type="button" class="cheer-badge" data-cheers-trigger="${htmlEscape(cheerKey)}" title="查看全部 ${cheerCount} 条寄语">寄语 ${cheerCount}</button>`
-      : `<span class="cheer-badge" title="收到 ${cheerCount} 条同学寄语">寄语 ${cheerCount}</span>`)
+  const recipe = recipeForProfile(profile);
+  const isStarred = Boolean(recipe);
+
+  const classes = ['profile-card'];
+  if (cheerCount > 0) classes.push('has-cheers');
+  if (isStarred) {
+    classes.push('is-starred');
+    classes.push(`star-tone-${recipe.theme.tone}`);
+  }
+
+  const sheenDelay = isStarred ? ((recipe.sparkSeed * 7.2) / 100).toFixed(2) : '0';
+  const starDataAttrs = isStarred
+    ? ` data-star-theme="${recipe.theme.id}" data-star-frame="${recipe.frame.id}" data-star-aura="${recipe.aura.id}" data-star-pattern="${recipe.pattern.id}" data-star-badge="${recipe.badge.id}" style="--star-hue-shift:${recipe.hueShift}deg;--sheen-delay:-${sheenDelay}s"`
     : '';
 
-  const loadingAttr = state.wallExpanded ? ' loading="lazy"' : '';
+  const starLayers = isStarred
+    ? `
+      <div class="star-aura-glow" aria-hidden="true"></div>
+      <div class="star-aura-ring" aria-hidden="true"><span class="star-aura-spinner"></span></div>
+      <div class="card-surface" aria-hidden="true">
+        <div class="star-pattern-layer">${starPatternSvg(recipe.pattern.id)}</div>
+        <div class="star-foil-layer"></div>
+      </div>
+      ${starFrameArtMarkup(recipe.frame.id, recipe.uid)}
+      ${starOuterSparksMarkup(recipe.aura.id, recipe.sparkSeed)}
+      <button type="button" class="star-emblem-btn" data-star-recipe="${htmlEscape(recipe.summary)}" data-star-serial="${htmlEscape(recipe.serial)}" data-star-owner="${github}" title="★ 星标限定 #${htmlEscape(recipe.serial)} · ${htmlEscape(recipe.summary)}" aria-label="${name} 的星标限定特效：${htmlEscape(recipe.summary)}">
+        ${starBadgeSvg(recipe.badge.id, recipe.uid)}
+      </button>
+    `
+    : '';
 
   return `
-    <article class="profile-card${cheerCount > 0 ? ' has-cheers' : ''}">
-      ${cheerBadge}
-      <div class="profile-top">
-        <img class="avatar-image" src="${avatar}" alt="${name} 的头像" width="48" height="48" decoding="async"${loadingAttr} data-fallback-src="${AVATAR_WARNING_FALLBACK}" />
+    <article class="${classes.join(' ')}"${starDataAttrs}>
+      ${starLayers}
+      <header class="profile-top">
+        <img class="avatar-image" src="${avatar}" alt="${name} 的头像" width="54" height="54" loading="lazy" decoding="async" data-fallback-src="${AVATAR_WARNING_FALLBACK}" />
         <div class="identity">
           <h3>${name}</h3>
-          <a class="handle" href="${githubProfileUrl(profile.github || '')}" target="_blank" rel="noreferrer">@${github}</a>
+          <div class="identity-meta">
+            <a class="handle" href="${githubProfileUrl(profile.github || '')}" target="_blank" rel="noreferrer">@${github}</a>
+            <span class="city-pill">${city}</span>
+          </div>
         </div>
-      </div>
-      <p class="motto">${motto}</p>
-      <div class="location-row">
-        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 21s7-5.3 7-12a7 7 0 1 0-14 0c0 6.7 7 12 7 12Z" /><circle cx="12" cy="9" r="2.5" /></svg>
-        <span>${city}</span>
-      </div>
-      ${options.compact ? '' : cheersMarkup(profile, options)}
-      <div class="profile-footer">
-        ${footerLink}
-      </div>
+      </header>
+      <p class="motto" title="${motto}">${motto}</p>
+      ${cheersMarkup(profile)}
     </article>
   `;
 }
@@ -420,51 +1056,49 @@ function updateStats(payload) {
     : contributors.reduce((sum, person) => sum + (Array.isArray(person.cheers) ? person.cheers.length : 0), 0);
 
   if (elements.statCount) elements.statCount.textContent = contributorCount;
-  if (elements.statCountNote) {
-    elements.statCountNote.textContent = cheersTotal > 0
-      ? `累计 ${cheersTotal} 条互相寄语`
-      : (github.ok ? 'profile JSON 数量' : '本地 profile 数量');
-  }
+  const countNote = cheersTotal > 0
+    ? `累计 ${cheersTotal} 条寄语`
+    : (github.ok ? '已上墙贡献者' : '本地 profile');
+  if (elements.statCountNote) elements.statCountNote.textContent = countNote;
+  if (elements.statCardCount) elements.statCardCount.title = countNote;
   if (elements.statValidation) elements.statValidation.textContent = payload.ok ? '100%' : '待修复';
   if (elements.statStacks) elements.statStacks.textContent = '实时同步';
-  if (elements.statPulse) elements.statPulse.textContent = formatTime(github.latestCommitAt || github.pushedAt || payload.generatedAt);
+  if (elements.statPulse) {
+    const latestIso = github.latestCommitAt || github.pushedAt || payload.generatedAt;
+    elements.statPulse.textContent = formatRelativeTime(latestIso) || formatTime(latestIso);
+    if (elements.statCardPulse) elements.statCardPulse.title = `最后同步：${formatTime(latestIso)}`;
+  }
 
   if (elements.statIssues) {
     const total = Number(github.issuesTotal ?? 0);
     elements.statIssues.textContent = github.configured ? formatCount(total, github.issuesTotalTruncated) : '--';
   }
-  if (elements.statIssuesNote) {
-    if (!github.configured) {
-      elements.statIssuesNote.textContent = '连接 GitHub 后可见';
-    } else {
-      const open = Number(github.openIssuesTotal ?? 0);
-      const total = Number(github.issuesTotal ?? 0);
-      const truncated = Boolean(github.issuesTotalTruncated);
-      elements.statIssuesNote.textContent = total > 0
-        ? (truncated ? `${open} 个 open · 已取 ${total} 个` : `${open} 个 open · ${total - open} 个 closed`)
-        : '等同学提第一个 Issue';
-    }
-  }
+  const issuesNote = !github.configured
+    ? '连接 GitHub 后可见'
+    : (Number(github.issuesTotal ?? 0) > 0
+      ? `${Number(github.openIssuesTotal ?? 0)} open · ${Math.max(0, Number(github.issuesTotal ?? 0) - Number(github.openIssuesTotal ?? 0))} closed`
+      : '等待第一个 Issue');
+  if (elements.statIssuesNote) elements.statIssuesNote.textContent = issuesNote;
+  if (elements.statCardIssues) elements.statCardIssues.title = issuesNote;
+
   if (elements.statReview) {
     const awaiting = Number(github.awaitingReviewTotal ?? 0);
     elements.statReview.textContent = github.configured ? formatNumber(awaiting) : '--';
   }
-  if (elements.statReviewNote) {
-    if (!github.configured) {
-      elements.statReviewNote.textContent = '连接 GitHub 后可见';
+  let reviewNote = '连接 GitHub 后可见';
+  if (github.configured) {
+    const open = Number(github.pullRequestsTotal ?? 0);
+    const awaiting = Number(github.awaitingReviewTotal ?? 0);
+    if (awaiting > 0) {
+      reviewNote = `共 ${formatCount(open, github.pullRequestsTotalTruncated)} 个 open PR`;
+    } else if (open > 0) {
+      reviewNote = `${formatCount(open, github.pullRequestsTotalTruncated)} 个 open PR`;
     } else {
-      const open = Number(github.pullRequestsTotal ?? 0);
-      const awaiting = Number(github.awaitingReviewTotal ?? 0);
-      const openCount = formatCount(open, github.pullRequestsTotalTruncated);
-      if (awaiting > 0) {
-        elements.statReviewNote.textContent = `共 ${openCount} 个 open PR`;
-      } else if (open > 0) {
-        elements.statReviewNote.textContent = `${openCount} 个 open PR · 暂无人请 review`;
-      } else {
-        elements.statReviewNote.textContent = '没有进行中的 PR';
-      }
+      reviewNote = '暂无待审 PR';
     }
   }
+  if (elements.statReviewNote) elements.statReviewNote.textContent = reviewNote;
+  if (elements.statCardReview) elements.statCardReview.title = reviewNote;
 }
 
 function updateValidation(payload) {
@@ -513,12 +1147,14 @@ function sortContributors(contributors) {
 function wallSearchText(profile) {
   const cheers = Array.isArray(profile.cheers) ? profile.cheers : [];
   const cheerTexts = cheers.flatMap((cheer) => [cheer.from, cheer.message]);
+  const recipe = recipeForProfile(profile);
   return [
     profile.name,
     profile.github,
     profile.motto,
     profile.city,
     profile.file,
+    recipe ? recipe.summary : '',
     ...cheerTexts
   ]
     .map((value) => String(value || '').toLowerCase())
@@ -531,51 +1167,35 @@ function currentWallQuery() {
 
 function filteredWallContributors() {
   const query = currentWallQuery();
-  if (!query) return state.wallContributors;
+  const filter = state.wallFilter;
 
-  return state.wallContributors.filter((profile) => wallSearchText(profile).includes(query));
+  return state.wallContributors.filter((profile) => {
+    if (filter === 'starred' && !recipeForProfile(profile)) return false;
+    if (filter === 'cheers' && !(Array.isArray(profile.cheers) && profile.cheers.length > 0)) return false;
+    if (query && !wallSearchText(profile).includes(query)) return false;
+    return true;
+  });
 }
 
-function updateWallMeta({ total, filtered, visible, query }) {
+function updateWallMeta({ total, filtered, starredCount, query }) {
   if (elements.wallSummary) {
     if (!total) {
-      elements.wallSummary.textContent = '等待同学提交 profile';
-    } else if (state.wallExpanded && query) {
-      elements.wallSummary.textContent = `筛选出 ${filtered} / ${total} 位贡献者`;
-    } else if (state.wallExpanded) {
-      elements.wallSummary.textContent = `完整列表 ${visible} / ${total} 位贡献者`;
+      elements.wallSummary.textContent = '· 等待同学提交 profile';
+    } else if (query || state.wallFilter !== 'all') {
+      elements.wallSummary.textContent = `· 显示 ${filtered} / ${total} 位贡献者`;
+    } else if (starredCount > 0) {
+      elements.wallSummary.textContent = `· 共 ${total} 位贡献者 · ${starredCount} 位解锁星标特效`;
     } else {
-      elements.wallSummary.textContent = total > WALL_PREVIEW_LIMIT
-        ? `预览展示 ${Math.min(WALL_PREVIEW_LIMIT, total)} / ${total} 位贡献者`
-        : `展示全部 ${total} 位贡献者`;
+      elements.wallSummary.textContent = `· 共 ${total} 位贡献者`;
     }
-  }
-
-  if (elements.wallFilterStatus) {
-    elements.wallFilterStatus.textContent = query
-      ? `匹配 ${filtered} 位贡献者`
-      : `共 ${total} 位贡献者`;
-  }
-
-  if (elements.toggleWallMode) {
-    elements.toggleWallMode.textContent = state.wallExpanded ? '收起列表' : '全部贡献者';
-    elements.toggleWallMode.setAttribute('aria-expanded', String(state.wallExpanded));
-  }
-
-  if (elements.wallControls) {
-    elements.wallControls.hidden = !state.wallExpanded;
   }
 
   if (elements.clearWallSearch) {
     elements.clearWallSearch.hidden = !query;
   }
 
-  if (elements.loadMoreWall) {
-    const remaining = filtered - visible;
-    elements.loadMoreWall.hidden = !state.wallExpanded || remaining <= 0;
-    elements.loadMoreWall.textContent = remaining > 0
-      ? `加载更多 ${Math.min(WALL_PAGE_SIZE, remaining)} 位`
-      : '已显示全部';
+  if (elements.toggleWallMotion) {
+    elements.toggleWallMotion.hidden = starredCount === 0;
   }
 }
 
@@ -585,13 +1205,12 @@ function renderWall() {
   const total = state.wallContributors.length;
   const query = currentWallQuery();
   const filtered = filteredWallContributors();
-  const limit = state.wallExpanded ? state.wallVisibleCount : WALL_PREVIEW_LIMIT;
-  const visible = filtered.slice(0, Math.min(limit, filtered.length));
+  const starredCount = state.starRecipes.size;
 
   updateWallMeta({
     total,
     filtered: filtered.length,
-    visible: visible.length,
+    starredCount,
     query
   });
 
@@ -600,14 +1219,17 @@ function renderWall() {
     return;
   }
 
-  if (!visible.length) {
-    elements.wall.innerHTML = '<div class="empty-wall">没有匹配的贡献者。换一个关键词试试。</div>';
+  if (!filtered.length) {
+    const emptyHint = state.wallFilter === 'starred'
+      ? '还没有同学解锁星标限定特效，点亮右上角 Star 成为第一位吧！'
+      : (state.wallFilter === 'cheers'
+        ? '暂时还没有收到寄语的卡片。'
+        : '没有匹配的贡献者，换一个关键词试试。');
+    elements.wall.innerHTML = `<div class="empty-wall">${htmlEscape(emptyHint)}</div>`;
     return;
   }
 
-  elements.wall.innerHTML = visible
-    .map((profile) => cardMarkup(profile, { compact: true }))
-    .join('');
+  elements.wall.innerHTML = filtered.map(cardMarkup).join('');
 }
 
 function updateWall(payload) {
@@ -624,106 +1246,8 @@ function updateWall(payload) {
   state.commitRankByAuthor = rankMap;
 
   state.wallContributors = sortContributors(payload.contributors || []);
-  if (!state.wallExpanded) state.wallVisibleCount = WALL_PREVIEW_LIMIT;
+  assignStarRecipes(state.wallContributors);
   renderWall();
-  renderWallDrawer();
-}
-
-function currentWallDrawerQuery() {
-  return String(elements.wallDrawerSearch?.value || '').trim().toLowerCase();
-}
-
-function profileBadgeText(profile) {
-  if (Array.isArray(profile.cheers) && profile.cheers.length > 0) {
-    return `寄语 ${profile.cheers.length}`;
-  }
-  return '已上墙';
-}
-
-function filteredWallDrawerContributors() {
-  const query = currentWallDrawerQuery();
-  const filter = state.wallDrawerFilter;
-
-  return state.wallContributors.filter((profile) => {
-    const text = wallSearchText(profile);
-    const matchesQuery = !query || text.includes(query);
-    if (!matchesQuery) return false;
-    if (filter === 'active') return Array.isArray(profile.cheers) && profile.cheers.length > 0;
-    return true;
-  });
-}
-
-function sortWallDrawerContributors(contributors) {
-  const mode = elements.wallDrawerSort?.value || 'recent';
-  const sorted = contributors.slice();
-  if (mode === 'handle') {
-    return sorted.sort((a, b) => String(a.github || a.name).localeCompare(String(b.github || b.name)));
-  }
-  return sorted.sort(compareByRecentContribution);
-}
-
-function drawerRowMarkup(profile) {
-  const handle = htmlEscape(profile.github || profile.name || 'unknown');
-  const name = htmlEscape(profile.name || profile.github || 'Anonymous');
-  const avatar = htmlEscape(avatarForProfile(profile));
-  const badge = htmlEscape(profileBadgeText(profile));
-  const cheerCount = Array.isArray(profile.cheers) ? profile.cheers.length : 0;
-  const triggerKey = String(profile.file || profile.github || profile.name || '').trim();
-  const badgeMarkup = cheerCount > 0 && triggerKey
-    ? `<button type="button" class="wall-drawer-badge is-clickable" data-cheers-trigger="${htmlEscape(triggerKey)}" title="查看全部 ${cheerCount} 条寄语">${badge}</button>`
-    : `<span class="wall-drawer-badge">${badge}</span>`;
-  const filename = profile.file || `${String(profile.github || 'your-github-id').toLowerCase()}.json`;
-  const sourceUrl = profileSourceUrl(filename);
-  const sourceLink = sourceUrl
-    ? `<a class="wall-drawer-source" href="${htmlEscape(sourceUrl)}" target="_blank" rel="noreferrer">JSON</a>`
-    : '<span class="wall-drawer-source">JSON</span>';
-  const recent = cheerCount > 0
-    ? `收到 ${cheerCount} 条寄语`
-    : '最近上墙';
-  return `
-    <li class="wall-drawer-row">
-      <img src="${avatar}" alt="${name} 的头像" width="38" height="38" loading="lazy" decoding="async" data-fallback-src="${AVATAR_WARNING_FALLBACK}" />
-      <span class="wall-drawer-person">
-        <strong>${name}</strong>
-        <small>@${handle}</small>
-      </span>
-      <span class="wall-drawer-meta">
-        <span class="wall-drawer-recent-text">${htmlEscape(recent)}</span>
-        ${sourceLink}
-      </span>
-      ${badgeMarkup}
-      <a class="wall-drawer-profile-link" href="${githubProfileUrl(profile.github || '')}" target="_blank" rel="noreferrer" aria-label="打开 ${handle} 的 GitHub">↗</a>
-    </li>
-  `;
-}
-
-function renderWallDrawer() {
-  if (!elements.wallDrawerList) return;
-
-  const filtered = sortWallDrawerContributors(filteredWallDrawerContributors());
-  const visible = filtered.slice(0, state.wallDrawerVisibleCount);
-  const total = state.wallContributors.length;
-  const hasMore = filtered.length > visible.length;
-
-  if (elements.wallDrawerCount) {
-    elements.wallDrawerCount.textContent = total
-      ? `共 ${total} 位贡献者 · 当前显示 ${visible.length} / ${filtered.length}`
-      : '等待贡献者数据';
-  }
-
-  if (elements.wallDrawerPageNote) {
-    elements.wallDrawerPageNote.textContent = hasMore
-      ? `还有 ${filtered.length - visible.length} 位可加载`
-      : '已显示当前筛选结果';
-  }
-
-  if (elements.wallDrawerLoadMore) {
-    elements.wallDrawerLoadMore.hidden = !hasMore;
-  }
-
-  elements.wallDrawerList.innerHTML = visible.length
-    ? visible.map(drawerRowMarkup).join('')
-    : '<li class="wall-drawer-empty">没有匹配的贡献者。</li>';
 }
 
 function detectNewContributors(payload) {
@@ -770,6 +1294,29 @@ function detectNewCheers(payload) {
   });
 }
 
+function detectNewStars(payload) {
+  const starredNow = new Map();
+  (payload.contributors || []).forEach((profile) => {
+    const key = String(profile.github || profile.file || profile.name || '').trim().toLowerCase();
+    if (key && state.starRecipes.has(key)) {
+      starredNow.set(key, profile.github || profile.name || key);
+    }
+  });
+
+  if (!state.bootstrappedStars) {
+    state.knownStarredHandles = new Set(starredNow.keys());
+    state.bootstrappedStars = true;
+    return;
+  }
+
+  for (const [key, display] of starredNow.entries()) {
+    if (!state.knownStarredHandles.has(key)) {
+      state.knownStarredHandles.add(key);
+      addFeed(`@${display} 解锁了星标限定特效`, payload.generatedAt, 'star');
+    }
+  }
+}
+
 function syncGithubEvents(payload) {
   const events = payload.github?.events || [];
   events.slice().reverse().forEach((event) => {
@@ -780,297 +1327,13 @@ function syncGithubEvents(payload) {
   });
 }
 
-function computeGitGraph(commits) {
-  const lanes = [];
-  let maxLanes = 0;
-  const indexBySha = new Map();
-  commits.forEach((commit, index) => indexBySha.set(commit.sha, index));
-
-  function claimLane(sha, preferLane) {
-    if (preferLane !== undefined && preferLane >= 0 && (lanes[preferLane] === null || lanes[preferLane] === undefined)) {
-      lanes[preferLane] = sha;
-      return preferLane;
-    }
-    let slot = lanes.findIndex((value) => value === null || value === undefined);
-    if (slot === -1) {
-      slot = lanes.length;
-      lanes.push(sha);
-    } else {
-      lanes[slot] = sha;
-    }
-    return slot;
-  }
-
-  const rows = commits.map((commit) => {
-    let currentLane = lanes.findIndex((value) => value === commit.sha);
-    if (currentLane === -1) {
-      currentLane = claimLane(commit.sha);
-    }
-
-    lanes[currentLane] = null;
-
-    const parentLinks = [];
-    commit.parents.forEach((parentSha, parentOrder) => {
-      const parentInWindow = indexBySha.has(parentSha);
-      if (!parentInWindow) {
-        parentLinks.push({ sha: parentSha, lane: -1, parentRow: -1, outOfWindow: true });
-        return;
-      }
-
-      let parentLane = lanes.findIndex((value) => value === parentSha);
-      if (parentLane === -1) {
-        parentLane = claimLane(parentSha, parentOrder === 0 ? currentLane : -1);
-      }
-
-      parentLinks.push({
-        sha: parentSha,
-        lane: parentLane,
-        parentRow: indexBySha.get(parentSha),
-        outOfWindow: false
-      });
-    });
-
-    while (lanes.length > 0 && lanes[lanes.length - 1] === null) {
-      lanes.pop();
-    }
-
-    maxLanes = Math.max(
-      maxLanes,
-      currentLane + 1,
-      lanes.length,
-      ...parentLinks.map((link) => link.lane + 1)
-    );
-
-    return { lane: currentLane, parentLinks };
-  });
-
-  return { rows, maxLanes };
-}
-
-function laneCenterX(lane) {
-  return GRAPH_PADDING_LEFT + lane * GRAPH_LANE_WIDTH + GRAPH_NODE_RADIUS;
-}
-
-function rowCenterY(rowIndex) {
-  return GRAPH_PADDING_TOP + rowIndex * GRAPH_ROW_HEIGHT + GRAPH_ROW_HEIGHT / 2;
-}
-
-function laneColor(lane) {
-  return GRAPH_PALETTE[lane % GRAPH_PALETTE.length];
-}
-
-function gitGraphSvg(rows, commits, maxLanes) {
-  const width = GRAPH_PADDING_LEFT * 2 + Math.max(maxLanes, 1) * GRAPH_LANE_WIDTH;
-  const height = GRAPH_PADDING_TOP * 2 + commits.length * GRAPH_ROW_HEIGHT;
-  const connectors = [];
-  const nodes = [];
-
-  rows.forEach((row, rowIndex) => {
-    const x = laneCenterX(row.lane);
-    const y = rowCenterY(rowIndex);
-    const commit = commits[rowIndex];
-
-    row.parentLinks.forEach((link) => {
-      const color = laneColor(link.outOfWindow ? row.lane : link.lane);
-
-      if (link.outOfWindow) {
-        const tailY = height - GRAPH_PADDING_TOP / 2;
-        connectors.push(
-          `<path class="graph-line graph-line-fade" stroke="${color}" d="M ${x} ${y} L ${x} ${tailY}" />`
-        );
-        return;
-      }
-
-      const px = laneCenterX(link.lane);
-      const py = rowCenterY(link.parentRow);
-
-      if (px === x) {
-        connectors.push(
-          `<path class="graph-line" stroke="${color}" d="M ${x} ${y} L ${px} ${py}" />`
-        );
-        return;
-      }
-
-      const bendY = y + GRAPH_ROW_HEIGHT * 0.55;
-      connectors.push(
-        `<path class="graph-line" stroke="${color}" d="M ${x} ${y} C ${x} ${bendY}, ${px} ${bendY}, ${px} ${py}" />`
-      );
-    });
-
-    const color = laneColor(row.lane);
-    const isMerge = commit.parents.length > 1;
-    if (isMerge) {
-      const size = GRAPH_NODE_RADIUS + 1.4;
-      nodes.push(
-        `<rect class="graph-node graph-node-merge" stroke="${color}" x="${x - size}" y="${y - size}" width="${size * 2}" height="${size * 2}" transform="rotate(45 ${x} ${y})" />`
-      );
-    } else {
-      nodes.push(
-        `<circle class="graph-node" stroke="${color}" cx="${x}" cy="${y}" r="${GRAPH_NODE_RADIUS}" />`
-      );
-    }
-  });
-
-  return `
-    <svg class="git-graph-canvas" viewBox="0 0 ${width} ${height}" width="${width}" height="${height}" role="img" aria-label="Git 提交图">
-      ${connectors.join('')}
-      ${nodes.join('')}
-    </svg>
-  `;
-}
-
-function commitListMarkup(rows, commits) {
-  return commits
-    .map((commit, rowIndex) => {
-      const top = GRAPH_PADDING_TOP + rowIndex * GRAPH_ROW_HEIGHT;
-      const isMerge = commit.parents.length > 1;
-      const message = htmlEscape(commit.message || '(no commit message)');
-      const author = htmlEscape(commit.author || 'unknown');
-      const shortSha = htmlEscape(commit.shortSha || commit.sha.slice(0, 7));
-      const relative = htmlEscape(formatRelativeTime(commit.time) || '未知时间');
-      const exact = htmlEscape(commit.time || '');
-      const optimizedCommitAvatar = commit.avatarUrl ? optimizeAvatarUrl(commit.avatarUrl, 96) : '';
-      const avatarMarkup = optimizedCommitAvatar
-        ? `<img src="${htmlEscape(optimizedCommitAvatar)}" alt="" width="26" height="26" loading="lazy" decoding="async" />`
-        : `<span class="avatar-fallback">${htmlEscape((commit.author || '?').slice(0, 1).toUpperCase())}</span>`;
-      const link = commit.htmlUrl || '#';
-      const target = commit.htmlUrl ? ' target="_blank" rel="noreferrer"' : '';
-      const tag = isMerge ? '<span class="commit-tag">merge</span>' : '';
-
-      return `
-        <li class="git-commit-row" style="top: ${top}px; height: ${GRAPH_ROW_HEIGHT}px">
-          <a class="git-commit-link" href="${htmlEscape(link)}"${target}>
-            <span class="git-commit-avatar">${avatarMarkup}</span>
-            <span class="git-commit-body">
-              <span class="git-commit-message">${message}${tag}</span>
-              <span class="git-commit-meta">
-                <span class="commit-author">${author}</span>
-                <span class="commit-sep">·</span>
-                <time datetime="${exact}">${relative}</time>
-                <span class="commit-sep">·</span>
-                <span class="commit-sha">${shortSha}</span>
-              </span>
-            </span>
-          </a>
-        </li>
-      `;
-    })
-    .join('');
-}
-
-function updateHistorySection(payload) {
-  if (!elements.gitGraph) return;
-
-  state.lastHistoryPayload = payload;
-  const github = payload.github || {};
-  const commits = Array.isArray(github.commits) ? github.commits : [];
-
-  if (elements.openHistoryRepo) {
-    if (github.htmlUrl) {
-      elements.openHistoryRepo.hidden = false;
-      elements.openHistoryRepo.href = `${github.htmlUrl}/commits`;
-    } else {
-      elements.openHistoryRepo.hidden = true;
-    }
-  }
-
-  if (elements.refreshHistory) {
-    elements.refreshHistory.hidden = !canManualRefresh();
-  }
-
-  if (!github.configured) {
-    elements.gitGraph.innerHTML = '<div class="git-graph-empty">尚未连接 GitHub。配置后会显示提交图。</div>';
-    if (elements.historySummary) elements.historySummary.textContent = github.message || '等待 GitHub 同步配置';
-    if (elements.historyCount) elements.historyCount.textContent = '--';
-    updateHistoryToggle(0);
-    detectNewCommits(commits, payload.generatedAt);
-    return;
-  }
-
-  if (!commits.length) {
-    elements.gitGraph.innerHTML = '<div class="git-graph-empty">还没有可展示的提交。</div>';
-    if (elements.historySummary) {
-      elements.historySummary.textContent = github.ok
-        ? `已同步 ${github.repository}，但暂无提交记录`
-        : (github.message || 'GitHub 同步失败');
-    }
-    if (elements.historyCount) elements.historyCount.textContent = '0';
-    updateHistoryToggle(0);
-    detectNewCommits(commits, payload.generatedAt);
-    return;
-  }
-
-  const visibleCommits = state.historyExpanded
-    ? commits
-    : commits.slice(0, HISTORY_PREVIEW_LIMIT);
-
-  const { rows, maxLanes } = computeGitGraph(visibleCommits);
-  const totalHeight = GRAPH_PADDING_TOP * 2 + visibleCommits.length * GRAPH_ROW_HEIGHT;
-
-  elements.gitGraph.innerHTML = `
-    ${gitGraphSvg(rows, visibleCommits, maxLanes)}
-    <ol class="git-commit-list" style="height: ${totalHeight}px">
-      ${commitListMarkup(rows, visibleCommits)}
-    </ol>
-  `;
-
-  if (elements.historySummary) {
-    const latest = formatRelativeTime(github.latestCommitAt) || '刚刚';
-    const visibleNote = state.historyExpanded || commits.length <= HISTORY_PREVIEW_LIMIT
-      ? `共 ${commits.length} 个提交`
-      : `预览最近 ${visibleCommits.length} / ${commits.length} 个提交`;
-    elements.historySummary.textContent = github.ok
-      ? `${github.repository} · 最新 ${latest} · ${visibleNote}`
-      : (github.message || 'GitHub 同步失败');
-  }
-  if (elements.historyCount) elements.historyCount.textContent = String(commits.length);
-
-  updateHistoryToggle(commits.length);
-  detectNewCommits(commits, payload.generatedAt);
-}
-
-function updateHistoryToggle(totalCommits) {
-  if (!elements.toggleHistoryMode) return;
-
-  if (totalCommits <= HISTORY_PREVIEW_LIMIT) {
-    elements.toggleHistoryMode.hidden = true;
-    state.historyExpanded = false;
-    elements.toggleHistoryMode.setAttribute('aria-expanded', 'false');
-    return;
-  }
-
-  elements.toggleHistoryMode.hidden = false;
-  elements.toggleHistoryMode.setAttribute('aria-expanded', String(state.historyExpanded));
-  elements.toggleHistoryMode.textContent = state.historyExpanded
-    ? '收起'
-    : `展开全部 (${totalCommits} 条)`;
-}
-
-function detectNewCommits(commits, generatedAt) {
-  if (!state.bootstrappedHistory) {
-    state.knownCommitShas = new Set(commits.map((commit) => commit.sha));
-    state.bootstrappedHistory = true;
-    return;
-  }
-
-  const fresh = commits.filter((commit) => commit.sha && !state.knownCommitShas.has(commit.sha));
-  fresh.forEach((commit) => state.knownCommitShas.add(commit.sha));
-
-  if (fresh.length) {
-    const summary = fresh.length === 1
-      ? `新增提交 ${fresh[0].author}: ${fresh[0].message}`
-      : `新增 ${fresh.length} 个提交`;
-    addFeed(summary, generatedAt, 'commit');
-  }
-}
-
 function setRefreshButtonState(label, disabled, { busy = false } = {}) {
-  if (elements.refreshHistory) {
-    elements.refreshHistory.disabled = disabled;
-    elements.refreshHistory.classList.toggle('is-busy', Boolean(busy));
+  if (elements.refreshWall) {
+    elements.refreshWall.disabled = disabled;
+    elements.refreshWall.classList.toggle('is-busy', Boolean(busy));
   }
-  if (elements.refreshHistoryLabel) {
-    elements.refreshHistoryLabel.textContent = label;
+  if (elements.refreshWallLabel) {
+    elements.refreshWallLabel.textContent = label;
   }
 }
 
@@ -1078,11 +1341,9 @@ function formatCooldownDuration(seconds) {
   const total = Math.max(1, Math.ceil(seconds));
   const mins = Math.floor(total / 60);
   const secs = total % 60;
-  if (mins <= 0) return `${secs}s `;
+  if (mins <= 0) return `${secs}s`;
   return secs > 0 ? `${mins}分${String(secs).padStart(2, '0')}秒` : `${mins}分钟`;
 }
-
-const REFRESH_COOLDOWN_STORAGE_KEY = 'pulse-wall:refresh-cooldown-until';
 
 function savePersonalRefreshCooldown(seconds) {
   try {
@@ -1124,7 +1385,7 @@ function startRefreshCooldown(seconds, { persist = true } = {}) {
   if (persist) {
     savePersonalRefreshCooldown(remaining);
   }
-  setRefreshButtonState(`${formatCooldownDuration(remaining)}后可再拉取`, true, { busy: false });
+  setRefreshButtonState(`${formatCooldownDuration(remaining)}后可刷新`, true, { busy: false });
   state.refreshCooldownTimer = window.setInterval(() => {
     remaining -= 1;
     if (remaining <= 0) {
@@ -1134,7 +1395,7 @@ function startRefreshCooldown(seconds, { persist = true } = {}) {
       setRefreshButtonState(REFRESH_LABEL_DEFAULT, false);
       return;
     }
-    setRefreshButtonState(`${formatCooldownDuration(remaining)}后可再拉取`, true, { busy: false });
+    setRefreshButtonState(`${formatCooldownDuration(remaining)}后可刷新`, true, { busy: false });
   }, 1000);
 }
 
@@ -1145,26 +1406,26 @@ function buildRefreshToastMessage(data) {
 
   if (git.ok && !git.skipped) {
     parts.push(git.pulled > 0
-      ? `贡献者：已 pull ${git.pulled} 个新提交`
-      : '贡献者：本地已是最新');
+      ? `贡献者：已同步 ${git.pulled} 个新提交`
+      : '贡献者：已是最新');
   } else if (git.skipped) {
     parts.push(`贡献者未同步（${git.reason || '已跳过'}）`);
   } else if (git.reason) {
-    parts.push(`贡献者拉取失败：${git.reason}`);
+    parts.push(`贡献者同步失败：${git.reason}`);
   }
 
   if (github.ok) {
-    parts.push('动态：已刷新 GitHub 元数据');
+    parts.push('已刷新星标与动态');
   } else if (github.configured === false) {
-    parts.push('动态：未连接 GitHub');
+    parts.push('未连接 GitHub');
   } else if (github.message) {
-    parts.push(`动态：刷新失败 - ${github.message}`);
+    parts.push(`刷新失败 - ${github.message}`);
   }
 
-  return parts.length ? parts.join(' · ') : '已尝试同步';
+  return parts.length ? parts.join(' · ') : '已尝试刷新';
 }
 
-async function manuallyRefreshHistory() {
+async function manuallyRefreshWall() {
   if (state.refreshing || !canManualRefresh()) return;
 
   const endpoint = state.dataMode === 'api'
@@ -1172,7 +1433,7 @@ async function manuallyRefreshHistory() {
     : `${refreshApiBase()}/api/refresh`;
 
   state.refreshing = true;
-  setRefreshButtonState('正在拉取…', true, { busy: true });
+  setRefreshButtonState('正在刷新…', true, { busy: true });
 
   try {
     const response = await fetch(endpoint, {
@@ -1187,7 +1448,7 @@ async function manuallyRefreshHistory() {
       }
       const retrySeconds = Math.max(1, Math.ceil((data.retryInMs || 180000) / 1000));
       startRefreshCooldown(retrySeconds);
-      toast(data.message || `刷新限流中（3 分钟 1 次）：${formatCooldownDuration(retrySeconds)}后可再拉取`);
+      toast(data.message || `刷新冷却中：${formatCooldownDuration(retrySeconds)}后可再刷新`);
       return;
     }
 
@@ -1208,202 +1469,19 @@ async function manuallyRefreshHistory() {
       setRefreshButtonState(REFRESH_LABEL_DEFAULT, false);
     }
   } catch (error) {
-    toast(`拉取失败: ${error.message || '未知错误'}`);
+    toast(`刷新失败: ${error.message || '未知错误'}`);
     setRefreshButtonState(REFRESH_LABEL_DEFAULT, false);
   } finally {
     state.refreshing = false;
   }
 }
 
-function bindHistoryControls() {
-  if (elements.refreshHistory) {
-    elements.refreshHistory.addEventListener('click', manuallyRefreshHistory);
+function bindRefreshControls() {
+  if (elements.refreshWall) {
+    elements.refreshWall.addEventListener('click', manuallyRefreshWall);
     const savedRemaining = readPersonalRefreshCooldownRemaining();
     if (savedRemaining > 0) {
       startRefreshCooldown(savedRemaining, { persist: false });
-    }
-  }
-
-  if (elements.toggleHistoryMode) {
-    elements.toggleHistoryMode.addEventListener('click', () => {
-      state.historyExpanded = !state.historyExpanded;
-      if (state.lastHistoryPayload) {
-        updateHistorySection(state.lastHistoryPayload);
-      }
-    });
-  }
-}
-
-function avatarBubbleMarkup(person, fallbackChar) {
-  const optimizedUrl = person?.avatarUrl ? optimizeAvatarUrl(person.avatarUrl, 96) : '';
-  if (optimizedUrl) {
-    return `<img src="${htmlEscape(optimizedUrl)}" alt="" width="30" height="30" loading="lazy" decoding="async" />`;
-  }
-  const fallback = htmlEscape((fallbackChar || person?.login || person?.author || '?').slice(0, 1).toUpperCase());
-  return `<span class="avatar-fallback">${fallback}</span>`;
-}
-
-function issueRowMarkup(issue) {
-  const stateLabel = issue.state === 'closed' ? 'closed' : 'open';
-  const stateText = issue.state === 'closed' ? 'Closed' : 'Open';
-  const link = issue.htmlUrl || '#';
-  const target = issue.htmlUrl ? ' target="_blank" rel="noreferrer"' : '';
-  const author = htmlEscape(issue.author || 'unknown');
-  const title = htmlEscape(issue.title || '(no title)');
-  const number = htmlEscape(`#${issue.number}`);
-  const relative = htmlEscape(formatRelativeTime(issue.createdAt) || '未知时间');
-  const exact = htmlEscape(issue.createdAt || '');
-  const avatarMarkup = avatarBubbleMarkup({ avatarUrl: issue.avatarUrl, login: issue.author }, issue.author);
-  const commentLine = issue.commentCount > 0
-    ? `<span class="board-item-sep">·</span><span>${issue.commentCount} 条评论</span>`
-    : '';
-
-  return `
-    <li class="board-item" data-event-type="${issue.state === 'closed' ? 'issue_closed' : 'issue_opened'}">
-      <a class="board-item-link" href="${htmlEscape(link)}"${target}>
-        <span class="board-item-avatar">${avatarMarkup}</span>
-        <span class="board-item-body">
-          <span class="board-item-title">
-            <span class="board-item-number">${number}</span>
-            <span class="board-item-text">${title}</span>
-          </span>
-          <span class="board-item-meta">
-            <span class="board-item-author">@${author}</span>
-            <span class="board-item-sep">·</span>
-            <time datetime="${exact}">${relative}</time>
-            ${commentLine}
-          </span>
-        </span>
-        <span class="board-item-state" data-state="${stateLabel}">
-          <span class="board-item-state-dot"></span>${stateText}
-        </span>
-      </a>
-    </li>
-  `;
-}
-
-function reviewerBubblesMarkup(pr) {
-  const reviewers = Array.isArray(pr.requestedReviewers) ? pr.requestedReviewers : [];
-  const teams = Array.isArray(pr.requestedTeams) ? pr.requestedTeams : [];
-
-  if (!reviewers.length && !teams.length) {
-    return '<span class="board-no-reviewer">尚未请人 review</span>';
-  }
-
-  const reviewerBubbles = reviewers.map((reviewer) => {
-    const login = htmlEscape(reviewer.login || 'unknown');
-    const optimizedReviewerAvatar = reviewer.avatarUrl ? optimizeAvatarUrl(reviewer.avatarUrl, 96) : '';
-    if (optimizedReviewerAvatar) {
-      return `<span class="board-reviewer-bubble"><img src="${htmlEscape(optimizedReviewerAvatar)}" alt="" width="18" height="18" loading="lazy" decoding="async" />@${login}</span>`;
-    }
-    return `<span class="board-reviewer-bubble no-avatar">@${login}</span>`;
-  }).join('');
-
-  const teamBubbles = teams.map((team) => {
-    const name = htmlEscape(team || 'team');
-    return `<span class="board-reviewer-bubble no-avatar">@${name}</span>`;
-  }).join('');
-
-  return `
-    <span class="board-reviewers">
-      <span class="board-reviewers-label">请：</span>
-      ${reviewerBubbles}${teamBubbles}
-    </span>
-  `;
-}
-
-function pullRowMarkup(pr) {
-  const stateLabel = pr.draft ? 'draft' : 'open';
-  const stateText = pr.draft ? 'Draft' : 'Open';
-  const link = pr.htmlUrl || '#';
-  const target = pr.htmlUrl ? ' target="_blank" rel="noreferrer"' : '';
-  const author = htmlEscape(pr.author || 'unknown');
-  const title = htmlEscape(pr.title || '(no title)');
-  const number = htmlEscape(`#${pr.number}`);
-  const relative = htmlEscape(formatRelativeTime(pr.createdAt) || '未知时间');
-  const exact = htmlEscape(pr.createdAt || '');
-  const avatarMarkup = avatarBubbleMarkup({ avatarUrl: pr.avatarUrl, login: pr.author }, pr.author);
-
-  return `
-    <li class="board-item" data-event-type="pr_opened">
-      <a class="board-item-link" href="${htmlEscape(link)}"${target}>
-        <span class="board-item-avatar">${avatarMarkup}</span>
-        <span class="board-item-body">
-          <span class="board-item-title">
-            <span class="board-item-number">${number}</span>
-            <span class="board-item-text">${title}</span>
-          </span>
-          <span class="board-item-meta">
-            <span class="board-item-author">@${author}</span>
-            <span class="board-item-sep">·</span>
-            <time datetime="${exact}">${relative}</time>
-          </span>
-          <span class="board-item-meta">
-            ${reviewerBubblesMarkup(pr)}
-          </span>
-        </span>
-        <span class="board-item-state" data-state="${stateLabel}">
-          <span class="board-item-state-dot"></span>${stateText}
-        </span>
-      </a>
-    </li>
-  `;
-}
-
-function updateBoardSection(payload) {
-  const github = payload.github || {};
-  const issues = Array.isArray(github.issues) ? github.issues : [];
-  const pullRequests = Array.isArray(github.pullRequests) ? github.pullRequests : [];
-
-  if (elements.openIssuesLink) {
-    if (github.htmlUrl) {
-      elements.openIssuesLink.hidden = false;
-      elements.openIssuesLink.href = `${github.htmlUrl}/issues`;
-    } else {
-      elements.openIssuesLink.hidden = true;
-    }
-  }
-
-  if (elements.openPullsLink) {
-    if (github.htmlUrl) {
-      elements.openPullsLink.hidden = false;
-      elements.openPullsLink.href = `${github.htmlUrl}/pulls`;
-    } else {
-      elements.openPullsLink.hidden = true;
-    }
-  }
-
-  if (elements.boardSummary) {
-    if (!github.configured) {
-      elements.boardSummary.textContent = github.message || '连接 GitHub 后会显示同学提的 Issue 和等 review 的 PR';
-    } else {
-      const issuesTotal = Number(github.issuesTotal ?? 0);
-      const openIssues = Number(github.openIssuesTotal ?? 0);
-      const awaiting = Number(github.awaitingReviewTotal ?? 0);
-      const pullsTotal = Number(github.pullRequestsTotal ?? 0);
-      elements.boardSummary.textContent = `Issue ${openIssues} open / ${formatCount(issuesTotal, github.issuesTotalTruncated)} 累计 · PR ${awaiting} 等 review / ${formatCount(pullsTotal, github.pullRequestsTotalTruncated)} open`;
-    }
-  }
-
-  if (elements.issuesList) {
-    const warnings = github.issuesWarning ? `<li class="board-warning">Issue 数据未能拉取：${htmlEscape(github.issuesWarning)}</li>` : '';
-    if (!github.configured) {
-      elements.issuesList.innerHTML = `${warnings}<li class="board-empty">连接 GitHub 后显示最近 Issue</li>`;
-    } else if (!issues.length) {
-      elements.issuesList.innerHTML = `${warnings}<li class="board-empty">等待同学提第一个 Issue</li>`;
-    } else {
-      elements.issuesList.innerHTML = warnings + issues.map(issueRowMarkup).join('');
-    }
-  }
-
-  if (elements.pullsList) {
-    const warnings = github.pullsWarning ? `<li class="board-warning">PR 数据未能拉取：${htmlEscape(github.pullsWarning)}</li>` : '';
-    if (!github.configured) {
-      elements.pullsList.innerHTML = `${warnings}<li class="board-empty">连接 GitHub 后显示等待 review 的 PR</li>`;
-    } else if (!pullRequests.length) {
-      elements.pullsList.innerHTML = `${warnings}<li class="board-empty">还没有进行中的 PR</li>`;
-    } else {
-      elements.pullsList.innerHTML = warnings + pullRequests.map(pullRowMarkup).join('');
     }
   }
 }
@@ -1448,11 +1526,10 @@ function applyState(payload) {
   updateStats(payload);
   updateValidation(payload);
   updateWall(payload);
-  updateBoardSection(payload);
-  updateHistorySection(payload);
   syncGithubEvents(payload);
   detectNewContributors(payload);
   detectNewCheers(payload);
+  detectNewStars(payload);
 
   const fp = String(payload.fingerprint || '');
   if (state.lastOk !== payload.ok) {
@@ -1516,26 +1593,26 @@ function startFallbackPolling() {
       const payload = await fetchState();
       applyState(payload);
     } catch {
-      setConnection('offline', '实时通道断开，轮询也失败');
+      setConnection('offline', '实时通道断开');
     }
   }, 3000);
 }
 
 function connectEvents() {
   if (state.dataMode === 'worker') {
-    setConnection('online', '聚合缓存已连接 · 支持手动拉取（限流 3 分钟/次）');
-    addFeed('已加载云端聚合快照，点击「立即拉取」可按需同步（限流 3 分钟/次）', new Date().toISOString(), 'pulse');
+    setConnection('online', '实时更新中');
+    addFeed('已加载云端聚合快照，点击「立即刷新」可按需同步', new Date().toISOString(), 'pulse');
     return;
   }
 
   if (state.dataMode === 'static') {
-    setConnection('online', '静态页面已加载，随 GitHub Pages 构建更新');
+    setConnection('online', '静态构建');
     addFeed('静态页面已加载，合并 main 后自动发布', new Date().toISOString(), 'pulse');
     return;
   }
 
   if (!('EventSource' in window)) {
-    setConnection('offline', '浏览器不支持 SSE，改用轮询模式');
+    setConnection('offline', '轮询模式');
     startFallbackPolling();
     return;
   }
@@ -1543,13 +1620,13 @@ function connectEvents() {
   const source = new EventSource('events');
 
   source.addEventListener('open', () => {
-    setConnection('online', '实时反馈通道已连接');
+    setConnection('online', '实时更新中');
     addFeed('SSE 实时通道已连接', new Date().toISOString(), 'pulse');
   });
 
   source.addEventListener('state', (event) => {
     const payload = JSON.parse(event.data);
-    setConnection(payload.ok ? 'online' : 'offline', payload.ok ? 'Live 已连接' : '实时通道在线，数据等待修复');
+    setConnection(payload.ok ? 'online' : 'offline', payload.ok ? '实时更新中' : '等待校验修复');
     applyState(payload);
   });
 
@@ -1560,11 +1637,13 @@ function connectEvents() {
 
   source.addEventListener('heartbeat', (event) => {
     const payload = JSON.parse(event.data);
-    if (elements.statPulse) elements.statPulse.textContent = formatTime(payload.at);
+    if (elements.statPulse) {
+      elements.statPulse.textContent = formatRelativeTime(payload.at) || formatTime(payload.at);
+    }
   });
 
   source.addEventListener('error', () => {
-    setConnection('offline', '实时通道断开，已尝试轮询');
+    setConnection('offline', '连接重试中');
     startFallbackPolling();
   });
 }
@@ -1585,7 +1664,9 @@ function closeActivityPanel() {
 
   elements.activityOverlay.hidden = true;
   if (elements.viewAllFeed) elements.viewAllFeed.setAttribute('aria-expanded', 'false');
-  document.body.classList.remove('activity-open');
+  if (!elements.cheersOverlay || elements.cheersOverlay.hidden) {
+    document.body.classList.remove('activity-open');
+  }
 
   if (state.activityReturnFocus && typeof state.activityReturnFocus.focus === 'function') {
     state.activityReturnFocus.focus();
@@ -1615,10 +1696,6 @@ function bindActivityPanel() {
     }
     if (elements.activityOverlay && !elements.activityOverlay.hidden) {
       closeActivityPanel();
-      return;
-    }
-    if (elements.wallDrawerOverlay && !elements.wallDrawerOverlay.hidden) {
-      closeWallDrawer();
     }
   });
 }
@@ -1667,7 +1744,6 @@ function openCheersOverlay(profile) {
   if (!profile || !elements.cheersOverlay || !elements.cheersPanel) return;
 
   state.cheersReturnFocus = document.activeElement;
-
   const cheers = Array.isArray(profile.cheers) ? profile.cheers : [];
 
   if (elements.cheersTitle) {
@@ -1714,78 +1790,118 @@ function bindCheersOverlay() {
     });
   }
 
-  [elements.wall, elements.wallDrawerList].forEach((container) => {
-    if (!container) return;
-    container.addEventListener('click', (event) => {
+  if (elements.wall) {
+    elements.wall.addEventListener('click', (event) => {
+      const starBtn = event.target.closest('.star-emblem-btn');
+      if (starBtn && elements.wall.contains(starBtn)) {
+        event.preventDefault();
+        const owner = starBtn.getAttribute('data-star-owner') || '';
+        const serial = starBtn.getAttribute('data-star-serial') || '';
+        const recipe = starBtn.getAttribute('data-star-recipe') || '';
+        toast(`✦ @${owner} 星标闪卡 #${serial}（${TOTAL_STAR_COMBINATIONS.toLocaleString('zh-CN')} 种组合）：${recipe}`, 4400);
+        return;
+      }
+
       const trigger = event.target.closest('[data-cheers-trigger]');
-      if (!trigger || !container.contains(trigger)) return;
+      if (!trigger || !elements.wall.contains(trigger)) return;
       event.preventDefault();
       const profile = findContributorByHandle(trigger.getAttribute('data-cheers-trigger'));
       if (profile) openCheersOverlay(profile);
     });
+  }
+}
+
+function setMotionPaused(paused, { persist = true } = {}) {
+  state.motionPaused = Boolean(paused);
+  if (elements.wall) {
+    elements.wall.classList.toggle('is-motion-paused', state.motionPaused);
+  }
+  if (elements.toggleWallMotion) {
+    elements.toggleWallMotion.textContent = state.motionPaused ? '开启动效' : '暂停动效';
+    elements.toggleWallMotion.classList.toggle('is-paused', state.motionPaused);
+  }
+  if (persist) {
+    try {
+      window.localStorage.setItem(MOTION_PREF_STORAGE_KEY, state.motionPaused ? '1' : '0');
+    } catch {
+      // Ignore storage errors
+    }
+  }
+}
+
+function bindStarCardTilt() {
+  if (!elements.wall) return;
+  const finePointerQuery = window.matchMedia?.('(hover: hover) and (pointer: fine)');
+  const reducedMotionQuery = window.matchMedia?.('(prefers-reduced-motion: reduce)');
+  let activeCard = null;
+  let rafId = 0;
+  let pendingX = 0.5;
+  let pendingY = 0.5;
+
+  function clearTilt(card) {
+    if (!card) return;
+    card.classList.remove('is-tilting');
+    card.style.removeProperty('--pointer-x');
+    card.style.removeProperty('--pointer-y');
+    card.style.removeProperty('--tilt-x');
+    card.style.removeProperty('--tilt-y');
+    card.style.removeProperty('--foil-angle');
+  }
+
+  function flushTilt() {
+    rafId = 0;
+    if (!activeCard) return;
+    const dx = pendingX - 0.5;
+    const dy = pendingY - 0.5;
+    const tiltX = (-dy * 7.5).toFixed(2);
+    const tiltY = (dx * 8.5).toFixed(2);
+    const angle = (115 + dx * 48 - dy * 30).toFixed(1);
+    activeCard.style.setProperty('--pointer-x', `${(pendingX * 100).toFixed(1)}%`);
+    activeCard.style.setProperty('--pointer-y', `${(pendingY * 100).toFixed(1)}%`);
+    activeCard.style.setProperty('--tilt-x', `${tiltX}deg`);
+    activeCard.style.setProperty('--tilt-y', `${tiltY}deg`);
+    activeCard.style.setProperty('--foil-angle', `${angle}deg`);
+  }
+
+  elements.wall.addEventListener('pointermove', (event) => {
+    if (state.motionPaused || reducedMotionQuery?.matches || !finePointerQuery?.matches) {
+      if (activeCard) {
+        clearTilt(activeCard);
+        activeCard = null;
+      }
+      return;
+    }
+
+    const card = event.target.closest('.profile-card.is-starred');
+    if (card !== activeCard) {
+      clearTilt(activeCard);
+      activeCard = card;
+      if (activeCard) activeCard.classList.add('is-tilting');
+    }
+    if (!activeCard) return;
+
+    const rect = activeCard.getBoundingClientRect();
+    if (!rect.width || !rect.height) return;
+    pendingX = Math.max(0, Math.min(1, (event.clientX - rect.left) / rect.width));
+    pendingY = Math.max(0, Math.min(1, (event.clientY - rect.top) / rect.height));
+    if (!rafId) {
+      rafId = window.requestAnimationFrame(flushTilt);
+    }
+  });
+
+  elements.wall.addEventListener('pointerleave', () => {
+    if (rafId) {
+      window.cancelAnimationFrame(rafId);
+      rafId = 0;
+    }
+    clearTilt(activeCard);
+    activeCard = null;
   });
 }
 
-function setWallExpanded(expanded) {
-  state.wallExpanded = expanded;
-
-  if (expanded) {
-    state.wallVisibleCount = Math.max(state.wallVisibleCount, WALL_PAGE_SIZE);
-  } else {
-    state.wallVisibleCount = WALL_PREVIEW_LIMIT;
-    if (elements.wallSearch) elements.wallSearch.value = '';
-  }
-
-  renderWall();
-
-  if (expanded && elements.wallSearch) {
-    elements.wallSearch.focus();
-  }
-}
-
-function openWallDrawer() {
-  if (!elements.wallDrawerOverlay || !elements.wallDrawer) {
-    setWallExpanded(true);
-    return;
-  }
-
-  state.wallDrawerReturnFocus = document.activeElement instanceof HTMLElement ? document.activeElement : null;
-  state.wallDrawerVisibleCount = WALL_DRAWER_PAGE_SIZE;
-  renderWallDrawer();
-  elements.wallDrawerOverlay.hidden = false;
-  elements.wallDrawer.focus();
-  if (elements.toggleWallMode) elements.toggleWallMode.setAttribute('aria-expanded', 'true');
-}
-
-function closeWallDrawer(options = {}) {
-  if (!elements.wallDrawerOverlay) return;
-  elements.wallDrawerOverlay.hidden = true;
-  if (elements.toggleWallMode) elements.toggleWallMode.setAttribute('aria-expanded', 'false');
-  if (!options.keepHash && window.location.hash === '#all-contributors') {
-    window.history.replaceState(null, '', `${window.location.pathname}${window.location.search}`);
-  }
-  if (state.wallDrawerReturnFocus) {
-    state.wallDrawerReturnFocus.focus();
-  }
-}
-
-function syncWallDrawerFromHash() {
-  if (window.location.hash === '#all-contributors') {
-    openWallDrawer();
-  }
-}
-
 function bindWallControls() {
-  if (elements.toggleWallMode) {
-    elements.toggleWallMode.addEventListener('click', () => {
-      window.history.replaceState(null, '', '#all-contributors');
-      openWallDrawer();
-    });
-  }
-
   if (elements.wallSearch) {
     elements.wallSearch.addEventListener('input', () => {
-      state.wallVisibleCount = WALL_PAGE_SIZE;
       renderWall();
     });
   }
@@ -1796,59 +1912,36 @@ function bindWallControls() {
         elements.wallSearch.value = '';
         elements.wallSearch.focus();
       }
-      state.wallVisibleCount = WALL_PAGE_SIZE;
       renderWall();
     });
   }
 
-  if (elements.loadMoreWall) {
-    elements.loadMoreWall.addEventListener('click', () => {
-      state.wallVisibleCount += WALL_PAGE_SIZE;
-      renderWall();
-    });
-  }
-
-  if (elements.closeWallDrawer) {
-    elements.closeWallDrawer.addEventListener('click', closeWallDrawer);
-  }
-
-  if (elements.wallDrawerOverlay) {
-    elements.wallDrawerOverlay.addEventListener('click', (event) => {
-      if (event.target === elements.wallDrawerOverlay) closeWallDrawer();
-    });
-  }
-
-  if (elements.wallDrawerSearch) {
-    elements.wallDrawerSearch.addEventListener('input', () => {
-      state.wallDrawerVisibleCount = WALL_DRAWER_PAGE_SIZE;
-      renderWallDrawer();
-    });
-  }
-
-  if (elements.wallDrawerSort) {
-    elements.wallDrawerSort.addEventListener('change', renderWallDrawer);
-  }
-
-  if (elements.wallDrawerLoadMore) {
-    elements.wallDrawerLoadMore.addEventListener('click', () => {
-      state.wallDrawerVisibleCount += WALL_DRAWER_PAGE_SIZE;
-      renderWallDrawer();
-    });
-  }
-
-  $$('.wall-drawer-filters button').forEach((button) => {
+  $$('.wall-filter-pill').forEach((button) => {
     button.addEventListener('click', () => {
-      state.wallDrawerFilter = button.dataset.drawerFilter || 'all';
-      $$('.wall-drawer-filters button').forEach((item) => {
-        item.classList.toggle('is-active', item === button);
+      state.wallFilter = button.dataset.wallFilter || 'all';
+      $$('.wall-filter-pill').forEach((item) => {
+        const active = item === button;
+        item.classList.toggle('is-active', active);
+        item.setAttribute('aria-pressed', String(active));
       });
-      state.wallDrawerVisibleCount = WALL_DRAWER_PAGE_SIZE;
-      renderWallDrawer();
+      renderWall();
     });
   });
 
-  window.addEventListener('hashchange', syncWallDrawerFromHash);
-  syncWallDrawerFromHash();
+  if (elements.toggleWallMotion) {
+    try {
+      const saved = window.localStorage.getItem(MOTION_PREF_STORAGE_KEY);
+      if (saved === '1') setMotionPaused(true, { persist: false });
+    } catch {
+      // Ignore storage errors
+    }
+
+    elements.toggleWallMotion.addEventListener('click', () => {
+      setMotionPaused(!state.motionPaused);
+    });
+  }
+
+  bindStarCardTilt();
 }
 
 function bindAvatarFallback() {
@@ -1930,7 +2023,7 @@ async function bootstrapState() {
     applyState(payload);
     connectEvents();
   } catch {
-    setConnection('offline', '无法读取贡献者数据');
+    setConnection('offline', '数据加载失败');
   }
 }
 
@@ -1938,6 +2031,6 @@ bindAvatarFallback();
 bindActivityPanel();
 bindCheersOverlay();
 bindWallControls();
-bindHistoryControls();
+bindRefreshControls();
 renderFeed();
 bootstrapState();

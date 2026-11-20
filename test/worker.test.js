@@ -248,6 +248,13 @@ function createGithubMockFetch(callLog) {
       return jsonResponse([]);
     }
 
+    if (parsed.pathname === '/repos/acme/wall/stargazers') {
+      return jsonResponse([
+        { login: 'alice-pr-author' },
+        { login: 'external-fan' }
+      ]);
+    }
+
     throw new Error(`Unexpected fetch URL: ${url}`);
   };
 }
@@ -281,6 +288,8 @@ test('worker packs state in one shot, filters closed community issues, and enfor
     assert.equal(firstData.cooldownMs, 180000);
     assert.equal(firstData.state.count, 1);
     assert.equal(firstData.state.contributors[0].github, 'alice-pr-author');
+    assert.equal(firstData.state.contributors[0].starred, true);
+    assert.deepEqual(firstData.state.github.stargazers, ['alice-pr-author', 'external-fan']);
     assert.equal(firstData.state.contributors[0].avatar, 'https://avatars.githubusercontent.com/u/1001?s=160');
     assert.equal(firstData.state.contributors[0].cheers.length, 1);
     assert.equal(firstData.state.contributors[0].cheers[0].from, 'bob-cheerer');
@@ -294,7 +303,7 @@ test('worker packs state in one shot, filters closed community issues, and enfor
     assert.equal(Object.hasOwn(firstData.state.github, 'communityLanes'), false);
 
     const callsAfterFirstRefresh = callLog.length;
-    assert.equal(callsAfterFirstRefresh, 7);
+    assert.equal(callsAfterFirstRefresh, 8);
 
     // 2. Immediate second POST /api/refresh returns 200 with latest cached snapshot and 0 extra GitHub calls.
     const secondRefresh = await worker.fetch(
