@@ -8,7 +8,7 @@ body:
       value: |
         在提问或求救之前，建议你先：
         1. 看一遍 `README.md`（涵盖完整贡献流程）
-        2. 在 [Issues 列表](../../issues?q=is%3Aissue) 里搜一下关键词，确认没有人问过同样的问题
+        2. 在 [Issues 列表](https://github.com/nanzhi84/open-source-pulse-wall/issues?q=is%3Aissue) 里搜一下关键词，确认没有人问过同样的问题
 
   - type: textarea
     id: context
@@ -26,7 +26,7 @@ body:
       description: 列出你已经做过的事；如果是命令问题，请按顺序贴出来。
       placeholder: |
         - 跑了 npm run validate，没报错
-        - 看了 README 的「冲突处理」章节
+        - 看了 README 的「遇到分支落后或冲突怎么办？」章节
         - git push 时提示 remote rejected
     validations:
       required: true

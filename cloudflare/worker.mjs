@@ -5,12 +5,12 @@ const DEFAULT_PAGES_STATE_URL = 'https://pulse-wall.yoryon.com/contributors.json
 const DEFAULT_COOLDOWN_MS = 180000;
 
 const COMMIT_GRAPH_LIMIT = 40;
-const SCORING_COMMITS_LIMIT = 300;
+const SCORING_COMMITS_LIMIT = 1000;
 const SCORING_COMMITS_PAGE_SIZE = 100;
 const ACTIVITY_FEED_LIMIT = 8;
-const CONTRIBUTORS_FETCH_LIMIT = 100;
-const ISSUES_FETCH_LIMIT = 100;
-const PULLS_FETCH_LIMIT = 100;
+const CONTRIBUTORS_FETCH_LIMIT = 200;
+const ISSUES_FETCH_LIMIT = 300;
+const PULLS_FETCH_LIMIT = 200;
 const STARGAZERS_FETCH_LIMIT = 500;
 const ISSUES_DISPLAY_LIMIT = 10;
 const PULLS_DISPLAY_LIMIT = 10;
@@ -766,6 +766,70 @@ function normalizeGraphqlScoringCommits(nodes) {
   });
 }
 
+async function fetchScoringCommitsPagesViaGraphql(owner, name, token, initialCommits = [], initialCursor = null) {
+  const scoringCommits = [...initialCommits];
+  let nextCursor = initialCursor;
+  const pageQuery = `
+    query($owner: String!, $name: String!, $after: String) {
+      repository(owner: $owner, name: $name) {
+        defaultBranchRef {
+          target {
+            ... on Commit {
+              history(first: ${SCORING_COMMITS_PAGE_SIZE}, after: $after) {
+                nodes {
+                  oid
+                  committedDate
+                  message
+                  changedFilesIfAvailable
+                  authors(first: 10) {
+                    nodes {
+                      user { login }
+                      email
+                      name
+                    }
+                  }
+                  associatedPullRequests(first: 1) {
+                    nodes {
+                      number
+                      merged
+                    }
+                  }
+                }
+                pageInfo {
+                  hasNextPage
+                  endCursor
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  `;
+
+  let firstFetch = initialCommits.length === 0 && nextCursor === null;
+  while ((firstFetch || nextCursor) && scoringCommits.length < SCORING_COMMITS_LIMIT) {
+    firstFetch = false;
+    try {
+      const pageRes = await fetch(GITHUB_GRAPHQL_URL, {
+        method: 'POST',
+        headers: buildGithubHeaders(token, { 'Content-Type': 'application/json' }),
+        body: JSON.stringify({ query: pageQuery, variables: { owner, name, after: nextCursor } })
+      });
+      if (!pageRes.ok) break;
+      const pagePayload = await pageRes.json();
+      const history = pagePayload?.data?.repository?.defaultBranchRef?.target?.history;
+      if (!Array.isArray(history?.nodes) || !history.nodes.length) break;
+      scoringCommits.push(...normalizeGraphqlScoringCommits(history.nodes));
+      nextCursor = history?.pageInfo?.hasNextPage ? history?.pageInfo?.endCursor : null;
+    } catch {
+      break;
+    }
+  }
+
+  return scoringCommits.slice(0, SCORING_COMMITS_LIMIT);
+}
+
 async function fetchFileContributorsViaGraphql(owner, name, repoPaths, token) {
   if (!token || (!Array.isArray(repoPaths) || !repoPaths.length)) {
     return { fileContributors: {}, scoringCommits: [] };
@@ -773,120 +837,102 @@ async function fetchFileContributorsViaGraphql(owner, name, repoPaths, token) {
 
   const resolved = {};
   let scoringCommits = [];
-  const chunkSize = 40;
-
+  let scoringHistoryFetched = false;
+  let scoringNextCursor = null;
+  const chunkSize = 25;
+  const chunks = [];
   for (let offset = 0; offset < repoPaths.length; offset += chunkSize) {
-    const chunk = repoPaths.slice(offset, offset + chunkSize);
-    const fields = chunk
-      .map((repoPath, idx) => {
-        const depth = repoPath.startsWith('data/cheers/') ? 5 : 15;
-        return `f${idx}: history(first: ${depth}, path: ${JSON.stringify(repoPath)}) { nodes { committedDate author { user { login avatarUrl(size: 160) } } committer { user { login avatarUrl(size: 160) } } associatedPullRequests(first: 1) { nodes { author { login avatarUrl(size: 160) } } } } }`;
-      })
-      .join('\n');
+    chunks.push({ offset, paths: repoPaths.slice(offset, offset + chunkSize) });
+  }
 
-    const scoringField = offset === 0
-      ? `scoringHistory: history(first: ${SCORING_COMMITS_PAGE_SIZE}) { nodes { oid committedDate message changedFilesIfAvailable authors(first: 10) { nodes { user { login } email name } } associatedPullRequests(first: 1) { nodes { number merged } } } pageInfo { hasNextPage endCursor } }`
-      : '';
+  const concurrency = 3;
+  let nextIndex = 0;
 
-    const query = `
-      query($owner: String!, $name: String!) {
-        repository(owner: $owner, name: $name) {
-          defaultBranchRef {
-            target {
-              ... on Commit {
-                ${scoringField}
-                ${fields}
-              }
-            }
-          }
-        }
-      }
-    `;
+  async function runChunkWorker() {
+    while (nextIndex < chunks.length) {
+      const { offset, paths: chunk } = chunks[nextIndex];
+      nextIndex += 1;
 
-    const response = await fetch(GITHUB_GRAPHQL_URL, {
-      method: 'POST',
-      headers: buildGithubHeaders(token, { 'Content-Type': 'application/json' }),
-      body: JSON.stringify({ query, variables: { owner, name } })
-    });
+      const fields = chunk
+        .map((repoPath, idx) => {
+          const depth = repoPath.startsWith('data/cheers/') ? 5 : 10;
+          return `f${idx}: history(first: ${depth}, path: ${JSON.stringify(repoPath)}) { nodes { committedDate author { user { login avatarUrl(size: 160) } } committer { user { login avatarUrl(size: 160) } } associatedPullRequests(first: 1) { nodes { author { login avatarUrl(size: 160) } } } } }`;
+        })
+        .join('\n');
 
-    if (!response.ok) break;
-    const payload = await response.json();
-    const target = payload?.data?.repository?.defaultBranchRef?.target;
-    if (!target) break;
+      const scoringField = offset === 0
+        ? `scoringHistory: history(first: ${SCORING_COMMITS_PAGE_SIZE}) { nodes { oid committedDate message changedFilesIfAvailable authors(first: 10) { nodes { user { login } email name } } associatedPullRequests(first: 1) { nodes { number merged } } } pageInfo { hasNextPage endCursor } }`
+        : '';
 
-    if (offset === 0 && target.scoringHistory?.nodes) {
-      scoringCommits = normalizeGraphqlScoringCommits(target.scoringHistory.nodes);
-      let nextCursor = target.scoringHistory?.pageInfo?.hasNextPage
-        ? target.scoringHistory?.pageInfo?.endCursor
-        : null;
-
-      while (nextCursor && scoringCommits.length < SCORING_COMMITS_LIMIT) {
-        const pageQuery = `
-          query($owner: String!, $name: String!, $after: String) {
-            repository(owner: $owner, name: $name) {
-              defaultBranchRef {
-                target {
-                  ... on Commit {
-                    history(first: ${SCORING_COMMITS_PAGE_SIZE}, after: $after) {
-                      nodes {
-                        oid
-                        committedDate
-                        message
-                        changedFilesIfAvailable
-                        authors(first: 10) {
-                          nodes {
-                            user { login }
-                            email
-                            name
-                          }
-                        }
-                        associatedPullRequests(first: 1) {
-                          nodes {
-                            number
-                            merged
-                          }
-                        }
-                      }
-                      pageInfo {
-                        hasNextPage
-                        endCursor
-                      }
-                    }
-                  }
+      const query = `
+        query($owner: String!, $name: String!) {
+          repository(owner: $owner, name: $name) {
+            defaultBranchRef {
+              target {
+                ... on Commit {
+                  ${scoringField}
+                  ${fields}
                 }
               }
             }
           }
-        `;
-        const pageRes = await fetch(GITHUB_GRAPHQL_URL, {
+        }
+      `;
+
+      try {
+        const response = await fetch(GITHUB_GRAPHQL_URL, {
           method: 'POST',
           headers: buildGithubHeaders(token, { 'Content-Type': 'application/json' }),
-          body: JSON.stringify({ query: pageQuery, variables: { owner, name, after: nextCursor } })
+          body: JSON.stringify({ query, variables: { owner, name } })
         });
-        if (!pageRes.ok) break;
-        const pagePayload = await pageRes.json();
-        const history = pagePayload?.data?.repository?.defaultBranchRef?.target?.history;
-        if (!Array.isArray(history?.nodes) || !history.nodes.length) break;
-        scoringCommits.push(...normalizeGraphqlScoringCommits(history.nodes));
-        nextCursor = history?.pageInfo?.hasNextPage ? history?.pageInfo?.endCursor : null;
-      }
 
-      if (scoringCommits.length > SCORING_COMMITS_LIMIT) {
-        scoringCommits = scoringCommits.slice(0, SCORING_COMMITS_LIMIT);
-      }
-    }
+        if (!response.ok) continue;
+        const payload = await response.json();
+        const target = payload?.data?.repository?.defaultBranchRef?.target;
+        if (!target) continue;
 
-    for (let idx = 0; idx < chunk.length; idx += 1) {
-      const repoPath = chunk[idx];
-      const nodes = target[`f${idx}`]?.nodes;
-      const picked = pickEarliestGithubUser(nodes);
-      if (picked) {
-        resolved[repoPath] = picked;
-        if (repoPath.startsWith('data/profiles/')) {
-          resolved[repoPath.slice('data/profiles/'.length)] = picked;
+        if (offset === 0 && target.scoringHistory?.nodes) {
+          scoringHistoryFetched = true;
+          scoringCommits = normalizeGraphqlScoringCommits(target.scoringHistory.nodes);
+          scoringNextCursor = target.scoringHistory?.pageInfo?.hasNextPage
+            ? target.scoringHistory?.pageInfo?.endCursor
+            : null;
         }
+
+        for (let idx = 0; idx < chunk.length; idx += 1) {
+          const repoPath = chunk[idx];
+          const nodes = target[`f${idx}`]?.nodes;
+          const picked = pickEarliestGithubUser(nodes);
+          if (picked) {
+            resolved[repoPath] = picked;
+            if (repoPath.startsWith('data/profiles/')) {
+              resolved[repoPath.slice('data/profiles/'.length)] = picked;
+            }
+          }
+        }
+      } catch {
+        // Continue remaining chunks so one transient GraphQL error doesn't drop all metadata.
       }
     }
+  }
+
+  await Promise.all(
+    Array.from({ length: Math.min(concurrency, chunks.length) }, () => runChunkWorker())
+  );
+
+  if (scoringHistoryFetched) {
+    if (scoringNextCursor && scoringCommits.length < SCORING_COMMITS_LIMIT) {
+      scoringCommits = await fetchScoringCommitsPagesViaGraphql(
+        owner,
+        name,
+        token,
+        scoringCommits,
+        scoringNextCursor
+      );
+    }
+  } else if (chunks.length > 0 && !Object.keys(resolved).length) {
+    // Only fall back to a dedicated scoring query if chunk 0 failed completely.
+    scoringCommits = await fetchScoringCommitsPagesViaGraphql(owner, name, token, [], null);
   }
 
   return { fileContributors: resolved, scoringCommits };

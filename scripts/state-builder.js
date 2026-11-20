@@ -11,12 +11,12 @@ const ROOT = path.resolve(__dirname, '..');
 const PROFILES_DIR = path.join(ROOT, 'data', 'profiles');
 const GITHUB_API_BASE = 'https://api.github.com';
 const COMMIT_GRAPH_LIMIT = 40;
-const SCORING_COMMITS_LIMIT = 300;
+const SCORING_COMMITS_LIMIT = 1000;
 const SCORING_COMMITS_PAGE_SIZE = 100;
 const ACTIVITY_FEED_LIMIT = 8;
-const CONTRIBUTORS_FETCH_LIMIT = 100;
-const ISSUES_FETCH_LIMIT = 100;
-const PULLS_FETCH_LIMIT = 100;
+const CONTRIBUTORS_FETCH_LIMIT = 200;
+const ISSUES_FETCH_LIMIT = 300;
+const PULLS_FETCH_LIMIT = 200;
 const STARGAZERS_FETCH_LIMIT = 500;
 const ISSUES_DISPLAY_LIMIT = 10;
 const PULLS_DISPLAY_LIMIT = 10;
@@ -527,55 +527,74 @@ async function fetchFileContributorsViaGraphql(repository, repoPaths, token) {
 
   const [owner, name] = repository.split('/');
   const resolved = {};
-  const chunkSize = 40;
-
+  const chunkSize = 25;
+  const chunks = [];
   for (let offset = 0; offset < repoPaths.length; offset += chunkSize) {
-    const chunk = repoPaths.slice(offset, offset + chunkSize);
-    const fields = chunk
-      .map((repoPath, idx) => {
-        const depth = repoPath.startsWith('data/cheers/') ? 5 : 15;
-        return `f${idx}: history(first: ${depth}, path: ${JSON.stringify(repoPath)}) { nodes { committedDate author { user { login avatarUrl(size: 160) } } committer { user { login avatarUrl(size: 160) } } associatedPullRequests(first: 1) { nodes { author { login avatarUrl(size: 160) } } } } }`;
-      })
-      .join('\n');
+    chunks.push(repoPaths.slice(offset, offset + chunkSize));
+  }
 
-    const query = `
-      query($owner: String!, $name: String!) {
-        repository(owner: $owner, name: $name) {
-          defaultBranchRef {
-            target {
-              ... on Commit {
-                ${fields}
+  const concurrency = 3;
+  let nextIndex = 0;
+
+  async function runWorker() {
+    while (nextIndex < chunks.length) {
+      const chunk = chunks[nextIndex];
+      nextIndex += 1;
+
+      const fields = chunk
+        .map((repoPath, idx) => {
+          const depth = repoPath.startsWith('data/cheers/') ? 5 : 10;
+          return `f${idx}: history(first: ${depth}, path: ${JSON.stringify(repoPath)}) { nodes { committedDate author { user { login avatarUrl(size: 160) } } committer { user { login avatarUrl(size: 160) } } associatedPullRequests(first: 1) { nodes { author { login avatarUrl(size: 160) } } } } }`;
+        })
+        .join('\n');
+
+      const query = `
+        query($owner: String!, $name: String!) {
+          repository(owner: $owner, name: $name) {
+            defaultBranchRef {
+              target {
+                ... on Commit {
+                  ${fields}
+                }
               }
             }
           }
         }
+      `;
+
+      try {
+        const response = await fetch(`${GITHUB_API_BASE}/graphql`, {
+          method: 'POST',
+          headers: {
+            ...buildGithubHeaders(token),
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify({ query, variables: { owner, name } })
+        });
+
+        if (!response.ok) continue;
+        const payload = await response.json();
+        const target = payload?.data?.repository?.defaultBranchRef?.target;
+        if (!target) continue;
+
+        chunk.forEach((repoPath, idx) => {
+          const picked = pickEarliestGithubUser(target[`f${idx}`]?.nodes);
+          if (picked) {
+            resolved[repoPath] = picked;
+            if (repoPath.startsWith('data/profiles/')) {
+              resolved[repoPath.slice('data/profiles/'.length)] = picked;
+            }
+          }
+        });
+      } catch {
+        // Continue with remaining chunks so one transient GraphQL error doesn't drop all metadata.
       }
-    `;
-
-    const response = await fetch(`${GITHUB_API_BASE}/graphql`, {
-      method: 'POST',
-      headers: {
-        ...buildGithubHeaders(token),
-        'Content-Type': 'application/json'
-      },
-      body: JSON.stringify({ query, variables: { owner, name } })
-    });
-
-    if (!response.ok) break;
-    const payload = await response.json();
-    const target = payload?.data?.repository?.defaultBranchRef?.target;
-    if (!target) break;
-
-    chunk.forEach((repoPath, idx) => {
-      const picked = pickEarliestGithubUser(target[`f${idx}`]?.nodes);
-      if (picked) {
-        resolved[repoPath] = picked;
-        if (repoPath.startsWith('data/profiles/')) {
-          resolved[repoPath.slice('data/profiles/'.length)] = picked;
-        }
-      }
-    });
+    }
   }
+
+  await Promise.all(
+    Array.from({ length: Math.min(concurrency, chunks.length) }, () => runWorker())
+  );
 
   return resolved;
 }

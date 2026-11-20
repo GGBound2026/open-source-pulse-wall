@@ -192,7 +192,7 @@ git push origin cheer/octocat
 
 ### 第四步：提一个 Issue 与等待自动合并
 
-- **提一个 Issue**：打开仓库 [Issues 页面](../../issues/new/choose)，选择对应模板提交你真实遇到的卡点、发现的 Bug 或具体改进想法。提交前先在 Issues 列表搜索确认不重复；可以让 Agent 帮你整理复现步骤或草稿，但必须由本人核对后再发，不要让 Agent 凭空编造问题。
+- **提一个 Issue**：打开仓库 [Issues 页面](https://github.com/nanzhi84/open-source-pulse-wall/issues/new/choose)，选择对应模板提交你真实遇到的卡点、发现的 Bug 或具体改进想法。提交前先在 Issues 列表搜索确认不重复；可以让 Agent 帮你整理复现步骤或草稿，但必须由本人核对后再发，不要让 Agent 凭空编造问题。
 - **自动审查与合并**：PR 提交后会自动运行 `pr-guard` 与 `validate`，老师 `@nanzhi84` 与 `@YJLEC` 会由 `CODEOWNERS` 自动收到审阅通知。两项检查通过、无人提出 `Request changes` 且未标记 `hold` / `do-not-merge` 标签时，自动合并队列会在约 **10 分钟后合入 `main`** 并触发展示墙更新；刚注册的 GitHub 账号若触发平台安全限制，机器人会自动 `@` 老师协助处理。
 
 ### 第五步：现场互助与积分玩法（可选）
@@ -253,6 +253,7 @@ open-source-pulse-wall/
 │   └── workflows/
 │       ├── validate.yml            # PR 与主干自动运行测试与数据校验
 │       ├── pr-guard.yml            # 防篡改路径锁 + 自动格式审查评论 Bot
+│       ├── review-wakeup.yml       # Review 提交/解除时唤醒自动合并队列
 │       ├── auto-merge-queue.yml    # 串行自动合并队列（10 分钟静置 + 复检 + 触发部署 + 新号提醒老师）
 │       └── pages.yml               # 合并 main / 收到 Star 时自动构建并发布展示墙
 ├── cloudflare/

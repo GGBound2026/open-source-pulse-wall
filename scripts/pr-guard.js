@@ -499,7 +499,7 @@ function evaluateAutoMergeCandidate({
       action: 'wait',
       reason: 'cooling_down',
       remainingMs,
-      retryAfterMs: Math.min(remainingMs, 30_000),
+      retryAfterMs: Math.min(remainingMs, 60_000),
       headSha
     };
   }

@@ -29,7 +29,7 @@ body:
     id: how
     attributes:
       label: 你想到的实现方式（可选）
-      placeholder: "在 #guide 区域顶上加一行 1/4 → 2/4 → ... 的小步骤指示器。"
+      placeholder: "在展示墙顶部筛选栏增加一个按城市筛选的下拉菜单。"
 
   - type: textarea
     id: alternatives
