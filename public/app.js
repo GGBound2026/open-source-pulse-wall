@@ -1862,7 +1862,90 @@ function writeCachedState(payload) {
   }
 }
 
-function applyState(payload) {
+function preserveStargazersWhenDegraded(payload) {
+  const github = payload?.github;
+  const incomingList = Array.isArray(github?.stargazers) ? github.stargazers : [];
+  const degraded = Boolean(github?.stargazersWarning) &&
+    incomingList.length === 0 &&
+    Number(github?.stars || 0) > 0 &&
+    state.stargazerSet.size > 0;
+
+  if (!degraded || !Array.isArray(payload?.contributors)) return payload;
+
+  const preservedLogins = Array.from(state.stargazerSet);
+  const hydrated = payload.contributors.map((profile) => {
+    const handleKey = String(profile?.github || '').trim().toLowerCase();
+    const isStarred = Boolean(profile?.starred) || (Boolean(handleKey) && state.stargazerSet.has(handleKey));
+    if (!isStarred) return profile;
+
+    const prevScore = profile.score || {};
+    const prevBreakdown = prevScore.breakdown || {};
+    const starPts = 1;
+    const cheersPts = Number(prevBreakdown.cheers || 0);
+    const pairPts = Number(prevBreakdown.pair || 0);
+    const relicPts = Number(prevBreakdown.relic || 0);
+    const points = starPts + cheersPts + pairPts + relicPts;
+    const tier = resolveTierMeta(points, true);
+
+    return {
+      ...profile,
+      starred: true,
+      score: {
+        ...prevScore,
+        points,
+        starred: true,
+        vfxTier: tier.vfxTier,
+        tierId: tier.tierId,
+        tierLabel: tier.tierLabel,
+        nextTierPoints: tier.nextTierPoints,
+        breakdown: {
+          ...prevBreakdown,
+          star: starPts
+        }
+      }
+    };
+  });
+
+  const ranked = hydrated
+    .map((profile, idx) => ({
+      idx,
+      starred: Boolean(profile.starred),
+      points: Number(profile.score?.points || 0),
+      joinedTs: Date.parse(profile.joinedAt || '') || Number.MAX_SAFE_INTEGER,
+      handle: String(profile.github || profile.name || '').toLowerCase()
+    }))
+    .sort((a, b) => {
+      if (b.points !== a.points) return b.points - a.points;
+      if (Number(b.starred) !== Number(a.starred)) return Number(b.starred) - Number(a.starred);
+      if (a.joinedTs !== b.joinedTs) return a.joinedTs - b.joinedTs;
+      return a.handle.localeCompare(b.handle);
+    });
+
+  let top5Assigned = 0;
+  ranked.forEach((entry, rankIdx) => {
+    const target = hydrated[entry.idx];
+    if (!target.score) return;
+    const eligibleTop5 = entry.starred && entry.points >= 5 && top5Assigned < 5;
+    if (eligibleTop5) top5Assigned += 1;
+    target.score = {
+      ...target.score,
+      rank: rankIdx + 1,
+      isTop5: eligibleTop5
+    };
+  });
+
+  return {
+    ...payload,
+    contributors: hydrated,
+    github: {
+      ...github,
+      stargazers: preservedLogins
+    }
+  };
+}
+
+function applyState(rawPayload) {
+  const payload = preserveStargazersWhenDegraded(rawPayload);
   updateGithubSync(payload.github);
   updateStats(payload);
   updateValidation(payload);
