@@ -558,7 +558,7 @@ function formatGuardComment(
     COMMENT_MARKER,
     `### ❌ 自动格式与路径审查未通过${shaBadge}`,
     '',
-    `${authorMention}请根据以下提示修改后重新 push（推送后机器人会自动更新审查结果）：`,
+    `${authorMention}请根据以下提示修改后重新 push（推送后机器人会自动回复新的审查结果）：`,
     ''
   ];
 

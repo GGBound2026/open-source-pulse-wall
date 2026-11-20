@@ -34,7 +34,6 @@ jobs:
           script: |
             const path = require('path');
             const {
-              COMMENT_MARKER,
               evaluatePrGuard,
               formatGuardComment,
               inspectValidationState,
@@ -44,7 +43,7 @@ jobs:
             } = require(path.join(process.env.GITHUB_WORKSPACE, 'scripts', 'pr-guard.js'));
             const {
               fetchPrChangedFilesAndContents,
-              upsertCommentByMarker
+              postGuardComment
             } = require(path.join(process.env.GITHUB_WORKSPACE, 'scripts', 'auto-merge-queue.js'));
 
             const pr = context.payload.pull_request;
@@ -106,12 +105,11 @@ jobs:
               maintainers
             });
 
-            await upsertCommentByMarker({
+            await postGuardComment({
               github,
               owner: context.repo.owner,
               repo: context.repo.repo,
               issueNumber: pr.number,
-              marker: COMMENT_MARKER,
               body,
               core
             });

@@ -4,7 +4,6 @@ const path = require('path');
 const { execFileSync } = require('child_process');
 const {
   AUTO_MERGE_DELAY_MS,
-  COMMENT_MARKER,
   buildNoticeMarker,
   normalizeGithubPrFiles,
   evaluatePrGuard,
@@ -130,28 +129,8 @@ async function fetchPrChangedFilesAndContents({ github, owner, repo, pr, core, f
   return { changedFiles, fileContents };
 }
 
-async function upsertCommentByMarker({ github, owner, repo, issueNumber, marker = COMMENT_MARKER, body, core }) {
+async function postGuardComment({ github, owner, repo, issueNumber, body, core }) {
   try {
-    const comments = await github.paginate(github.rest.issues.listComments, {
-      owner,
-      repo,
-      issue_number: issueNumber,
-      per_page: 100
-    });
-    const existing = [...comments]
-      .reverse()
-      .find((comment) => String(comment.body || '').includes(marker));
-
-    if (existing) {
-      await github.rest.issues.updateComment({
-        owner,
-        repo,
-        comment_id: existing.id,
-        body
-      });
-      return { action: 'updated', commentId: existing.id };
-    }
-
     const created = await github.rest.issues.createComment({
       owner,
       repo,
@@ -160,7 +139,7 @@ async function upsertCommentByMarker({ github, owner, repo, issueNumber, marker 
     });
     return { action: 'created', commentId: created?.data?.id || null };
   } catch (error) {
-    core?.warning?.(`Failed to upsert comment on PR #${issueNumber}: ${error.message}`);
+    core?.warning?.(`Failed to post PR guard comment on PR #${issueNumber}: ${error.message}`);
     return { action: 'error', error: error.message };
   }
 }
@@ -523,7 +502,7 @@ module.exports = {
   DEFAULT_MAX_LOOP_MS,
   DEFAULT_MAX_CHAIN_DEPTH,
   fetchPrChangedFilesAndContents,
-  upsertCommentByMarker,
+  postGuardComment,
   postCommentOnceByMarker,
   processAutoMergeQueue
 };

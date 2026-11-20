@@ -4,7 +4,7 @@ const test = require('node:test');
 const { COMMENT_MARKER } = require('../scripts/pr-guard');
 const {
   fetchPrChangedFilesAndContents,
-  upsertCommentByMarker,
+  postGuardComment,
   processAutoMergeQueue
 } = require('../scripts/auto-merge-queue');
 
@@ -109,32 +109,31 @@ function createMockGithub({
   return { github, mergedCalls, createdComments, updatedComments, dispatches, openPullMap };
 }
 
-test('upsertCommentByMarker creates once then updates existing marker comment', async () => {
+test('postGuardComment always creates a new comment to preserve full review history', async () => {
   const { github, createdComments, updatedComments } = createMockGithub();
 
-  const first = await upsertCommentByMarker({
+  const first = await postGuardComment({
     github,
     owner: 'nanzhi84',
     repo: 'open-source-pulse-wall',
     issueNumber: 10,
-    marker: COMMENT_MARKER,
     body: `${COMMENT_MARKER}\nFirst pass`
   });
   assert.equal(first.action, 'created');
   assert.equal(createdComments.length, 1);
 
-  const second = await upsertCommentByMarker({
+  const second = await postGuardComment({
     github,
     owner: 'nanzhi84',
     repo: 'open-source-pulse-wall',
     issueNumber: 10,
-    marker: COMMENT_MARKER,
-    body: `${COMMENT_MARKER}\nUpdated pass`
+    body: `${COMMENT_MARKER}\nSecond pass`
   });
-  assert.equal(second.action, 'updated');
-  assert.equal(createdComments.length, 1);
-  assert.equal(updatedComments.length, 1);
-  assert.match(updatedComments[0].body, /Updated pass/);
+  assert.equal(second.action, 'created');
+  assert.equal(createdComments.length, 2);
+  assert.equal(updatedComments.length, 0);
+  assert.match(createdComments[0].body, /First pass/);
+  assert.match(createdComments[1].body, /Second pass/);
 });
 
 test('processAutoMergeQueue merges ready PRs serially, prevents case-collision race on main, notifies teachers for new accounts, and dispatches pages.yml', async () => {
