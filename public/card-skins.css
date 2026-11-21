@@ -1,0 +1,722 @@
+/* =========================================================================
+ * Collector card skins (auto-scoped copy of the original Pulse Wall star
+ * cards from vfx-cards.css). Every selector lives under .collector-slot so the
+ * paper-card styles never leak into the 3D HUD. Regenerate from vfx-cards.css
+ * instead of editing by hand.
+ * ========================================================================= */
+
+.collector-slot {
+  --vermilion: #d4523b;
+  --muted: #6c6960;
+  --shadow-hover: 0 10px 24px rgba(20, 21, 19, 0.09);
+}
+
+.collector-slot .profile-card {
+  --card-ink: #161715;
+  --card-muted: #6c6960;
+  --card-handle: #3b3a35;
+  --card-motto: #1f201d;
+  --card-pill-bg: rgba(29, 30, 27, 0.08);
+  --card-pill-ink: #3c3b36;
+  --card-cheer-bg: transparent;
+  --card-cheer-border: rgba(29, 30, 27, 0.16);
+  --card-cheer-from: #1d1e1b;
+  --card-cheer-text: #45443e;
+  --card-cheer-link: #4d4b44;
+  --card-avatar-ring: rgba(29, 30, 27, 0.22);
+  --card-pattern-color: rgba(29, 30, 27, 0.08);
+
+  container: profile-card / inline-size;
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: 9px;
+  min-inline-size: 0;
+  padding: 13px 14px 11px;
+  border: 1px solid #1d1e1b;
+  border-radius: 3px;
+  background: #f8f5ee;
+  color: var(--card-ink);
+  box-shadow: none;
+  overflow: clip;
+  isolation: isolate;
+  transition: transform 0.2s cubic-bezier(0.22, 1, 0.36, 1), box-shadow 0.2s ease;
+}
+
+.collector-slot .profile-card:hover {
+  transform: translateY(-2px);
+  box-shadow: var(--shadow-hover);
+}
+
+.collector-slot .profile-top {
+  position: relative;
+  z-index: 4;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-inline-size: 0;
+}
+
+.collector-slot .avatar-image {
+  flex: 0 0 auto;
+  inline-size: 38px;
+  block-size: 38px;
+  aspect-ratio: 1;
+  border: 1px solid var(--card-avatar-ring);
+  border-radius: 3px;
+  background: #e6dfd0;
+  object-fit: cover;
+}
+
+.collector-slot .identity {
+  flex: 1 1 auto;
+  min-inline-size: 0;
+}
+
+.collector-slot .profile-card.is-starred .identity {
+  padding-inline-end: 30px;
+}
+
+.collector-slot .identity h3 {
+  margin: 0;
+  color: var(--card-ink);
+  font-size: 1.04rem;
+  font-weight: 800;
+  line-height: 1.2;
+  letter-spacing: -0.015em;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.collector-slot .fresh-pill {
+  position: absolute;
+  inset-block-start: 0;
+  inset-inline-end: 0;
+  z-index: 6;
+  display: inline-flex;
+  align-items: center;
+  padding: 2px 8px;
+  border-radius: 0 2px 0 3px;
+  background: var(--vermilion);
+  color: #fffaf5;
+  font-size: 0.68rem;
+  font-weight: 800;
+  letter-spacing: 0.03em;
+  line-height: 1.35;
+  white-space: nowrap;
+}
+
+.collector-slot .profile-card.is-starred .fresh-pill {
+  inset-inline-end: 34px;
+  border-radius: 0 0 3px 3px;
+}
+
+.collector-slot .profile-card.is-vfx-spotlight {
+  z-index: 4;
+  box-shadow: 0 0 0 2px #d8ae48, 0 14px 28px rgba(20, 21, 19, 0.18);
+}
+
+.collector-slot .profile-card.is-honor-spotlight {
+  z-index: 5;
+  box-shadow: 0 0 0 2.5px #d8ae48, 0 16px 32px rgba(20, 21, 19, 0.24);
+  transform: translateY(-3px);
+}
+
+.collector-slot .motto {
+  position: relative;
+  z-index: 4;
+  margin: 0;
+  min-block-size: 2.75em;
+  color: var(--card-motto);
+  font-size: 0.85rem;
+  font-weight: 500;
+  line-height: 1.44;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: clip;
+}
+
+.collector-slot .identity-meta {
+  position: relative;
+  z-index: 4;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-block-start: auto;
+  min-inline-size: 0;
+}
+
+.collector-slot .identity-meta-text {
+  display: flex;
+  align-items: center;
+  flex-wrap: nowrap;
+  gap: 5px;
+  min-inline-size: 0;
+  overflow: hidden;
+  font-size: 0.74rem;
+  font-weight: 600;
+  color: var(--card-handle);
+}
+
+.collector-slot .handle {
+  flex: 0 1 auto;
+  min-inline-size: 0;
+  color: var(--card-handle);
+  text-decoration: none;
+  font-weight: 600;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.collector-slot .handle:hover,
+.collector-slot .handle:focus-visible {
+  outline: 0;
+  color: var(--card-ink);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+.collector-slot .meta-dot {
+  flex: 0 0 auto;
+  opacity: 0.45;
+}
+
+.collector-slot .meta-city {
+  flex: 0 1 auto;
+  min-inline-size: 0;
+  max-inline-size: 58px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--card-handle);
+}
+
+.collector-slot .meta-score {
+  flex: 0 0 auto;
+  white-space: nowrap;
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
+  color: var(--card-ink);
+}
+
+.collector-slot .meta-score.is-unstarred {
+  font-weight: 600;
+  font-size: 0.71rem;
+  color: var(--card-muted);
+}
+
+.collector-slot .meta-score.is-top5 {
+  color: #9c6a0e;
+}
+
+.collector-slot .profile-card.star-tone-dark .meta-score.is-top5 {
+  color: #f6d57a;
+}
+
+.collector-slot .tier-squares {
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+}
+
+.collector-slot .tier-squares i {
+  display: inline-block;
+  inline-size: 6px;
+  block-size: 6px;
+  background: rgba(29, 30, 27, 0.18);
+}
+
+.collector-slot .tier-squares i.is-on {
+  background: var(--card-ink);
+}
+
+.collector-slot .profile-card.star-tone-dark .tier-squares i {
+  background: rgba(255, 250, 236, 0.24);
+}
+
+.collector-slot .profile-card.star-tone-dark .tier-squares i.is-on {
+  background: #f6d57a;
+}
+
+.collector-slot .cheers-block {
+  position: relative;
+  z-index: 4;
+  padding: 8px 0 0;
+  border: 0;
+  border-block-start: 1px solid var(--card-cheer-border);
+  border-radius: 0;
+  background: transparent;
+  backdrop-filter: none;
+}
+
+.collector-slot .cheers-empty-line {
+  display: block;
+  color: var(--card-muted);
+  font-size: 0.73rem;
+  font-weight: 500;
+  line-height: 1.35;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.collector-slot .cheers-inline-row {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+  min-inline-size: 0;
+}
+
+.collector-slot .cheers-inline-text {
+  flex: 1 1 auto;
+  min-inline-size: 0;
+  color: var(--card-cheer-text);
+  font-size: 0.73rem;
+  line-height: 1.38;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.collector-slot .cheers-count-tag {
+  color: var(--card-ink);
+  font-weight: 700;
+}
+
+.collector-slot .cheers-sep {
+  margin-inline: 2px;
+  opacity: 0.45;
+}
+
+.collector-slot .cheer-from {
+  color: var(--card-cheer-from);
+  font-weight: 700;
+  margin-inline-end: 2px;
+}
+
+.collector-slot .cheers-view-all {
+  flex: 0 0 auto;
+  appearance: none;
+  border: 0;
+  padding: 0;
+  background: transparent;
+  color: var(--card-cheer-link);
+  font-size: 0.72rem;
+  font-weight: 700;
+  white-space: nowrap;
+  transition: color 0.14s ease;
+}
+
+.collector-slot .cheers-view-all:hover,
+.collector-slot .cheers-view-all:focus-visible {
+  outline: 0;
+  color: var(--card-ink);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+@container profile-card (inline-size < 250px) {
+.collector-slot .avatar-image {
+    inline-size: 34px;
+    block-size: 34px;
+  }
+
+.collector-slot .identity h3 {
+    font-size: 0.96rem;
+  }
+
+
+}
+
+.collector-slot .profile-card.is-starred {
+  --pointer-x: 50%;
+  --pointer-y: 50%;
+  --tilt-x: 0deg;
+  --tilt-y: 0deg;
+  --foil-angle: 122deg;
+  --card-bg: linear-gradient(180deg, #faf5ea 0%, #f4ecde 100%);
+  --card-inner-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.85);
+  --aura-glow-1: rgba(214, 177, 87, 0.52);
+  --aura-glow-2: rgba(192, 132, 252, 0.42);
+  --spark-color-1: #fef08a;
+  --spark-color-2: #7dd3fc;
+  --frame-stroke: rgba(212, 165, 68, 0.92);
+
+  position: relative;
+  z-index: 1;
+  border-color: transparent;
+  background: transparent;
+  box-shadow: none;
+  overflow: visible;
+  will-change: transform;
+}
+
+.collector-slot .profile-card.is-starred:hover {
+  z-index: 10;
+  box-shadow: none;
+}
+
+.collector-slot .profile-card.is-starred.is-tilting {
+  transform: perspective(860px) rotateX(var(--tilt-x)) rotateY(var(--tilt-y)) translateY(-5px);
+  transition: none;
+}
+
+.collector-slot .profile-card.is-starred .identity {
+  padding-inline-end: 26px;
+}
+
+.collector-slot .card-surface {
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  border: 1.5px solid var(--frame-stroke);
+  border-radius: inherit;
+  background: var(--card-bg);
+  box-shadow: var(--card-inner-shadow), 0 8px 22px rgba(38, 32, 24, 0.13);
+  overflow: clip;
+  pointer-events: none;
+  transition: box-shadow 0.22s ease, border-color 0.22s ease;
+}
+
+.collector-slot .profile-card.is-starred:hover .card-surface {
+  box-shadow: var(--card-inner-shadow), 0 14px 30px rgba(38, 32, 24, 0.19), 0 0 18px var(--aura-glow-1);
+}
+
+.collector-slot .card-surface::after {
+  content: "";
+  position: absolute;
+  inset-block: -18%;
+  inset-inline-start: -45%;
+  inline-size: 46%;
+  z-index: 3;
+  pointer-events: none;
+  opacity: 0;
+  background: linear-gradient(
+    90deg,
+    transparent 0%,
+    rgba(255, 255, 255, 0.08) 22%,
+    rgba(255, 255, 255, 0.48) 50%,
+    rgba(255, 255, 255, 0.08) 78%,
+    transparent 100%
+  );
+  transform: translate3d(-120%, 0, 0) skewX(-22deg);
+}
+
+.collector-slot .profile-card.star-tone-dark .card-surface::after {
+  background: linear-gradient(
+    90deg,
+    transparent 0%,
+    rgba(255, 250, 232, 0.05) 22%,
+    rgba(255, 252, 240, 0.28) 50%,
+    rgba(255, 250, 232, 0.05) 78%,
+    transparent 100%
+  );
+}
+
+.collector-slot .profile-card.star-tone-dark {
+  --card-ink: #fbf8f0;
+  --card-muted: rgba(235, 232, 222, 0.78);
+  --card-handle: rgba(236, 233, 224, 0.84);
+  --card-motto: #faf6ec;
+  --card-pill-bg: rgba(255, 255, 255, 0.16);
+  --card-pill-ink: #f7f2e7;
+  --card-cheer-bg: rgba(8, 16, 22, 0.46);
+  --card-cheer-border: rgba(255, 255, 255, 0.18);
+  --card-cheer-from: #f8da82;
+  --card-cheer-text: rgba(247, 244, 236, 0.92);
+  --card-cheer-link: rgba(248, 218, 130, 0.9);
+  --card-avatar-ring: rgba(248, 218, 130, 0.78);
+}
+
+.collector-slot .profile-card[data-star-theme="prism"] {
+  --card-ink: #202338;
+  --card-handle: #4b5070;
+  --card-motto: #272b42;
+  --card-pill-bg: rgba(255, 255, 255, 0.74);
+  --card-pill-ink: #3c4266;
+  --card-cheer-bg: rgba(255, 255, 255, 0.60);
+  --card-cheer-border: rgba(145, 132, 228, 0.30);
+  --card-cheer-from: #5c33a8;
+  --card-avatar-ring: rgba(255, 255, 255, 0.95);
+  --card-pattern-color: rgba(114, 96, 206, 0.24);
+  --frame-stroke: rgba(148, 132, 238, 0.92);
+  --card-inner-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.95);
+  --card-bg:
+    radial-gradient(circle at 12% 14%, rgba(165, 232, 255, 0.92), transparent 52%),
+    radial-gradient(circle at 88% 16%, rgba(245, 196, 254, 0.92), transparent 54%),
+    radial-gradient(circle at 82% 92%, rgba(152, 245, 212, 0.82), transparent 52%),
+    radial-gradient(circle at 16% 88%, rgba(254, 236, 146, 0.78), transparent 50%),
+    linear-gradient(135deg, #f3ecff 0%, #e7f6ff 50%, #fdebf5 100%);
+}
+
+.collector-slot .profile-card[data-star-theme="goldleaf"] {
+  --card-ink: #30220c;
+  --card-handle: #745a2d;
+  --card-motto: #3f2d11;
+  --card-pill-bg: rgba(206, 160, 66, 0.24);
+  --card-pill-ink: #6a4710;
+  --card-cheer-bg: rgba(252, 245, 226, 0.82);
+  --card-cheer-border: rgba(186, 138, 44, 0.36);
+  --card-cheer-from: #87500c;
+  --card-avatar-ring: #cfa041;
+  --card-pattern-color: rgba(168, 120, 32, 0.34);
+  --frame-stroke: rgba(182, 132, 38, 0.94);
+  --card-inner-shadow: inset 0 1px 0 rgba(255, 253, 240, 0.92);
+  --card-bg:
+    radial-gradient(circle at 92% 8%, rgba(240, 198, 104, 0.56), transparent 46%),
+    radial-gradient(circle at 8% 92%, rgba(214, 168, 72, 0.34), transparent 50%),
+    linear-gradient(155deg, #fffdf4 0%, #f9edd0 54%, #f0dcad 100%);
+}
+
+.collector-slot .profile-card[data-star-theme="aurora"] {
+  --card-pill-bg: rgba(94, 234, 212, 0.18);
+  --card-pill-ink: #ccfbf1;
+  --card-cheer-bg: rgba(7, 32, 27, 0.54);
+  --card-cheer-border: rgba(110, 231, 183, 0.28);
+  --card-cheer-from: #6ee7b7;
+  --card-cheer-link: #a7f3d0;
+  --card-avatar-ring: #5eead4;
+  --card-pattern-color: rgba(167, 243, 208, 0.28);
+  --frame-stroke: rgba(94, 234, 212, 0.88);
+  --card-inner-shadow: inset 0 1px 0 rgba(167, 243, 208, 0.32);
+  --card-bg:
+    radial-gradient(ellipse at 16% 12%, rgba(45, 212, 191, 0.54), transparent 56%),
+    radial-gradient(ellipse at 86% 24%, rgba(16, 185, 129, 0.44), transparent 54%),
+    radial-gradient(ellipse at 50% 98%, rgba(56, 189, 248, 0.28), transparent 54%),
+    linear-gradient(155deg, #0b2b25 0%, #12453b 48%, #082426 100%);
+}
+
+.collector-slot .profile-card[data-star-theme="sakura"] {
+  --card-ink: #381e26;
+  --card-handle: #7b4a59;
+  --card-motto: #4a2833;
+  --card-pill-bg: rgba(220, 134, 156, 0.24);
+  --card-pill-ink: #7d364b;
+  --card-cheer-bg: rgba(255, 247, 249, 0.78);
+  --card-cheer-border: rgba(208, 118, 142, 0.30);
+  --card-cheer-from: #9e3554;
+  --card-avatar-ring: #dc869c;
+  --card-pattern-color: rgba(192, 98, 126, 0.28);
+  --frame-stroke: rgba(216, 118, 146, 0.90);
+  --card-inner-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.9);
+  --card-bg:
+    radial-gradient(circle at 86% 10%, rgba(252, 174, 190, 0.68), transparent 50%),
+    radial-gradient(circle at 12% 88%, rgba(253, 206, 166, 0.62), transparent 50%),
+    linear-gradient(148deg, #fff6f8 0%, #fce3e8 54%, #f7d6d4 100%);
+}
+
+.collector-slot .profile-card[data-star-theme="celestial"] {
+  --card-pill-bg: rgba(246, 213, 122, 0.18);
+  --card-pill-ink: #fde68a;
+  --card-cheer-bg: rgba(12, 18, 42, 0.58);
+  --card-cheer-border: rgba(246, 213, 122, 0.28);
+  --card-cheer-from: #fcd34d;
+  --card-cheer-link: #fde68a;
+  --card-avatar-ring: #f2c456;
+  --card-pattern-color: rgba(248, 218, 128, 0.30);
+  --frame-stroke: rgba(236, 194, 96, 0.92);
+  --card-inner-shadow: inset 0 1px 0 rgba(253, 230, 138, 0.28);
+  --card-bg:
+    radial-gradient(circle at 18% 16%, rgba(99, 102, 241, 0.44), transparent 50%),
+    radial-gradient(circle at 84% 84%, rgba(234, 179, 8, 0.28), transparent 50%),
+    radial-gradient(circle at 78% 16%, rgba(56, 189, 248, 0.26), transparent 46%),
+    linear-gradient(160deg, #111838 0%, #1c2754 52%, #0f152e 100%);
+}
+
+.collector-slot .profile-card[data-star-theme="opalescent"] {
+  --card-ink: #20273b;
+  --card-handle: #4c5a78;
+  --card-motto: #29334b;
+  --card-pill-bg: rgba(154, 172, 250, 0.28);
+  --card-pill-ink: #36427c;
+  --card-cheer-bg: rgba(255, 255, 255, 0.68);
+  --card-cheer-border: rgba(120, 158, 224, 0.32);
+  --card-cheer-from: #3e4ca6;
+  --card-avatar-ring: rgba(140, 194, 255, 0.95);
+  --card-pattern-color: rgba(94, 124, 214, 0.26);
+  --frame-stroke: rgba(120, 156, 242, 0.92);
+  --card-inner-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.94);
+  --card-bg:
+    radial-gradient(circle at 14% 16%, rgba(190, 174, 253, 0.68), transparent 52%),
+    radial-gradient(circle at 86% 86%, rgba(114, 208, 252, 0.68), transparent 54%),
+    linear-gradient(140deg, #f1efff 0%, #e6f6ff 52%, #f3e9ff 100%);
+}
+
+.collector-slot .profile-card[data-star-theme="amber"] {
+  --card-ink: #361f10;
+  --card-handle: #7b4e30;
+  --card-motto: #482b17;
+  --card-pill-bg: rgba(202, 118, 58, 0.24);
+  --card-pill-ink: #763a14;
+  --card-cheer-bg: rgba(255, 248, 236, 0.80);
+  --card-cheer-border: rgba(188, 112, 54, 0.34);
+  --card-cheer-from: #944012;
+  --card-avatar-ring: #cc7e44;
+  --card-pattern-color: rgba(172, 92, 38, 0.30);
+  --frame-stroke: rgba(194, 112, 52, 0.92);
+  --card-inner-shadow: inset 0 1px 0 rgba(255, 252, 245, 0.92);
+  --card-bg:
+    radial-gradient(circle at 88% 12%, rgba(250, 184, 114, 0.56), transparent 50%),
+    radial-gradient(circle at 12% 86%, rgba(232, 152, 98, 0.40), transparent 52%),
+    linear-gradient(150deg, #fff9f0 0%, #f9e4c9 54%, #f1d3ae 100%);
+}
+
+.collector-slot .profile-card[data-star-theme="obsidian"] {
+  --card-pill-bg: rgba(216, 180, 254, 0.20);
+  --card-pill-ink: #f3e8ff;
+  --card-cheer-bg: rgba(20, 11, 36, 0.58);
+  --card-cheer-border: rgba(216, 180, 254, 0.28);
+  --card-cheer-from: #e9d5ff;
+  --card-cheer-link: #f5d0fe;
+  --card-avatar-ring: #d8b4fe;
+  --card-pattern-color: rgba(216, 180, 254, 0.28);
+  --frame-stroke: rgba(212, 162, 255, 0.90);
+  --card-inner-shadow: inset 0 1px 0 rgba(233, 213, 255, 0.28);
+  --card-bg:
+    radial-gradient(circle at 16% 18%, rgba(168, 85, 247, 0.44), transparent 52%),
+    radial-gradient(circle at 86% 80%, rgba(236, 72, 153, 0.32), transparent 52%),
+    radial-gradient(circle at 76% 18%, rgba(56, 189, 248, 0.26), transparent 46%),
+    linear-gradient(155deg, #1b122e 0%, #2a1b47 52%, #161026 100%);
+}
+
+.collector-slot .vfx-overlay {
+  position: fixed;
+  inset: 0;
+  inline-size: 100%;
+  block-size: 100%;
+  z-index: 22;
+  pointer-events: none;
+}
+
+.collector-slot .profile-card[data-star-spectrum="cyan-volt"] { --aura-glow-1: rgba(14, 165, 233, 0.42);  --spark-color-1: #7dd3fc; }
+
+.collector-slot .profile-card[data-star-spectrum="solar-gold"] { --aura-glow-1: rgba(245, 158, 11, 0.44);  --spark-color-1: #fde047; }
+
+.collector-slot .profile-card[data-star-spectrum="emerald-jade"] { --aura-glow-1: rgba(16, 185, 129, 0.42);  --spark-color-1: #5eead4; }
+
+.collector-slot .profile-card[data-star-spectrum="sakura-neon"] { --aura-glow-1: rgba(236, 72, 153, 0.40);  --spark-color-1: #f9a8d4; }
+
+.collector-slot .profile-card[data-star-spectrum="prism-rainbow"] { --aura-glow-1: rgba(168, 85, 247, 0.42);  --spark-color-1: #e879f9; }
+
+.collector-slot .profile-card[data-star-spectrum="amethyst-void"] { --aura-glow-1: rgba(147, 51, 234, 0.44);  --spark-color-1: #d8b4fe; }
+
+.collector-slot .profile-card[data-star-spectrum="crimson-ember"] { --aura-glow-1: rgba(239, 68, 68, 0.42);   --spark-color-1: #fb923c; }
+
+.collector-slot .profile-card[data-star-spectrum="frost-opal"] { --aura-glow-1: rgba(96, 165, 250, 0.42);  --spark-color-1: #bae6fd; }
+
+.collector-slot .star-pattern-layer {
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  color: var(--card-pattern-color);
+  pointer-events: none;
+}
+
+.collector-slot .star-pattern-svg {
+  inline-size: 100%;
+  block-size: 100%;
+}
+
+.collector-slot .star-foil-layer {
+  position: absolute;
+  inset: 0;
+  z-index: 2;
+  pointer-events: none;
+  opacity: 0.42;
+  background:
+    radial-gradient(
+      circle 175px at var(--pointer-x, 50%) var(--pointer-y, 50%),
+      rgba(255, 255, 255, 0.55),
+      transparent 66%
+    ),
+    linear-gradient(
+      var(--foil-angle, 122deg),
+      transparent 16%,
+      rgba(255, 255, 255, 0.28) 44%,
+      rgba(196, 181, 253, 0.22) 52%,
+      rgba(125, 211, 252, 0.22) 58%,
+      transparent 82%
+    );
+  transition: opacity 0.24s ease;
+}
+
+.collector-slot .profile-card.is-starred:hover .star-foil-layer {
+  opacity: 0.86;
+}
+
+.collector-slot .star-emblem-btn {
+  position: absolute;
+  inset-block-start: -12px;
+  inset-inline-end: -10px;
+  z-index: 7;
+  display: grid;
+  place-items: center;
+  inline-size: 42px;
+  block-size: 42px;
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  background: transparent;
+  filter: drop-shadow(0 4px 10px rgba(24, 28, 25, 0.34)) drop-shadow(0 0 8px var(--aura-glow-1));
+  transition: transform 0.22s cubic-bezier(0.22, 1, 0.36, 1), filter 0.22s ease;
+}
+
+.collector-slot .star-emblem-btn svg {
+  inline-size: 40px;
+  block-size: 40px;
+}
+
+.collector-slot .star-emblem-btn:hover,
+.collector-slot .star-emblem-btn:focus-visible {
+  outline: 0;
+  transform: scale(1.18) rotate(10deg) translateY(-2px);
+  filter: drop-shadow(0 6px 14px rgba(24, 28, 25, 0.38)) drop-shadow(0 0 14px var(--spark-color-1));
+}
+
+@media (prefers-reduced-motion: no-preference) {
+.collector-slot:not(.is-motion-paused) .card-surface::after {
+    animation: cardSoftSheen 7.2s cubic-bezier(0.35, 0, 0.25, 1) var(--sheen-delay, 0s) infinite;
+  }
+
+.collector-slot:not(.is-motion-paused) .profile-card.is-starred.is-vfx-hit {
+    animation: cardHitRecoil 0.16s cubic-bezier(0.22, 1, 0.36, 1);
+  }
+
+
+}
+
+@keyframes cardSoftSheen {
+  0%, 16% {
+    transform: translate3d(-120%, 0, 0) skewX(-22deg);
+    opacity: 0;
+  }
+  26% {
+    opacity: 0.85;
+  }
+  42% {
+    opacity: 0.72;
+  }
+  52%, 100% {
+    transform: translate3d(420%, 0, 0) skewX(-22deg);
+    opacity: 0;
+  }
+}
+
+@keyframes cardHitRecoil {
+  0%   { translate: 0 0; }
+  25%  { translate: 2px -1.5px; }
+  55%  { translate: -1.5px 1px; }
+  80%  { translate: 1px -0.5px; }
+  100% { translate: 0 0; }
+}
+
+
+
+/* ==========================================================================

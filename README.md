@@ -12,7 +12,7 @@
 2. **给同学写寄语**：在 `data/cheers/<同学用户名全小写>/` 下留下一句鼓励，互相点亮寄语角标。
 3. **提一个 Issue**：遇到真实问题、Bug 或有改进想法时，用仓库内置模板提交 Issue。
 
-> **可选趣味玩法**：完成以上三项即可跑通完整 Git 协作流程。如果还想解锁专属卡片皮肤、破框动画与 Top 5 排行榜，可以给本仓库点一下 **Star**，并在现场互相帮助时和同学一起用 `Co-authored-by` 结对提交攒分，详见 [SCORING.md](./SCORING.md)。
+> **可选趣味玩法**：完成以上三项即可跑通完整 Git 协作流程。如果还想让自己的行星点亮星环、飞向内环甚至化身中央恒星，可以给本仓库点一下 **Star**，并在现场互相帮助时和同学一起用 `Co-authored-by` 结对提交攒分，详见 [SCORING.md](./SCORING.md)。
 
 ## 贡献步骤指南
 
@@ -264,10 +264,11 @@ open-source-pulse-wall/
 │   ├── cheers/                     # 独立寄语 data/cheers/<目标用户名全小写>/<你的GitHub用户名>.json
 │   │   └── _template.json
 ├── public/
-│   ├── index.html                  # 展示墙主页面（含 Top 5 排行榜）
-│   ├── styles.css                  # 页面样式与星标卡片皮肤
-│   ├── app.js                      # 展示墙渲染、筛选排序与交互逻辑
-│   └── vfx-engine.js               # 卡片动画与特效渲染引擎
+│   ├── index.html                  # 3D 太阳系展示墙主页面（含 Top 5 群星榜）
+│   ├── styles.css                  # 星图风格 HUD 样式
+│   ├── app.js                      # Three.js 星系渲染、实时同步与交互逻辑
+│   ├── vendor/three/               # 本地内置的 Three.js（离线可用）
+│   └── vfx-engine.js               # 星标卡片特效引擎（供 vfx-showcase 图鉴页使用）
 ├── scripts/                        # 校验脚本、积分引擎、静态构建与部署工具
 └── test/                           # 自动化测试套件
 ```

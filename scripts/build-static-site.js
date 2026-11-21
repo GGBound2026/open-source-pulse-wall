@@ -56,8 +56,12 @@ function markStaticHtmlAssets() {
   const jsHash = shortFileHash(path.join(DIST_DIR, 'app.js'));
   const showcaseCssPath = path.join(DIST_DIR, 'vfx-showcase.css');
   const showcaseJsPath = path.join(DIST_DIR, 'vfx-showcase.js');
+  const cardsCssPath = path.join(DIST_DIR, 'vfx-cards.css');
   const showcaseCssHash = fs.existsSync(showcaseCssPath) ? shortFileHash(showcaseCssPath) : '';
   const showcaseJsHash = fs.existsSync(showcaseJsPath) ? shortFileHash(showcaseJsPath) : '';
+  const cardsCssHash = fs.existsSync(cardsCssPath) ? shortFileHash(cardsCssPath) : '';
+  const skinsCssPath = path.join(DIST_DIR, 'card-skins.css');
+  const skinsCssHash = fs.existsSync(skinsCssPath) ? shortFileHash(skinsCssPath) : '';
 
   for (const htmlFile of ['index.html', 'vfx-showcase.html']) {
     const htmlPath = path.join(DIST_DIR, htmlFile);
@@ -76,6 +80,12 @@ function markStaticHtmlAssets() {
 
     if (showcaseCssHash) {
       html = html.replace('href="vfx-showcase.css"', `href="vfx-showcase.css?v=${showcaseCssHash}"`);
+    }
+    if (skinsCssHash) {
+      html = html.replace('href="card-skins.css"', `href="card-skins.css?v=${skinsCssHash}"`);
+    }
+    if (cardsCssHash) {
+      html = html.replace('href="vfx-cards.css"', `href="vfx-cards.css?v=${cardsCssHash}"`);
     }
     if (showcaseJsHash) {
       html = html.replace('src="vfx-showcase.js"', `src="vfx-showcase.js?v=${showcaseJsHash}"`);

@@ -1,41 +1,10 @@
 (function initVfxShowcase() {
   'use strict';
 
-  const TIER_META = {
-    0: {
-      heading: '维度 01 · 0 阶（1–2 分 · 星标闪卡，无破框特效）',
-      subtitle: '仅点亮 Star（1 分）或累计 2 分时，解锁典藏卡面皮肤、微雕纹理、悬空徽章与微弱扫光，不触发任何破框特效；满 3 分后唤醒 12 大神话剧场之一。',
-      badge: '1–2 分 · 无破框'
-    },
-    1: {
-      heading: '维度 01 · 1 阶初醒（3–5 分 · 12 大差异化色系与主题 · 初阶形态）',
-      subtitle: '小火龙、见习勇者斩幼龙、圣羽微光、深渊魔爪、高压鞭雷、孤骑突刺、御剑初成、墨蛟戏珠、单尾灵狐、雪狼踏霜、学徒星环、灵鲲跃浪——12 套完全不同的配色与轮廓！',
-      badge: '3–5 分 · 一阶初醒'
-    },
-    2: {
-      heading: '维度 01 · 2 阶觉醒（6–9 分 · 多元素对决 / 形态长大 / 宏大法阵）',
-      subtitle: '圣剑骑士凌空破毒龙、四翼圣使双天枪、炎魔角影双爪、雷神战锤轰鸣、圆桌双骑对撞、青莲五剑阵、三尾妖狐、凛冬冰狼啸月、巨鲲巡海！',
-      badge: '6–9 分 · 二阶觉醒'
-    },
-    3: {
-      heading: '维度 01 · 3 阶顶格传说（10+ 分 · 12 色终极神话剧场 + 邻格实时交互！）',
-      subtitle: '焚天古龙王、圣光十字斩屠龙史诗、六翼炽天使玫瑰圣环、深渊魔君铁链钩邻卡、雷神连锁感电、5 骑总攻、万剑归宗、墨龙齐盖朱砂印、九尾开屏、极光冰封、星界天陨、化鲲为鹏！',
-      badge: '10+ 分 · 邻格交互'
-    }
-  };
-
-  function getTierVfxList(tier) {
-    const map = window.PulseWallVfxEngine?.TIER_ARCHETYPES || {};
-    return map[tier] || [];
-  }
-
-  function getAllVfxOptions() {
-    const map = window.PulseWallVfxEngine?.TIER_ARCHETYPES || {};
-    return [
-      { group: '3 阶 · 顶格传说（10+ 分 · 邻格交互）', tier: 3, items: map[3] || [] },
-      { group: '2 阶 · 觉醒进化（6–9 分）', tier: 2, items: map[2] || [] },
-      { group: '1 阶 · 幼体初醒（3–5 分）', tier: 1, items: map[1] || [] }
-    ];
+  function getArchetypes() {
+    const engine = window.PulseWallVfxEngine;
+    if (Array.isArray(engine?.ARCHETYPES)) return engine.ARCHETYPES;
+    return engine?.TIER_ARCHETYPES?.[3] || [];
   }
 
   const STAR_SPECTRA = [
@@ -359,7 +328,6 @@
     spectraUniformVfx: document.getElementById('spectraUniformVfx'),
     vfxDimHeading: document.getElementById('vfxDimHeading'),
     vfxDimSubtitle: document.getElementById('vfxDimSubtitle'),
-    tierPills: Array.from(document.querySelectorAll('[data-vfx-tier]')),
     vfxAutoPlayBtn: document.getElementById('vfxAutoPlayBtn'),
     vfxBurstAllBtn: document.getElementById('vfxBurstAllBtn'),
     spectraBurstAllBtn: document.getElementById('spectraBurstAllBtn'),
@@ -375,9 +343,8 @@
     expandedAll: false,
     paused: false,
     autoPlay: true,
-    vfxTier: 3,
     vfxSpectrum: 'native',
-    spectraVfx: 'thunder-zeus:2',
+    spectraVfx: 'thunder-zeus',
     spectraSurface: 'light',
     patternSurface: 'ivory',
     cycleIdx: 0,
@@ -393,26 +360,22 @@
       wallEl: dom.panelsWrap,
       viewportEl: dom.viewport,
       ambient: false,
-      maxEffects: 28
+      maxEffects: 32
     });
   }
 
   function populateSelects() {
     if (dom.vfxUniformSpectrum) {
       dom.vfxUniformSpectrum.innerHTML = [
-        '<option value="native">原生专属配色（12色分明）</option>',
+        '<option value="native">原生专属配色（16色分明）</option>',
         ...STAR_SPECTRA.map((s) => `<option value="${s.id}">统一染色 · ${s.label}</option>`)
       ].join('');
       dom.vfxUniformSpectrum.value = state.vfxSpectrum;
     }
 
     if (dom.spectraUniformVfx) {
-      dom.spectraUniformVfx.innerHTML = getAllVfxOptions()
-        .map((grp) => `
-          <optgroup label="${grp.group}">
-            ${grp.items.map((v) => `<option value="${v.id}:${grp.tier}">${v.lineageName} · ${v.label}</option>`).join('')}
-          </optgroup>
-        `)
+      dom.spectraUniformVfx.innerHTML = getArchetypes()
+        .map((v) => `<option value="${v.id}">${v.lineageName} · ${v.label}</option>`)
         .join('');
       dom.spectraUniformVfx.value = state.spectraVfx;
     }
@@ -420,60 +383,20 @@
 
   function renderVfxGrid() {
     if (!dom.gridVfx) return;
-    const tier = state.vfxTier;
-    const meta = TIER_META[tier] || TIER_META[3];
-    if (dom.vfxDimHeading) dom.vfxDimHeading.textContent = meta.heading;
-    if (dom.vfxDimSubtitle) dom.vfxDimSubtitle.textContent = meta.subtitle;
-
-    dom.tierPills.forEach((btn) => {
-      const active = Number(btn.dataset.vfxTier) === tier;
-      btn.classList.toggle('is-active', active);
-      btn.setAttribute('aria-pressed', String(active));
-    });
-
-    if (dom.vfxBurstAllBtn) {
-      dom.vfxBurstAllBtn.disabled = tier === 0;
-      dom.vfxBurstAllBtn.style.opacity = tier === 0 ? '0.45' : '';
-    }
-
-    if (tier === 0) {
-      dom.gridVfx.innerHTML = `
-        <div class="tier-zero-note">
-          <strong>⭐ 0 阶 · 1–2 分（已点亮仓库 Star）：仅解锁星标典藏卡皮肤，无破框 Canvas 特效</strong>
-          不点亮 Star 属于硬限制（保持普通卡片）；点亮 Star 得 1 分后立刻解锁 8 典藏材质 × 8 微雕纹理 × 8 悬空星标徽章 + 微弱斜向扫光 + 3D 倾角反光。再给 2 位同学送寄语（或参与 1 次结对编程）满 3 分后，立刻开启 1 阶破框特效！
-        </div>
-        ${Array.from({ length: 4 }, (_, idx) => `
-          <article class="vfx-specimen is-tier-0" data-star-vfx="none" data-star-vfx-tier="0">
-            <div class="specimen-top">
-              <div class="specimen-title-wrap" style="inline-size:100%">
-                <div class="specimen-meta-row">
-                  <span class="specimen-num">0${idx + 1}</span>
-                  <span class="specimen-tier-badge">仅皮肤</span>
-                </div>
-                <h3 class="specimen-title">星标闪卡（无破框）</h3>
-                <code class="specimen-code">vfxTier: 0 (${idx < 2 ? '1 分' : '2 分'})</code>
-              </div>
-            </div>
-            <p class="specimen-desc">${idx < 2 ? '仅点亮 Star（+1 分），享受典藏闪卡材质与徽章，差 2 分开启一阶破框。' : 'Star（+1）+ 送 1 位同学寄语（+1）= 2 分，再给 1 位同学送寄语即可破框进化！'}</p>
-          </article>
-        `).join('')}
-      `;
-      return;
-    }
-
-    const list = getTierVfxList(tier);
+    const list = getArchetypes();
     const paletteMode = state.vfxSpectrum === 'native' ? 'native' : 'override';
     dom.gridVfx.innerHTML = list.map((item, idx) => {
       const numLabel = String(idx + 1).padStart(2, '0');
+      const easterClass = item.id === 'shadow-eminence' ? ' is-easter-egg' : '';
       const dots = Array.isArray(item.swatch)
         ? `<span class="specimen-palette-dots" aria-hidden="true">${item.swatch.map((c) => `<i style="background:${c}"></i>`).join('')}</span>`
         : '';
       return `
       <article
-        class="vfx-specimen"
+        class="vfx-specimen${easterClass}"
         data-specimen-group="vfx"
         data-star-vfx="${item.id}"
-        data-star-vfx-tier="${tier}"
+        data-star-vfx-tier="3"
         data-star-spectrum="${state.vfxSpectrum}"
         data-star-palette-mode="${paletteMode}"
         tabindex="0"
@@ -483,15 +406,15 @@
           <div class="specimen-title-wrap" style="inline-size:100%">
             <div class="specimen-meta-row">
               <span class="specimen-num">${numLabel} · ${item.family || ''}</span>
-              <span class="specimen-tier-badge">${item.lineageName || meta.badge}</span>
+              <span class="specimen-tier-badge">${item.lineageName || '顶格专属'}</span>
             </div>
             <h3 class="specimen-title">${item.label}</h3>
-            <code class="specimen-code">${item.id} · tier ${tier}</code>
+            <code class="specimen-code">${item.id}</code>
           </div>
         </div>
         <p class="specimen-desc">${item.desc}</p>
         <div class="specimen-footer">
-          <button type="button" class="specimen-trigger" data-fire-card="1">${tier === 3 ? '👑 触发邻格大招' : '▶ 立即触发'}</button>
+          <button type="button" class="specimen-trigger" data-fire-card="1">▶ 触发破框特效</button>
           ${dots}
         </div>
       </article>
@@ -503,8 +426,7 @@
     if (!dom.gridSpectra) return;
     const spectraMap = window.PulseWallVfxEngine?.SPECTRA || {};
     const darkClass = state.spectraSurface === 'dark' ? ' is-dark-surface' : '';
-    const [specVfxId, specVfxTierStr] = String(state.spectraVfx || 'dragon-summon:2').split(':');
-    const specVfxTier = Number(specVfxTierStr) || 2;
+    const specVfxId = String(state.spectraVfx || 'thunder-zeus').split(':')[0];
 
     dom.gridSpectra.innerHTML = STAR_SPECTRA.map((item, idx) => {
       const tok = spectraMap[item.id] || {
@@ -523,7 +445,7 @@
           class="vfx-specimen${darkClass}"
           data-specimen-group="spectra"
           data-star-vfx="${specVfxId}"
-          data-star-vfx-tier="${specVfxTier}"
+          data-star-vfx-tier="3"
           data-star-spectrum="${item.id}"
           data-star-palette-mode="override"
           tabindex="0"
@@ -630,7 +552,7 @@
   }
 
   function getActiveVfxCards() {
-    const selector = '.vfx-specimen:not(.is-tier-0)';
+    const selector = '.vfx-specimen';
     if (state.expandedAll) {
       return Array.from(dom.panelsWrap.querySelectorAll(selector));
     }
@@ -777,7 +699,7 @@
   function bindSpecimenInteractions() {
     // Hover & click on Canvas VFX / Spectra specimen cards
     dom.panelsWrap.addEventListener('pointerover', (event) => {
-      const card = event.target.closest('.vfx-specimen:not(.is-tier-0)');
+      const card = event.target.closest('.vfx-specimen');
       if (!card || card === state.hoveredSpecimen) return;
       state.hoveredSpecimen = card;
       clearSpotlight();
@@ -786,7 +708,7 @@
     });
 
     dom.panelsWrap.addEventListener('pointerout', (event) => {
-      const card = event.target.closest('.vfx-specimen:not(.is-tier-0)');
+      const card = event.target.closest('.vfx-specimen');
       if (!card || card !== state.hoveredSpecimen) return;
       if (event.relatedTarget && card.contains(event.relatedTarget)) return;
       state.hoveredSpecimen = null;
@@ -795,7 +717,7 @@
     });
 
     dom.panelsWrap.addEventListener('click', (event) => {
-      const card = event.target.closest('.vfx-specimen:not(.is-tier-0)');
+      const card = event.target.closest('.vfx-specimen');
       if (!card) return;
       clearSpotlight();
       card.classList.add('is-spotlight');
@@ -838,24 +760,10 @@
   }
 
   function bindToolbarControls() {
-    dom.tierPills.forEach((btn) => {
-      btn.addEventListener('click', () => {
-        state.vfxTier = Number(btn.dataset.vfxTier);
-        state.engine?.clearAll();
-        clearSpotlight();
-        state.cycleIdx = 0;
-        if (dom.viewport) dom.viewport.scrollTop = 0;
-        renderVfxGrid();
-        if (state.vfxTier > 0 && state.autoPlay && !state.paused) {
-          restartAutoCycle(220);
-        }
-      });
-    });
-
     dom.vfxUniformSpectrum?.addEventListener('change', (event) => {
       state.vfxSpectrum = event.target.value;
       renderVfxGrid();
-      if (state.vfxTier > 0) fireGroupBurst(dom.gridVfx);
+      fireGroupBurst(dom.gridVfx);
     });
 
     dom.spectraUniformVfx?.addEventListener('change', (event) => {
@@ -924,11 +832,6 @@
   function applyInitialQueryParam() {
     try {
       const params = new URLSearchParams(window.location.search);
-      const tierParam = params.get('tier');
-      if (tierParam !== null && ['0', '1', '2', '3'].includes(tierParam)) {
-        state.vfxTier = Number(tierParam);
-        renderVfxGrid();
-      }
       const tabParam = params.get('tab');
       if (tabParam === 'all') {
         setExpandedAll(true);

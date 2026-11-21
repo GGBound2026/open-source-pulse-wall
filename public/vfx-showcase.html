@@ -4,7 +4,7 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>星标五维特效图鉴 · Open Source Pulse Wall</title>
-  <link rel="stylesheet" href="styles.css" />
+  <link rel="stylesheet" href="vfx-cards.css" />
   <link rel="stylesheet" href="vfx-showcase.css" />
 </head>
 <body class="showcase-page">
@@ -27,7 +27,7 @@
           </span>
           <span>
             <strong>星标五维特效图鉴</strong>
-            <small>单维度独立检视 · 12 种破框剧场 + 4×8 典藏原子 = 44 个独立效果</small>
+            <small>单维度独立检视 · 16 种破框剧场 + 4×8 典藏原子 = 48 个独立效果</small>
           </span>
         </a>
 
@@ -52,7 +52,7 @@
           <button type="button" role="tab" id="tab-vfx" data-panel="panel-vfx" aria-selected="true" tabindex="0">
             <span class="tab-index">01</span>
             <span class="tab-label">破框特效</span>
-            <span class="tab-count">12</span>
+            <span class="tab-count">16</span>
           </button>
           <button type="button" role="tab" id="tab-spectra" data-panel="panel-spectra" aria-selected="false" tabindex="-1">
             <span class="tab-index">02</span>
@@ -79,13 +79,13 @@
 
       <main class="showcase-scroll-viewport" id="showcaseViewport">
         <div class="showcase-panels" id="showcasePanels">
-          <!-- Dimension 1: Tiered Frame-Break Canvas VFX (0 / 1 / 2 / 3) -->
+          <!-- Dimension 1: Frame-Break Canvas VFX -->
           <section role="tabpanel" id="panel-vfx" aria-labelledby="tab-vfx">
             <div class="panel-body">
               <div class="dim-toolbar">
                 <div class="dim-heading">
-                  <h2 id="vfxDimHeading">维度 01 · 破框 Canvas 特效（按分值分 4 阶演化）</h2>
-                  <p id="vfxDimSubtitle">1–2 分仅解锁闪卡皮肤（无破框特效）；3 分开一阶；6 分开二阶；10 分达顶格并可与周围榜单格子实时物理交互。</p>
+                  <h2 id="vfxDimHeading">维度 01 · 破框 Canvas 特效（点 Star 即享顶格专属）</h2>
+                  <p id="vfxDimSubtitle">点亮仓库 Star 即刻解锁 16 大顶格神话与彩蛋破框剧场之一，无需按分数分阶；所有特效均聚焦单卡独立演绎，无邻卡联动。</p>
                 </div>
                 <div class="dim-controls">
                   <label class="inline-select">
@@ -93,30 +93,8 @@
                     <select id="vfxUniformSpectrum" aria-label="破框特效配色方案"></select>
                   </label>
                   <button type="button" class="action-pill is-active" id="vfxAutoPlayBtn" aria-pressed="true">轮播中</button>
-                  <button type="button" class="action-pill is-primary" id="vfxBurstAllBtn">⚡ 12 卡齐射</button>
+                  <button type="button" class="action-pill is-primary" id="vfxBurstAllBtn">⚡ 16 卡齐射</button>
                 </div>
-              </div>
-              <div class="tier-switcher" role="group" aria-label="破框特效分值阶位切换">
-                <button type="button" class="tier-pill" data-vfx-tier="0" aria-pressed="false">
-                  <span class="tier-score">1–2 分</span>
-                  <strong>0 阶 · 星标闪卡</strong>
-                  <small>仅皮肤 · 无破框</small>
-                </button>
-                <button type="button" class="tier-pill" data-vfx-tier="1" aria-pressed="false">
-                  <span class="tier-score">3–5 分</span>
-                  <strong>1 阶 · 初醒剧场</strong>
-                  <small>小火龙 / 见习勇者 / 魔爪 / 灵鲲</small>
-                </button>
-                <button type="button" class="tier-pill" data-vfx-tier="2" aria-pressed="false">
-                  <span class="tier-score">6–9 分</span>
-                  <strong>2 阶 · 觉醒史诗</strong>
-                  <small>骑士破龙 / 四翼天使 / 雷神锤 / 三尾狐</small>
-                </button>
-                <button type="button" class="tier-pill is-active" data-vfx-tier="3" aria-pressed="true">
-                  <span class="tier-score">10+ 分</span>
-                  <strong>3 阶 · 顶格传说</strong>
-                  <small>屠龙史诗 / 六翼天使 / 魔链 / 化鲲为鹏</small>
-                </button>
               </div>
               <div class="showcase-grid showcase-grid--vfx" id="gridVfx"></div>
             </div>
@@ -202,7 +180,7 @@
 
     <footer class="about">
       <p>
-        <span>Open Source Pulse Wall · 星标五维原子图鉴（12 破框神话剧场 × 8⁴ 典藏皮肤 = 49,152 种防撞款组合）</span>
+        <span>Open Source Pulse Wall · 星标五维原子图鉴（16 破框剧场 × 8⁴ 典藏皮肤 = 65,536 种防撞款组合）</span>
       </p>
     </footer>
   </div>

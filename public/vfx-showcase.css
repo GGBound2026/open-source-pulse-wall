@@ -709,105 +709,6 @@ body.showcase-page .vfx-overlay {
   font-weight: 700;
 }
 
-/* 4-Stage VFX Evolution Tier Switcher */
-.tier-switcher {
-  display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
-  gap: 10px;
-}
-
-.tier-pill {
-  display: flex;
-  flex-direction: column;
-  align-items: flex-start;
-  gap: 1px;
-  padding: 6px 12px;
-  border: 1.5px solid var(--line-dark);
-  border-radius: 12px;
-  background: rgba(252, 248, 239, 0.88);
-  color: var(--ink);
-  text-align: start;
-  transition: transform 0.14s ease, border-color 0.14s ease, background-color 0.14s ease, box-shadow 0.14s ease;
-}
-
-.tier-pill:hover,
-.tier-pill:focus-visible {
-  outline: 2px solid var(--sage);
-  outline-offset: 2px;
-  transform: translateY(-1px);
-  border-color: var(--charcoal);
-}
-
-.tier-pill .tier-score {
-  display: inline-block;
-  padding: 1px 7px;
-  border-radius: 999px;
-  background: rgba(38, 43, 39, 0.08);
-  color: var(--ink-soft);
-  font-size: 0.7rem;
-  font-weight: 800;
-  font-variant-numeric: tabular-nums;
-}
-
-.tier-pill strong {
-  font-size: 0.88rem;
-  font-weight: 800;
-  color: var(--charcoal);
-}
-
-.tier-pill small {
-  font-size: 0.74rem;
-  color: var(--muted);
-}
-
-.tier-pill.is-active {
-  border-color: #262b27;
-  background: #262b27;
-  color: #faf6ed;
-  box-shadow: 0 6px 16px rgba(38, 43, 39, 0.18);
-}
-
-.tier-pill.is-active .tier-score {
-  background: linear-gradient(180deg, #e8c66e 0%, #d4aa48 100%);
-  color: #241a08;
-}
-
-.tier-pill.is-active strong {
-  color: #fffdf8;
-}
-
-.tier-pill.is-active small {
-  color: rgba(247, 242, 231, 0.78);
-}
-
-.tier-zero-note {
-  grid-column: 1 / -1;
-  padding: 20px 22px;
-  border: 1.5px dashed var(--line-dark);
-  border-radius: 16px;
-  background: rgba(252, 248, 239, 0.82);
-  color: var(--ink-soft);
-  font-size: 0.88rem;
-  line-height: 1.6;
-}
-
-.tier-zero-note strong {
-  display: block;
-  margin-block-end: 6px;
-  color: var(--charcoal);
-  font-size: 0.98rem;
-}
-
-.vfx-specimen.is-tier-0 {
-  cursor: default;
-  border-style: dashed;
-  opacity: 0.92;
-}
-
-.vfx-specimen.is-tier-0:hover {
-  transform: none;
-}
-
 .specimen-meta-row {
   display: flex;
   align-items: center;
@@ -833,14 +734,31 @@ body.showcase-page .vfx-overlay {
   color: #8a5a0c;
 }
 
-/* Recoil animation on specimen cards when struck by VFX (including neighbor cards!) */
+.vfx-specimen.is-easter-egg {
+  border-color: rgba(124, 58, 237, 0.5);
+  background: linear-gradient(158deg, #faf5ff 0%, #f3e8ff 52%, #efe4fc 100%);
+  box-shadow: 0 8px 20px rgba(88, 28, 135, 0.12), inset 0 1px 0 rgba(255, 255, 255, 0.9);
+}
+
+.vfx-specimen.is-easter-egg:hover {
+  border-color: #6d28d9;
+  box-shadow: 0 12px 26px rgba(88, 28, 135, 0.2), inset 0 1px 0 rgba(255, 255, 255, 0.95);
+}
+
+.vfx-specimen.is-easter-egg .specimen-num {
+  background: #2e1065;
+  color: #f5f3ff;
+}
+
+.vfx-specimen.is-easter-egg .specimen-tier-badge {
+  background: rgba(124, 58, 237, 0.16);
+  color: #5b21b6;
+}
+
+/* Recoil animation on specimen cards when struck by VFX */
 @media (prefers-reduced-motion: no-preference) {
   body.showcase-page:not(.is-motion-paused) .vfx-specimen.is-vfx-hit {
     animation: cardHitRecoil 0.16s cubic-bezier(0.22, 1, 0.36, 1);
-  }
-
-  body.showcase-page:not(.is-motion-paused) .vfx-specimen.is-vfx-neighbor-hit {
-    animation: cardNeighborHitRecoil 0.22s cubic-bezier(0.22, 1, 0.36, 1);
   }
 
   body.showcase-page.is-motion-paused .card-surface::after {
@@ -850,15 +768,13 @@ body.showcase-page .vfx-overlay {
 
 /* Responsive fallback for tablets & narrow viewports */
 @media (max-width: 1100px) {
-  .showcase-grid,
-  .tier-switcher {
+  .showcase-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 }
 
 @media (max-width: 640px) {
-  .showcase-grid,
-  .tier-switcher {
+  .showcase-grid {
     grid-template-columns: minmax(0, 1fr);
   }
 
