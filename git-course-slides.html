@@ -434,68 +434,66 @@
       color: var(--faint);
     }
 
-    /* ===== Caption under a figure ===== */
+    /* ===== Caption under a figure (single card, flat markdown-like content inside) ===== */
     .caption {
       margin-top: 12px;
-      display: grid;
-      grid-template-columns: minmax(0, 1fr) 360px;
-      gap: 14px 24px;
-      align-items: center;
-      padding: 10px 16px 10px 18px;
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+      padding: 14px 20px;
+      background: var(--white);
+      border: 1px solid var(--line);
       border-radius: 14px;
-      background: var(--cloud);
     }
 
-    .caption-text { font-size: 0.96rem; color: var(--body); text-wrap: pretty; }
+    .caption-text {
+      font-size: 0.95rem;
+      line-height: 1.6;
+      color: var(--body);
+      text-wrap: pretty;
+    }
+
     .caption-text strong { color: var(--ink); }
 
-    /* "对 AI 说" card: label row, quote, then the command — one shared left edge */
+    /* No inner wrapper card: plain "对 AI 说" line + indented markdown-style bash block */
     .caption-side {
       display: flex;
       flex-direction: column;
-      background: var(--white);
-      border: 1px solid var(--line);
-      border-radius: 12px;
-      overflow: hidden;
+      gap: 8px;
     }
 
     .say {
-      display: block;
-      padding: 8px 14px 9px;
-      font-size: 0.9rem;
+      display: flex;
+      align-items: center;
+      flex-wrap: wrap;
+      gap: 4px 10px;
+      font-size: 0.94rem;
       line-height: 1.55;
       color: var(--ink);
       text-wrap: pretty;
     }
 
     .say-tag {
-      display: flex;
+      display: inline-flex;
       align-items: center;
-      gap: 6px;
-      margin-bottom: 3px;
+      flex-shrink: 0;
       font-family: var(--font-sans);
-      font-size: 0.72rem;
+      font-size: 0.78rem;
       font-weight: 600;
       letter-spacing: 0.04em;
       color: var(--clay-ink);
     }
 
-    .say-tag::before {
-      content: "";
-      width: 12px;
-      height: 12px;
-      flex-shrink: 0;
-      background: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Cpath fill='%23D97757' d='m19.6 66.5 19.7-11 .3-1-.3-.5h-1l-3.3-.2-11.2-.3L14 53l-9.5-.5-2.4-.5L0 49l.2-1.5 2-1.3 2.9.2 6.3.5 9.5.6 6.9.4L38 49.1h1.6l.2-.7-.5-.4-.4-.4L29 41l-10.6-7-5.6-4.1-3-2-1.5-2-.6-4.2 2.7-3 3.7.3.9.2 3.7 2.9 8 6.1L37 36l1.5 1.2.6-.4.1-.3-.7-1.1L33 25l-6-10.4-2.7-4.3-.7-2.6c-.3-1-.4-2-.4-3l3-4.2L28 0l4.2.6L33.8 2l2.6 6 4.1 9.3L47 29.9l2 3.8 1 3.4.3 1h.7v-.5l.5-7.2 1-8.7 1-11.2.3-3.2 1.6-3.8 3-2L61 2.6l2 2.9-.3 1.8-1.1 7.7L59 27.1l-1.5 8.2h.9l1-1.1 4.1-5.4 6.9-8.6 3-3.5L77 13l2.3-1.8h4.3l3.1 4.7-1.4 4.9-4.4 5.6-3.7 4.7-5.3 7.1-3.2 5.7.3.4h.7l12-2.6 6.4-1.1 7.6-1.3 3.5 1.6.4 1.6-1.4 3.4-8.2 2-9.6 2-14.3 3.3-.2.1.2.3 6.4.6 2.8.2h6.8l12.6 1 3.3 2 1.9 2.7-.3 2-5.1 2.6-6.8-1.6-16-3.8-5.4-1.3h-.8v.4l4.6 4.5 8.3 7.5L89 80.1l.5 2.4-1.3 2-1.4-.2-9.2-7-3.6-3-8-6.8h-.5v.7l1.8 2.7 9.8 14.7.5 4.5-.7 1.4-2.6 1-2.7-.6-5.8-8-6-9-4.7-8.2-.5.4-2.9 30.2-1.3 1.5-3 1.2-2.5-2-1.4-3 1.4-6.2 1.6-8 1.3-6.4 1.2-7.9.7-2.6v-.2H49L43 72l-9 12.3-7.2 7.6-1.7.7-3-1.5.3-2.8L24 86l10-12.8 6-7.9 4-4.6-.1-.5h-.3L17.2 77.4l-4.7.6-2-2 .2-3 1-1 8-5.5Z'/%3E%3C/svg%3E") center / contain no-repeat;
-    }
-
     .cmd {
       display: block;
-      padding: 7px 14px;
+      width: 100%;
+      padding: 8px 14px;
+      border-radius: 8px;
       background: var(--code-bg);
       color: #EDEAE0;
       font-family: var(--font-mono);
-      font-size: 0.76rem;
-      line-height: 1.65;
+      font-size: 0.78rem;
+      line-height: 1.6;
       white-space: pre;
       overflow-x: auto;
     }
@@ -1170,7 +1168,7 @@
     @media (max-width: 900px) {
       .slide { padding: 64px 22px 28px; }
       .chapter-nav { display: none; }
-      .cover, .cols-2, .cols-3, .caption, .msg-compare, .flow-row { grid-template-columns: 1fr; }
+      .cover, .cols-2, .cols-3, .msg-compare, .flow-row { grid-template-columns: 1fr; }
       .roadmap, .glossary { grid-template-columns: repeat(2, minmax(0, 1fr)); }
       .roadmap::before { display: none; }
       .cover-art { display: none; }
@@ -1189,22 +1187,19 @@
   <!-- Shared arrow markers for every diagram -->
   <svg width="0" height="0" style="position:absolute" aria-hidden="true" focusable="false">
     <defs>
-      <symbol id="claude-logo" viewBox="0 0 100 100"><path fill="#D97757" d="m19.6 66.5 19.7-11 .3-1-.3-.5h-1l-3.3-.2-11.2-.3L14 53l-9.5-.5-2.4-.5L0 49l.2-1.5 2-1.3 2.9.2 6.3.5 9.5.6 6.9.4L38 49.1h1.6l.2-.7-.5-.4-.4-.4L29 41l-10.6-7-5.6-4.1-3-2-1.5-2-.6-4.2 2.7-3 3.7.3.9.2 3.7 2.9 8 6.1L37 36l1.5 1.2.6-.4.1-.3-.7-1.1L33 25l-6-10.4-2.7-4.3-.7-2.6c-.3-1-.4-2-.4-3l3-4.2L28 0l4.2.6L33.8 2l2.6 6 4.1 9.3L47 29.9l2 3.8 1 3.4.3 1h.7v-.5l.5-7.2 1-8.7 1-11.2.3-3.2 1.6-3.8 3-2L61 2.6l2 2.9-.3 1.8-1.1 7.7L59 27.1l-1.5 8.2h.9l1-1.1 4.1-5.4 6.9-8.6 3-3.5L77 13l2.3-1.8h4.3l3.1 4.7-1.4 4.9-4.4 5.6-3.7 4.7-5.3 7.1-3.2 5.7.3.4h.7l12-2.6 6.4-1.1 7.6-1.3 3.5 1.6.4 1.6-1.4 3.4-8.2 2-9.6 2-14.3 3.3-.2.1.2.3 6.4.6 2.8.2h6.8l12.6 1 3.3 2 1.9 2.7-.3 2-5.1 2.6-6.8-1.6-16-3.8-5.4-1.3h-.8v.4l4.6 4.5 8.3 7.5L89 80.1l.5 2.4-1.3 2-1.4-.2-9.2-7-3.6-3-8-6.8h-.5v.7l1.8 2.7 9.8 14.7.5 4.5-.7 1.4-2.6 1-2.7-.6-5.8-8-6-9-4.7-8.2-.5.4-2.9 30.2-1.3 1.5-3 1.2-2.5-2-1.4-3 1.4-6.2 1.6-8 1.3-6.4 1.2-7.9.7-2.6v-.2H49L43 72l-9 12.3-7.2 7.6-1.7.7-3-1.5.3-2.8L24 86l10-12.8 6-7.9 4-4.6-.1-.5h-.3L17.2 77.4l-4.7.6-2-2 .2-3 1-1 8-5.5Z"/></symbol>
       <marker id="m-ink" viewBox="0 0 10 10" refX="8.5" refY="5" markerWidth="10" markerHeight="10" markerUnits="userSpaceOnUse" orient="auto-start-reverse"><path d="M0,1 L9,5 L0,9 z" fill="#3D3D3A"/></marker>
       <marker id="m-muted" viewBox="0 0 10 10" refX="8.5" refY="5" markerWidth="10" markerHeight="10" markerUnits="userSpaceOnUse" orient="auto-start-reverse"><path d="M0,1 L9,5 L0,9 z" fill="#A8A49A"/></marker>
       <marker id="m-clay" viewBox="0 0 10 10" refX="8.5" refY="5" markerWidth="10" markerHeight="10" markerUnits="userSpaceOnUse" orient="auto-start-reverse"><path d="M0,1 L9,5 L0,9 z" fill="#D97757"/></marker>
       <marker id="m-blue" viewBox="0 0 10 10" refX="8.5" refY="5" markerWidth="10" markerHeight="10" markerUnits="userSpaceOnUse" orient="auto-start-reverse"><path d="M0,1 L9,5 L0,9 z" fill="#3E6FA3"/></marker>
       <marker id="m-green" viewBox="0 0 10 10" refX="8.5" refY="5" markerWidth="10" markerHeight="10" markerUnits="userSpaceOnUse" orient="auto-start-reverse"><path d="M0,1 L9,5 L0,9 z" fill="#4F7A3A"/></marker>
       <marker id="m-purple" viewBox="0 0 10 10" refX="8.5" refY="5" markerWidth="10" markerHeight="10" markerUnits="userSpaceOnUse" orient="auto-start-reverse"><path d="M0,1 L9,5 L0,9 z" fill="#6B5CA5"/></marker>
+      <marker id="m-red" viewBox="0 0 10 10" refX="8.5" refY="5" markerWidth="10" markerHeight="10" markerUnits="userSpaceOnUse" orient="auto-start-reverse"><path d="M0,1 L9,5 L0,9 z" fill="#B3412F"/></marker>
       <marker id="m-amber" viewBox="0 0 10 10" refX="8.5" refY="5" markerWidth="10" markerHeight="10" markerUnits="userSpaceOnUse" orient="auto-start-reverse"><path d="M0,1 L9,5 L0,9 z" fill="#A86F1A"/></marker>
     </defs>
   </svg>
 
   <header class="topbar">
-    <div class="brand">
-      <svg viewBox="0 0 100 100" aria-hidden="true"><use href="#claude-logo"/></svg>
-      Git 必修课
-    </div>
+    <div class="brand">Git 必修课</div>
     <nav class="chapter-nav" id="chapter-nav" aria-label="章节导航"></nav>
   </header>
   <div class="progress" id="progress" aria-hidden="true"></div>
@@ -1229,7 +1224,6 @@
           <svg viewBox="0 0 440 400">
             <path d="M70,62 C140,8 320,4 382,66 C440,124 436,292 376,346 C306,404 128,398 64,334 C10,280 6,118 70,62 Z" fill="#EFE6D8"/>
             <circle cx="112" cy="122" r="42" fill="#F6DCCF"/>
-            <use href="#claude-logo" x="292" y="66" width="76" height="76"/>
             <path d="M78,250 L372,250" stroke="#141413" stroke-width="3"/>
             <path d="M160,250 C200,250 198,170 236,170 L290,170 C330,170 328,250 352,250" fill="none" stroke="#141413" stroke-width="3"/>
             <circle cx="100" cy="250" r="15" fill="#FAF9F5" stroke="#141413" stroke-width="3"/>
@@ -1880,8 +1874,195 @@
       </div>
     </section>
 
-    <!-- ==================== 12 · UNDO DECISION TREE ==================== -->
-    <section class="slide" id="slide-12" data-title="改坏了？先回答两个问题" data-chapter="3">
+    <!-- ==================== 12 · WORKTREE RULES & MODES ==================== -->
+    <section class="slide" id="slide-12" data-title="worktree 铁律：禁止检出同一分支与两种模式" data-chapter="2">
+      <div class="slide-inner" data-steps="3">
+        <p class="eyebrow">02 · 分支 · 进阶</p>
+        <h2 class="slide-title" tabindex="-1">worktree 的铁律：不能两个目录站同一分支</h2>
+        <p class="lead">多个工作树共享同一套分支指针。要想同时开工不打架，Git 用两条合规模式替代“重复检出”。</p>
+
+        <div class="stepper-bar" role="group" aria-label="worktree 规则与模式">
+          <button type="button" class="step-btn" data-step="0" aria-pressed="true"><span class="n">1</span>为什么禁止同一分支</button>
+          <button type="button" class="step-btn" data-step="1" aria-pressed="false"><span class="n">2</span>模式 1：新建分支隔离</button>
+          <button type="button" class="step-btn" data-step="2" aria-pressed="false"><span class="n">3</span>模式 2：游离头指针只读</button>
+          <span class="step-hint">← → 逐步演示</span>
+        </div>
+
+        <!-- Step 0: Why checking out the same branch is forbidden -->
+        <figure class="figure" data-only="0">
+          <svg viewBox="0 0 960 250" role="img" aria-labelledby="g12a-title">
+            <title id="g12a-title">为什么禁止两个工作树同时检出 main：工作树 A 提交 M2 后，共享的 main 指针前移到 M2；工作树 B 的目录文件仍停在 M1，导致 HEAD 与文件错位，Git 会误判 B 撤销了 M2</title>
+            <!-- Commit timeline -->
+            <line x1="130" y1="130" x2="310" y2="130" stroke="#3D3D3A" stroke-width="2.4"/>
+            <circle cx="130" cy="130" r="22" fill="#FFFFFF" stroke="#3D3D3A" stroke-width="2"/>
+            <circle cx="310" cy="130" r="22" fill="#E9F0F7" stroke="#3E6FA3" stroke-width="2.2"/>
+            <text x="130" y="135" class="tm s13 c f-muted">M1</text>
+            <text x="310" y="135" class="tm s13 c f-blue tb">M2</text>
+
+            <!-- Pointer movement -->
+            <rect x="92" y="48" width="76" height="26" rx="13" fill="none" stroke="#3E6FA3" stroke-width="1.4" stroke-dasharray="4 3" opacity="0.55"/>
+            <text x="130" y="65" class="tm s12 c f-blue" opacity="0.55">main</text>
+            <line x1="176" y1="61" x2="262" y2="61" stroke="#3E6FA3" stroke-width="2" stroke-dasharray="5 4" marker-end="url(#m-blue)"/>
+            <text x="220" y="46" class="s12 c f-blue tb">A 提交后前移</text>
+            <line x1="310" y1="74" x2="310" y2="108" stroke="#3E6FA3" stroke-width="1.6"/>
+            <rect x="272" y="48" width="76" height="26" rx="13" fill="#E9F0F7" stroke="#3E6FA3" stroke-width="1.6"/>
+            <text x="310" y="65" class="tm s13 tb c f-blue">main</text>
+            <text x="220" y="182" class="s12 c f-muted">共享指针只有一份</text>
+
+            <!-- Connectors to two worktree folders -->
+            <path d="M356,61 C455,61 485,68 572,68" fill="none" stroke="#3E6FA3" stroke-width="2" marker-end="url(#m-blue)"/>
+            <path d="M356,66 C455,95 485,184 572,184" fill="none" stroke="#B3412F" stroke-width="2" stroke-dasharray="6 4" marker-end="url(#m-red)"/>
+            <text x="438" y="168" class="s12 c f-red tb halo">HEAD 已指 M2</text>
+
+            <!-- Folder A (aligned) -->
+            <g transform="translate(580,18)">
+              <path d="M0,12 Q0,4 8,4 L84,4 L98,18 L340,18 Q348,18 348,26 L348,92 Q348,100 340,100 L8,100 Q0,100 0,92 Z" fill="#FFFFFF" stroke="#3E6FA3" stroke-width="1.6"/>
+              <text x="18" y="48" class="tb f-ink">工作树 A</text>
+              <rect x="94" y="31" width="56" height="22" rx="11" fill="#E9F0F7" stroke="#3E6FA3"/>
+              <text x="122" y="46" class="tm s12 tb c f-blue">main</text>
+              <text x="18" y="80" class="s13 f-blue tb">文件 = M2 · 与 HEAD 一致</text>
+            </g>
+
+            <!-- Folder B (broken / mismatched) -->
+            <g transform="translate(580,134)">
+              <path d="M0,12 Q0,4 8,4 L84,4 L98,18 L340,18 Q348,18 348,26 L348,92 Q348,100 340,100 L8,100 Q0,100 0,92 Z" fill="#F8E6E1" stroke="#B3412F" stroke-width="1.8"/>
+              <text x="18" y="48" class="tb f-ink">工作树 B</text>
+              <rect x="94" y="31" width="56" height="22" rx="11" fill="#FFFFFF" stroke="#B3412F"/>
+              <text x="122" y="46" class="tm s12 tb c f-red">main</text>
+              <text x="18" y="80" class="s13 f-red tb">文件仍 = M1 · Git 误判你撤销了 M2</text>
+            </g>
+          </svg>
+        </figure>
+
+        <!-- Step 1: Mode 1 - New branch isolation -->
+        <figure class="figure" data-only="1" hidden>
+          <svg viewBox="0 0 960 250" role="img" aria-labelledby="g12b-title">
+            <title id="g12b-title">模式 1 新建分支隔离开发：主目录留在 main 分支往前推进到 M3，新工作树绑定新建的 hotfix 分支提交 H1，两条分支各自前进互不干扰</title>
+            <!-- Commit graph -->
+            <line x1="90" y1="84" x2="360" y2="84" stroke="#3D3D3A" stroke-width="2.4"/>
+            <path d="M225,104 C265,126 270,182 338,182" fill="none" stroke="#4F7A3A" stroke-width="2.4"/>
+
+            <circle cx="90" cy="84" r="20" fill="#FFFFFF" stroke="#3D3D3A" stroke-width="2"/>
+            <circle cx="225" cy="84" r="20" fill="#FFFFFF" stroke="#3D3D3A" stroke-width="2"/>
+            <circle cx="360" cy="84" r="20" fill="#E9F0F7" stroke="#3E6FA3" stroke-width="2.2"/>
+            <circle cx="360" cy="182" r="20" fill="#EBF1E3" stroke="#4F7A3A" stroke-width="2.2"/>
+            <text x="90" y="89" class="tm s13 c f-muted">M1</text>
+            <text x="225" y="89" class="tm s13 c f-muted">M2</text>
+            <text x="360" y="89" class="tm s13 c f-blue tb">M3</text>
+            <text x="360" y="187" class="tm s13 c f-green tb">H1</text>
+
+            <!-- Branch pills -->
+            <line x1="360" y1="42" x2="360" y2="64" stroke="#3E6FA3" stroke-width="1.6"/>
+            <rect x="322" y="16" width="76" height="26" rx="13" fill="#E9F0F7" stroke="#3E6FA3" stroke-width="1.6"/>
+            <text x="360" y="33" class="tm s13 tb c f-blue">main</text>
+
+            <line x1="360" y1="202" x2="360" y2="214" stroke="#4F7A3A" stroke-width="1.6"/>
+            <rect x="314" y="214" width="92" height="26" rx="13" fill="#EBF1E3" stroke="#4F7A3A" stroke-width="1.6"/>
+            <text x="360" y="231" class="tm s13 tb c f-green">hotfix</text>
+
+            <!-- Arrows to folders -->
+            <line x1="386" y1="84" x2="570" y2="68" stroke="#3E6FA3" stroke-width="2" marker-end="url(#m-blue)"/>
+            <line x1="386" y1="182" x2="570" y2="184" stroke="#4F7A3A" stroke-width="2" marker-end="url(#m-green)"/>
+            <text x="478" y="64" class="s12 c f-blue">独立推进</text>
+            <text x="478" y="172" class="s12 c f-green tb">独立提交</text>
+
+            <!-- Folder main -->
+            <g transform="translate(580,18)">
+              <path d="M0,12 Q0,4 8,4 L84,4 L98,18 L340,18 Q348,18 348,26 L348,92 Q348,100 340,100 L8,100 Q0,100 0,92 Z" fill="#FFFFFF" stroke="#3E6FA3" stroke-width="1.6"/>
+              <text x="18" y="48" class="tm s15 tb f-ink">my-homepage/</text>
+              <rect x="160" y="31" width="56" height="22" rx="11" fill="#E9F0F7" stroke="#3E6FA3"/>
+              <text x="188" y="46" class="tm s12 tb c f-blue">main</text>
+              <text x="18" y="80" class="s13 f-muted">主目录：继续正常开发主线</text>
+            </g>
+
+            <!-- Folder hotfix -->
+            <g transform="translate(580,134)">
+              <path d="M0,12 Q0,4 8,4 L84,4 L98,18 L340,18 Q348,18 348,26 L348,92 Q348,100 340,100 L8,100 Q0,100 0,92 Z" fill="#EBF1E3" stroke="#4F7A3A" stroke-width="1.6"/>
+              <text x="18" y="48" class="tm s15 tb f-ink">../wt-hotfix/</text>
+              <rect x="160" y="31" width="70" height="22" rx="11" fill="#FFFFFF" stroke="#4F7A3A"/>
+              <text x="195" y="46" class="tm s12 tb c f-green">hotfix</text>
+              <text x="18" y="80" class="s13 f-green tb">新目录：新分支隔离，随时提交合并</text>
+            </g>
+          </svg>
+        </figure>
+
+        <!-- Step 2: Mode 2 - Detached HEAD -->
+        <figure class="figure" data-only="2" hidden>
+          <svg viewBox="0 0 960 250" role="img" aria-labelledby="g12c-title">
+            <title id="g12c-title">模式 2 游离头指针只读检出：主目录停在 main 并继续推进到 M3，新工作树的 HEAD 直接定格在 M2 的提交哈希上，不占用分支名，也不受 main 更新影响</title>
+            <!-- Commit timeline -->
+            <line x1="90" y1="88" x2="360" y2="88" stroke="#3D3D3A" stroke-width="2.4"/>
+            <circle cx="90" cy="88" r="20" fill="#FFFFFF" stroke="#3D3D3A" stroke-width="2"/>
+            <circle cx="225" cy="88" r="22" fill="#F7EEDB" stroke="#A86F1A" stroke-width="2.4"/>
+            <circle cx="360" cy="88" r="20" fill="#E9F0F7" stroke="#3E6FA3" stroke-width="2.2"/>
+            <text x="90" y="93" class="tm s13 c f-muted">M1</text>
+            <text x="225" y="93" class="tm s13 c f-amber tb">M2</text>
+            <text x="360" y="93" class="tm s13 c f-blue tb">M3</text>
+
+            <!-- main pill on M3 -->
+            <line x1="360" y1="44" x2="360" y2="68" stroke="#3E6FA3" stroke-width="1.6"/>
+            <rect x="322" y="18" width="76" height="26" rx="13" fill="#E9F0F7" stroke="#3E6FA3" stroke-width="1.6"/>
+            <text x="360" y="35" class="tm s13 tb c f-blue">main</text>
+
+            <!-- Detached HEAD pinned to M2 -->
+            <line x1="225" y1="110" x2="225" y2="148" stroke="#A86F1A" stroke-width="1.8" stroke-dasharray="4 3"/>
+            <rect x="165" y="150" width="120" height="28" rx="14" fill="#141413"/>
+            <text x="225" y="169" class="tm s12 tb c f-ivory">HEAD @ M2</text>
+            <text x="225" y="198" class="s12 c f-amber tb">直接定格在提交哈希</text>
+            <text x="225" y="216" class="s12 c f-muted">不占用任何分支名</text>
+
+            <!-- Arrows to folders -->
+            <line x1="386" y1="88" x2="570" y2="68" stroke="#3E6FA3" stroke-width="2" marker-end="url(#m-blue)"/>
+            <path d="M285,164 C410,164 470,184 570,184" fill="none" stroke="#A86F1A" stroke-width="2" marker-end="url(#m-amber)"/>
+            <text x="478" y="64" class="s12 c f-blue">照常推进</text>
+            <text x="478" y="168" class="s12 c f-amber tb">不受 main 影响</text>
+
+            <!-- Folder main -->
+            <g transform="translate(580,18)">
+              <path d="M0,12 Q0,4 8,4 L84,4 L98,18 L340,18 Q348,18 348,26 L348,92 Q348,100 340,100 L8,100 Q0,100 0,92 Z" fill="#FFFFFF" stroke="#3E6FA3" stroke-width="1.6"/>
+              <text x="18" y="48" class="tm s15 tb f-ink">my-homepage/</text>
+              <rect x="160" y="31" width="56" height="22" rx="11" fill="#E9F0F7" stroke="#3E6FA3"/>
+              <text x="188" y="46" class="tm s12 tb c f-blue">main</text>
+              <text x="18" y="80" class="s13 f-muted">主目录：继续往后提交 M3</text>
+            </g>
+
+            <!-- Folder bench -->
+            <g transform="translate(580,134)">
+              <path d="M0,12 Q0,4 8,4 L84,4 L98,18 L340,18 Q348,18 348,26 L348,92 Q348,100 340,100 L8,100 Q0,100 0,92 Z" fill="#F7EEDB" stroke="#A86F1A" stroke-width="1.6"/>
+              <text x="18" y="48" class="tm s15 tb f-ink">../wt-bench/</text>
+              <rect x="150" y="31" width="96" height="22" rx="11" fill="#FFFFFF" stroke="#A86F1A" stroke-dasharray="4 2"/>
+              <text x="198" y="46" class="tm s12 tb c f-amber">detached</text>
+              <text x="18" y="80" class="s13 f-amber tb">新目录：只读验证、跑压测或复现旧版</text>
+            </g>
+          </svg>
+        </figure>
+
+        <div class="caption" data-only="0">
+          <p class="caption-text"><strong>禁止同一分支被检出两次：</strong>A 提交 <code>M2</code> 推前了共享的 <code>main</code>，但 B 的目录文件还停在 <code>M1</code>，Git 会把差值误判为“B 撤销了 M2”。所以 Git 会直接拦截并报错。</p>
+          <div class="caption-side">
+            <p class="say"><span class="say-tag">对 AI 说</span>“看看当前有哪些 worktree，分别占用了哪个分支”</p>
+            <code class="cmd"><span class="p">$ </span>git worktree list  <span class="cm"># 重复检出 main 会报错：fatal: 'main' is already used by worktree</span></code>
+          </div>
+        </div>
+        <div class="caption" data-only="1" hidden>
+          <p class="caption-text"><strong>模式 1 · 新建分支隔离开发（需要修改提交）：</strong>用 <code>-b</code> 给新目录建一条专属分支，主目录和新目录各自推进、互不干扰，做完随时合并。</p>
+          <div class="caption-side">
+            <p class="say"><span class="say-tag">对 AI 说</span>“基于 main 新开一个 hotfix 分支的 worktree，在里面修这个 Bug”</p>
+            <code class="cmd"><span class="p">$ </span>git worktree add -b hotfix ../wt-hotfix main</code>
+          </div>
+        </div>
+        <div class="caption" data-only="2" hidden>
+          <p class="caption-text"><strong>模式 2 · Detached HEAD 游离检出（测试 / 复现）：</strong><code>HEAD</code> 直接定格在当前提交哈希上，不占用分支名；主目录继续更新 <code>main</code> 也不会影响它。</p>
+          <div class="caption-side">
+            <p class="say"><span class="say-tag">对 AI 说</span>“用游离模式开一个临时 worktree 跑基准测试，别新建分支也别动 main”</p>
+            <code class="cmd"><span class="p">$ </span>git worktree add --detach ../wt-bench main</code>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ==================== 13 · UNDO DECISION TREE ==================== -->
+    <section class="slide" id="slide-13" data-title="改坏了？先回答两个问题" data-chapter="3">
       <div class="slide-inner">
         <p class="eyebrow">03 · 后悔药</p>
         <h2 class="slide-title" tabindex="-1">改坏了？先回答两个问题</h2>
@@ -1954,7 +2135,7 @@
     </section>
 
     <!-- ==================== 13 · RESET vs REVERT ==================== -->
-    <section class="slide" id="slide-13" data-title="reset 和 revert：撕掉一页 vs 补一句更正" data-chapter="3">
+    <section class="slide" id="slide-14" data-title="reset 和 revert：撕掉一页 vs 补一句更正" data-chapter="3">
       <div class="slide-inner">
         <p class="eyebrow">03 · 后悔药</p>
         <h2 class="slide-title" tabindex="-1">reset 和 revert：撕掉一页 vs 补一句更正</h2>
@@ -2045,7 +2226,7 @@
     </section>
 
     <!-- ==================== 14 · REMOTE (STEPPER) ==================== -->
-    <section class="slide" id="slide-14" data-title="远程仓库：让存档在电脑和 GitHub 之间同步" data-chapter="4">
+    <section class="slide" id="slide-15" data-title="远程仓库：让存档在电脑和 GitHub 之间同步" data-chapter="4">
       <div class="slide-inner" data-steps="5">
         <p class="eyebrow">04 · 协作</p>
         <h2 class="slide-title" tabindex="-1">远程仓库：让存档在电脑和 GitHub 之间同步</h2>
@@ -2156,7 +2337,7 @@
     </section>
 
     <!-- ==================== 15 · FORK & PR (STEPPER) ==================== -->
-    <section class="slide" id="slide-15" data-title="参与别人的项目：Fork → 修改 → Pull Request" data-chapter="4">
+    <section class="slide" id="slide-16" data-title="参与别人的项目：Fork → 修改 → Pull Request" data-chapter="4">
       <div class="slide-inner" data-steps="7">
         <p class="eyebrow">04 · 协作</p>
         <h2 class="slide-title" tabindex="-1">参与别人的项目：Fork → 修改 → Pull Request</h2>
@@ -2285,7 +2466,7 @@
     </section>
 
     <!-- ==================== 16 · PR MERGE BUTTONS ==================== -->
-    <section class="slide" id="slide-16" data-title="合并 PR 时的 3 个按钮" data-chapter="4">
+    <section class="slide" id="slide-17" data-title="合并 PR 时的 3 个按钮" data-chapter="4">
       <div class="slide-inner">
         <p class="eyebrow">04 · 协作 · 了解即可</p>
         <h2 class="slide-title" tabindex="-1">合并 PR 时的 3 个按钮</h2>
@@ -2356,7 +2537,7 @@
     </section>
 
     <!-- ==================== 17 · AI + gh ==================== -->
-    <section class="slide" id="slide-17" data-title="把 Git 交给 AI" data-chapter="4">
+    <section class="slide" id="slide-18" data-title="把 Git 交给 AI" data-chapter="4">
       <div class="slide-inner">
         <p class="eyebrow">04 · 协作</p>
         <h2 class="slide-title" tabindex="-1">把 Git 交给 AI：你说清楚，它来敲命令</h2>
@@ -2383,7 +2564,7 @@
     </section>
 
     <!-- ==================== 18 · SUMMARY ==================== -->
-    <section class="slide" id="slide-18" data-title="一张图带走今天的全部内容" data-chapter="5">
+    <section class="slide" id="slide-19" data-title="一张图带走今天的全部内容" data-chapter="5">
       <div class="slide-inner">
         <p class="eyebrow">总结</p>
         <h2 class="slide-title" tabindex="-1">一张图带走今天的全部内容</h2>
@@ -2447,7 +2628,7 @@
     </section>
 
     <!-- ==================== 19 · PRACTICE ==================== -->
-    <section class="slide" id="slide-19" data-title="动手：提你的第一个 PR" data-chapter="5">
+    <section class="slide" id="slide-20" data-title="动手：提你的第一个 PR" data-chapter="5">
       <div class="slide-inner">
         <p class="eyebrow">动手实践</p>
         <h2 class="slide-title" tabindex="-1">动手：给 <span class="accent">open-source-pulse-wall</span> 提你的第一个 PR</h2>
@@ -2490,7 +2671,7 @@
   <!-- Hover HUD -->
   <div class="hud-zone">
     <nav class="hover-hud" aria-label="快捷控制">
-      <span id="slide-counter" class="hud-counter" aria-label="当前页码">01 / 19</span>
+      <span id="slide-counter" class="hud-counter" aria-label="当前页码">01 / 20</span>
       <button type="button" id="btn-fullscreen" class="hud-btn" aria-label="切换全屏（快捷键 F）"><span class="hud-key">F</span>全屏</button>
       <button type="button" id="btn-overview" class="hud-btn" aria-label="打开幻灯片目录（快捷键 O）"><span class="hud-key">O</span>目录</button>
     </nav>
