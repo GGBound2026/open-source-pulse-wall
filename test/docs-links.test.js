@@ -8,7 +8,8 @@ const ROOT = path.resolve(__dirname, '..');
 test('documentation and GitHub templates have no broken relative parent links or missing local files', () => {
   const docFiles = [
     'README.md',
-    'SCORING.md',
+    'docs/CONTRIBUTING.md',
+    'docs/SCORING.md',
     '.github/PULL_REQUEST_TEMPLATE.md',
     '.github/ISSUE_TEMPLATE/config.yml',
     '.github/ISSUE_TEMPLATE/01-question.yml',

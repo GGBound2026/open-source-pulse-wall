@@ -1,5 +1,5 @@
 blank_issues_enabled: false
 contact_links:
-  - name: 先看课堂贡献指南（README）
-    url: https://github.com/nanzhi84/open-source-pulse-wall/blob/main/README.md
+  - name: 先看课堂贡献指南（docs/CONTRIBUTING.md）
+    url: https://github.com/nanzhi84/open-source-pulse-wall/blob/main/docs/CONTRIBUTING.md
     about: 完整操作步骤、校验命令、寄语路径规范与常见冲突处理都在这里，建议先快速核对一遍。
