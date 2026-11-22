@@ -25,64 +25,85 @@ If you are an AI assistant, coding agent, or LLM executing these contribution st
 4. 严格边界：不要修改其他文件或模板文件；不要替我自动创建 Issue；不要擅自对任何人的 PR 发表 Review 评论或点击 Request changes。如果第四步提 Issue 需要你协助，仅在我明确给出真实问题或想法后帮我起草内容并等我确认。
 ```
 
-## 第零步：安装 Git 与 GitHub CLI 并完成鉴权
+## 第零步：安装 Git 与 GitHub CLI（`gh`）并完成鉴权
 
-`git` 负责本地版本管理，`gh` 是 GitHub 官方命令行工具，把 Fork、PR、Issue、Review 与 CI 检查全部搬进终端。两者装好并完成鉴权后，你和 AI Agent 都可以直接在命令行驱动完整协作流程。
+开始之前，先认识本节课会用到的两个命令行工具——它们是**两个独立的程序**，各自负责不同的环节，需要分别安装：
 
-**Windows**
+| 工具 | 是什么 | 负责做什么 |
+| --- | --- | --- |
+| **`git`** | 本地版本管理工具 | 在你电脑上创建分支、提交修改（`commit`）、同步与合并代码（`pull` / `push`） |
+| **`gh`（GitHub CLI）** | GitHub 官方命令行工具 | 把原本要在 GitHub 网页点按钮的操作（登录鉴权、Fork 仓库、发起 PR、查看 CI 检查、提 Issue）搬进终端，同时帮 `git push` 自动处理登录凭据，并让 AI Agent 能在命令行安全驱动整个协作流程 |
+
+> **说明**：`gh` 不包含在 `git` 安装包里，需要额外安装（安装包名常写作 `GitHub CLI` 或 `GitHub.cli`，装好后在终端里输入的命令叫 `gh`）。如果你不打算用命令行或 AI Agent，也可以只装 `git` 并在 GitHub 网页手动操作；但推荐按下面步骤把两者**一并装好**，省去手动配置 SSH Key 或反复处理鉴权的麻烦。
+
+### 1. 安装 `git` 与 `gh`
+
+根据你的操作系统执行对应命令，把 `git` 和 `gh` 一起装好（若包管理器不可用，也可从 [git-scm.com](https://git-scm.com/) 与 [cli.github.com](https://cli.github.com/) 下载安装包）：
+
+**Windows（PowerShell）**
 
 ```powershell
+# 分别安装 Git 与 GitHub CLI（gh）
 winget install --id Git.Git -e --source winget --silent --accept-package-agreements --accept-source-agreements
 winget install --id GitHub.cli -e --source winget --silent --accept-package-agreements --accept-source-agreements
 ```
 
-安装完成后重开终端生效。
+安装完成后**重新打开终端**使命令生效。
 
-**macOS**
+**macOS（Terminal）**
 
 ```bash
-# 未安装 Homebrew 先执行此句，装完按终端末尾 Next steps 提示配置 PATH
+# 未安装 Homebrew 可先执行此句，装完按终端末尾 Next steps 提示配置 PATH
 /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
 
+# 同时安装 git 与 gh
 brew install git gh
 ```
 
 **Linux**
 
 ```bash
-# Ubuntu / Debian
+# Ubuntu / Debian（分别安装 git 与 gh）
 sudo apt update && sudo apt install -y git
 sudo snap install gh --classic
 
-# Fedora / RHEL
+# Fedora / RHEL（同时安装 git 与 gh）
 sudo dnf install -y git gh
 ```
 
-**配置 Git 身份**
+安装完成后，运行下面命令验证两个工具都已就位（均输出版本号即表示安装成功）：
 
 ```bash
 git --version && gh --version
+```
+
+### 2. 配置 Git 本地身份
+
+告诉 `git` 你的名字和邮箱，后续每次 `commit` 都会记录这份署名，GitHub 也会据此把提交关联到你的账号：
+
+```bash
 git config --global user.name "你的GitHub用户名"
 git config --global user.email "你的GitHub绑定邮箱"
 ```
 
-**获取可信凭据并授权给命令行与 Agent**
+### 3. 用 `gh` 登录 GitHub 并自动接管 `git` 鉴权
 
-首选通过官方 OAuth 登录，凭据会安全写入系统钥匙串，同时自动接管 `git push` 鉴权，本地不留明文密钥：
+GitHub 已不再支持在 `git push` 时直接输入账号密码。使用 `gh` 走一次官方浏览器 OAuth 登录，凭据会安全写入系统钥匙串，本地不留明文密钥；再执行 `gh auth setup-git`，此后本机的 `git`、`gh` 以及调用它们的 AI Agent 都会自动复用这份可信凭据：
 
 ```bash
-gh auth login -h github.com -p https -w
-gh auth setup-git
-gh auth status
+gh auth login -h github.com -p https -w   # 打开浏览器完成 GitHub 官方 OAuth 登录
+gh auth setup-git                         # 让 git push / pull 自动复用 gh 的登录凭据
+gh auth status                            # 检查当前已登录的账号与权限状态
 ```
 
-按终端提示复制一次性设备码并在浏览器确认即可。此后本机的 `git`、`gh` 以及调用它们的 AI Agent 都会自动复用这份可信凭据。
+执行第一条命令后，按终端提示复制一次性设备码并在弹出的浏览器页面确认授权即可。
 
-如果在无浏览器环境运行，或需要给特定 Agent 分配严格收敛的最小权限，可生成 **Fine-grained Personal Access Token**：
+<details>
+<summary>可选：无浏览器环境或需要给 Agent 分配最小权限时，改用 Fine-grained Token（<code>GH_TOKEN</code>）</summary>
 
 1. 打开 <https://github.com/settings/personal-access-tokens/new>
 2. 仅选择目标仓库，按需勾选 **Contents**、**Pull requests**、**Issues** 的 Read and write 权限，并设置较短有效期。
-3. 通过环境变量 `GH_TOKEN` 注入会话，切勿把 Token 写入任何代码、配置文件或 `git commit`：
+3. 通过环境变量 `GH_TOKEN` 注入当前终端会话，切勿把 Token 写入任何代码、配置文件或 `git commit`：
 
 ```bash
 # macOS / Linux
@@ -94,13 +115,17 @@ $env:GH_TOKEN="<你的Token>"
 gh auth status
 ```
 
-鉴权完成后，可直接用命令行或交给 Agent 跑通协作流程：
+</details>
+
+### 4. 用 `gh` 跑通协作流程（命令行快捷方式）
+
+完成安装与登录后，可以用下面这些 `gh` 命令直接在终端完成 Fork、发 PR、看自动检查和提 Issue（也可以照后续第一步～第四步在 GitHub 网页手动操作，效果完全一致，二选一即可）：
 
 ```bash
-gh repo fork nanzhi84/open-source-pulse-wall --clone   # 自动 Fork、Clone 并配置 upstream
-gh pr create --fill                                    # 直接发起 Pull Request
-gh pr checks                                           # 查看自动审查与校验状态
-gh issue create                                        # 命令行提交 Issue
+gh repo fork nanzhi84/open-source-pulse-wall --clone   # 一键 Fork、Clone 到本地并自动配置 upstream
+gh pr create --fill                                    # 直接从当前分支发起 Pull Request
+gh pr checks                                           # 查看 PR 的自动审查与校验状态
+gh issue create                                        # 在命令行提交 Issue
 ```
 
 ## 第一步：Fork & Clone
