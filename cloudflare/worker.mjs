@@ -60,6 +60,7 @@ const CORS_HEADERS = {
 
 const edgeCache = typeof caches !== 'undefined' && caches.default ? caches.default : null;
 let memoryBundle = null;
+let memoryFileContributors = new Map();
 let inFlightRefresh = null;
 
 /**
@@ -67,6 +68,7 @@ let inFlightRefresh = null;
  */
 export function resetMemoryBundleForTests() {
   memoryBundle = null;
+  memoryFileContributors.clear();
   inFlightRefresh = null;
 }
 
@@ -1412,13 +1414,59 @@ async function fetchProfilesBundle(repository, encodedRepo, token) {
     ...cheerFiles.map((item) => item.relPath)
   ];
 
-  const historyBundle = await fetchFileContributorsViaGraphql(owner, name, trackedPaths, token).catch(
-    () => ({ fileContributors: {}, scoringCommits: [] })
-  );
+  const knownFileContributors = await readCachedFileContributors(repository);
+  const missingPaths = trackedPaths.filter((repoPath) => !knownFileContributors[repoPath]);
+
+  let historyBundle = { fileContributors: {}, scoringCommits: [] };
+  if (token && trackedPaths.length > 0) {
+    if (missingPaths.length > 0) {
+      historyBundle = await fetchFileContributorsViaGraphql(owner, name, missingPaths, token).catch(
+        () => ({ fileContributors: {}, scoringCommits: [] })
+      );
+    } else {
+      const scoringCommits = await fetchScoringCommitsPagesViaGraphql(owner, name, token, [], null).catch(
+        () => []
+      );
+      historyBundle = { fileContributors: {}, scoringCommits };
+    }
+  }
+
+  const trackedSet = new Set(trackedPaths);
+  const nextCachedMap = {};
+  let cacheChanged = false;
+
+  for (const repoPath of trackedPaths) {
+    const entry = historyBundle.fileContributors[repoPath] || knownFileContributors[repoPath];
+    if (entry && entry.github) {
+      nextCachedMap[repoPath] = entry;
+      if (!knownFileContributors[repoPath]) cacheChanged = true;
+    }
+  }
+
+  if (!cacheChanged) {
+    for (const cachedPath of Object.keys(knownFileContributors)) {
+      if (!trackedSet.has(cachedPath)) {
+        cacheChanged = true;
+        break;
+      }
+    }
+  }
+
+  if (cacheChanged) {
+    await writeCachedFileContributors(repository, nextCachedMap);
+  }
+
+  const fileContributors = { ...nextCachedMap };
+  for (const [repoPath, entry] of Object.entries(nextCachedMap)) {
+    if (repoPath.startsWith('data/profiles/')) {
+      fileContributors[repoPath.slice('data/profiles/'.length)] = entry;
+    }
+  }
+
   return {
     entries,
     cheerFiles,
-    fileContributors: historyBundle.fileContributors || {},
+    fileContributors,
     scoringCommits: historyBundle.scoringCommits || []
   };
 }
@@ -1741,7 +1789,6 @@ async function fetchPackedWallState({ repository, token = '', pagesStateUrl = ''
   const ok = errors.length === 0;
   const contributors = ok ? normalized : [];
   const cheersTotal = contributors.reduce((sum, profile) => sum + profile.cheers.length, 0);
-  const recentCheers = collectRecentCheers(contributors);
 
   const latestCommitAt = commitNodes.length ? commitNodes[0].time : '';
   const issueNodes = issuesResult.data.map(normalizeIssueNode);
@@ -1774,9 +1821,6 @@ async function fetchPackedWallState({ repository, token = '', pagesStateUrl = ''
     pushedAt: repo.pushed_at || '',
     latestCommitAt,
     events: allEvents.slice(0, ACTIVITY_FEED_LIMIT),
-    commits: commitNodes,
-    issues: pureIssues.slice(0, ISSUES_DISPLAY_LIMIT),
-    pullRequests: pullNodes.slice(0, PULLS_DISPLAY_LIMIT),
     issuesTotal: pureIssues.length,
     openIssuesTotal,
     pullRequestsTotal: pullNodes.length,
@@ -1804,9 +1848,7 @@ async function fetchPackedWallState({ repository, token = '', pagesStateUrl = ''
     fingerprint,
     count: contributors.length,
     contributors,
-    previewContributors: normalized,
     cheersTotal,
-    recentCheers,
     github: githubState,
     errors,
     warnings,
@@ -1820,6 +1862,61 @@ function cacheRequestFor(repository) {
   return new Request(`https://pulse-wall-cache.internal/__v13/${encodeURIComponent(repository)}`, {
     method: 'GET'
   });
+}
+
+function fileContributorsCacheRequestFor(repository) {
+  return new Request(`https://pulse-wall-cache.internal/__v13_fc/${encodeURIComponent(repository)}`, {
+    method: 'GET'
+  });
+}
+
+async function readCachedFileContributors(repository) {
+  let edgeMap = null;
+  if (edgeCache) {
+    try {
+      const match = await edgeCache.match(fileContributorsCacheRequestFor(repository));
+      if (match) {
+        const parsed = await match.json();
+        if (parsed && isPlainObject(parsed.fileContributors)) {
+          edgeMap = parsed.fileContributors;
+        }
+      }
+    } catch {
+      edgeMap = null;
+    }
+  }
+
+  const localMap = memoryFileContributors.get(repository) || null;
+  const merged = {
+    ...(edgeMap || {}),
+    ...(localMap || {})
+  };
+  if (Object.keys(merged).length > 0) {
+    memoryFileContributors.set(repository, merged);
+  }
+  return merged;
+}
+
+async function writeCachedFileContributors(repository, fileContributors) {
+  const snapshot = { ...fileContributors };
+  memoryFileContributors.set(repository, snapshot);
+
+  if (edgeCache) {
+    try {
+      const response = new Response(
+        JSON.stringify({ fileContributors: snapshot }),
+        {
+          headers: {
+            'Content-Type': 'application/json; charset=utf-8',
+            'Cache-Control': 'public, max-age=604800, s-maxage=604800'
+          }
+        }
+      );
+      await edgeCache.put(fileContributorsCacheRequestFor(repository), response);
+    } catch {
+      // Edge cache errors must not block refresh responses.
+    }
+  }
 }
 
 async function readCachedBundle(repository) {

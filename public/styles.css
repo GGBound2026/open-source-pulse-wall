@@ -149,7 +149,6 @@ svg {
   left: 0;
   opacity: 0;
   transition: opacity 0.35s ease;
-  will-change: transform, opacity;
   white-space: nowrap;
 }
 
@@ -157,6 +156,7 @@ svg {
 .champion-label.is-visible,
 .orbit-label.is-visible {
   opacity: 1;
+  will-change: transform;
 }
 
 .planet-label {
@@ -493,6 +493,28 @@ svg {
 .podium-list li:first-child { border-top: 0; }
 .podium-list.is-clone li:first-child { border-top: 1px solid var(--hair); }
 
+.podium-list li {
+  contain: layout style;
+}
+
+.sheet-dialog .activity-list li {
+  content-visibility: auto;
+  contain-intrinsic-block-size: auto 44px;
+}
+
+@supports not (content-visibility: auto) {
+  .sheet-dialog .activity-list li {
+    contain: layout style paint;
+  }
+}
+
+.masthead,
+.ticker,
+.dock,
+.toolbar {
+  contain: layout style;
+}
+
 .honor-pill {
   position: relative;
   display: grid;
@@ -682,14 +704,7 @@ svg {
   font-weight: 500;
 }
 
-@property --orbit-angle {
-  syntax: "<angle>";
-  inherits: false;
-  initial-value: 0deg;
-}
-
 .guide-entry {
-  --orbit-angle: 0deg;
   position: relative;
   display: inline-flex;
   align-items: center;
@@ -698,10 +713,36 @@ svg {
   margin-left: 10px;
   padding: 0 16px 0 8px;
   border-radius: 999px;
+  overflow: hidden;
   isolation: isolate;
   color: #fff6df;
   text-decoration: none;
   white-space: nowrap;
+  background: rgba(255, 220, 160, 0.18);
+  box-shadow: 0 0 26px rgba(255, 170, 70, 0.22), 0 0 40px rgba(110, 90, 255, 0.18);
+  transition: box-shadow 0.3s ease, translate 0.3s ease;
+}
+
+/* a comet of light endlessly orbiting the pill border on the compositor thread */
+.guide-entry::before {
+  content: "";
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 240px;
+  height: 240px;
+  margin: -120px 0 0 -120px;
+  z-index: -2;
+  background: conic-gradient(from 0deg, rgba(255, 210, 122, 0) 0deg, rgba(255, 210, 122, 0) 250deg, #ffd27a 320deg, #fff7e0 345deg, rgba(143, 220, 255, 0.9) 360deg);
+  pointer-events: none;
+}
+
+.guide-entry::after {
+  content: "";
+  position: absolute;
+  inset: 1px;
+  z-index: -1;
+  border-radius: inherit;
   background:
     radial-gradient(1px 1px at 22% 30%, rgba(255, 255, 255, 0.9), transparent 60%),
     radial-gradient(1px 1px at 64% 72%, rgba(255, 255, 255, 0.7), transparent 60%),
@@ -710,31 +751,7 @@ svg {
     radial-gradient(120% 160% at 0% 50%, rgba(255, 170, 70, 0.38), transparent 55%),
     radial-gradient(120% 160% at 100% 50%, rgba(110, 90, 255, 0.35), transparent 60%),
     linear-gradient(135deg, #0b1030, #120a2a 60%, #050816);
-  box-shadow: 0 0 26px rgba(255, 170, 70, 0.22), 0 0 40px rgba(110, 90, 255, 0.18);
-  transition: box-shadow 0.3s ease, translate 0.3s ease;
-}
-
-/* a comet of light endlessly orbiting the pill border */
-.guide-entry::before {
-  content: "";
-  position: absolute;
-  inset: 0;
-  z-index: -1;
-  padding: 1px;
-  border-radius: inherit;
-  background: conic-gradient(from var(--orbit-angle), rgba(255, 210, 122, 0) 0deg, rgba(255, 210, 122, 0) 250deg, #ffd27a 320deg, #fff7e0 345deg, rgba(143, 220, 255, 0.9) 360deg);
-  -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
-  -webkit-mask-composite: xor;
-  mask: linear-gradient(#000 0 0) content-box exclude, linear-gradient(#000 0 0);
-}
-
-.guide-entry::after {
-  content: "";
-  position: absolute;
-  inset: 0;
-  z-index: -2;
-  border-radius: inherit;
-  box-shadow: inset 0 0 0 1px rgba(255, 220, 160, 0.18);
+  pointer-events: none;
 }
 
 @media (prefers-reduced-motion: no-preference) {
@@ -742,7 +759,7 @@ svg {
   .guide-orbit-moon { animation: moon-orbit 6s linear infinite; transform-origin: 20px 20px; }
 }
 
-@keyframes orbit-sweep { to { --orbit-angle: 360deg; } }
+@keyframes orbit-sweep { to { transform: rotate(360deg); } }
 @keyframes moon-orbit { to { rotate: 360deg; } }
 
 .guide-entry:hover {
@@ -907,9 +924,9 @@ svg {
   overflow-y: auto;
   list-style: none;
   border-radius: 14px;
-  background: var(--glass);
-  -webkit-backdrop-filter: blur(22px) saturate(140%);
-  backdrop-filter: blur(22px) saturate(140%);
+  background: rgba(6, 9, 24, 0.84);
+  -webkit-backdrop-filter: blur(12px) saturate(130%);
+  backdrop-filter: blur(12px) saturate(130%);
   box-shadow: 0 20px 60px rgba(0, 0, 0, 0.55), inset 0 0 0 1px var(--hair);
 }
 
@@ -1177,10 +1194,11 @@ svg {
   border-radius: 22px;
   background:
     radial-gradient(140% 50% at 0% 0%, color-mix(in srgb, var(--planet-color) 20%, transparent), transparent 70%),
-    var(--glass);
-  -webkit-backdrop-filter: blur(26px) saturate(150%);
-  backdrop-filter: blur(26px) saturate(150%);
+    rgba(6, 9, 24, 0.82);
+  -webkit-backdrop-filter: blur(14px) saturate(135%);
+  backdrop-filter: blur(14px) saturate(135%);
   box-shadow: 0 30px 80px rgba(0, 0, 0, 0.55), inset 0 0 0 1px var(--hair), inset 0 1px 0 rgba(255, 255, 255, 0.06);
+  contain: layout style;
   pointer-events: auto;
 }
 
@@ -1624,11 +1642,11 @@ svg {
   padding: 0;
   border: 0;
   border-radius: 22px;
-  background: var(--glass);
+  background: rgba(6, 9, 24, 0.86);
   color: var(--ink);
   box-shadow: 0 40px 100px rgba(0, 0, 0, 0.7), inset 0 0 0 1px var(--hair);
-  -webkit-backdrop-filter: blur(28px);
-  backdrop-filter: blur(28px);
+  -webkit-backdrop-filter: blur(16px);
+  backdrop-filter: blur(16px);
 }
 
 .sheet-dialog[open] {
@@ -1746,9 +1764,9 @@ svg {
   max-width: min(640px, calc(100vw - 32px));
   padding: 10px 20px;
   border-radius: 999px;
-  background: var(--glass);
-  -webkit-backdrop-filter: blur(18px);
-  backdrop-filter: blur(18px);
+  background: rgba(6, 9, 24, 0.84);
+  -webkit-backdrop-filter: blur(10px);
+  backdrop-filter: blur(10px);
   box-shadow: inset 0 0 0 1px var(--hair), 0 10px 40px rgba(0, 0, 0, 0.5);
   color: var(--ink);
   font-size: 13px;
@@ -1834,6 +1852,24 @@ svg {
     width: auto;
     max-height: 68dvh;
     z-index: 9;
+  }
+}
+
+@media (max-width: 760px), (hover: none) and (pointer: coarse) {
+  .planet-flashcard {
+    background:
+      radial-gradient(140% 50% at 0% 0%, color-mix(in srgb, var(--planet-color) 24%, transparent), transparent 70%),
+      rgba(6, 9, 24, 0.94);
+    -webkit-backdrop-filter: none;
+    backdrop-filter: none;
+  }
+
+  .search-results,
+  .sheet-dialog,
+  .toast {
+    background: rgba(6, 9, 24, 0.94);
+    -webkit-backdrop-filter: none;
+    backdrop-filter: none;
   }
 }
 

@@ -3,6 +3,7 @@
 const http = require('http');
 const fs = require('fs');
 const path = require('path');
+const zlib = require('zlib');
 const { loadEnvFile, resolveGithubToken } = require('./scripts/load-env');
 
 loadEnvFile(__dirname);
@@ -35,8 +36,16 @@ let lastGoodContributors = [];
 let lastFingerprint = '';
 let githubState = buildUnconfiguredGithubState();
 let currentState = buildState();
+let currentStateJson = JSON.stringify(currentState);
+let currentStateGzip = zlib.gzipSync(Buffer.from(currentStateJson));
 let lastManualRefreshAt = 0;
 let inFlightRefresh = null;
+
+function setCurrentState(nextState) {
+  currentState = nextState;
+  currentStateJson = JSON.stringify(currentState);
+  currentStateGzip = zlib.gzipSync(Buffer.from(currentStateJson));
+}
 
 async function runFullRefresh() {
   // Step 1: pull local repo so newly-merged profiles land on disk before fingerprint poll runs.
@@ -72,8 +81,8 @@ async function refreshGithubSync() {
 
     if (!repository) {
       githubState = buildUnconfiguredGithubState();
-      currentState = buildState();
-      broadcast('state', currentState);
+      setCurrentState(buildState());
+      broadcastRaw('state', currentStateJson);
       broadcast('pulse', {
         type: githubState.ok ? 'success' : 'error',
         message: githubState.message,
@@ -101,8 +110,8 @@ async function refreshGithubSync() {
       };
     }
 
-    currentState = buildState();
-    broadcast('state', currentState);
+    setCurrentState(buildState());
+    broadcastRaw('state', currentStateJson);
     broadcast('pulse', {
       type: githubState.ok ? 'success' : 'error',
       message: githubState.message,
@@ -130,15 +139,30 @@ function buildState() {
   return state;
 }
 
-function sendSse(res, event, payload) {
-  res.write(`event: ${event}\n`);
-  res.write(`data: ${JSON.stringify(payload)}\n\n`);
+function sendSseRaw(res, event, serializedPayload) {
+  res.write(`event: ${event}\ndata: ${serializedPayload}\n\n`);
+}
+
+function broadcastRaw(event, serializedPayload) {
+  if (!clients.size) return;
+  const frame = `event: ${event}\ndata: ${serializedPayload}\n\n`;
+  for (const res of clients) {
+    res.write(frame);
+  }
 }
 
 function broadcast(event, payload) {
-  for (const res of clients) {
-    sendSse(res, event, payload);
-  }
+  if (!clients.size) return;
+  broadcastRaw(event, JSON.stringify(payload));
+}
+
+function isCompressible(filePath) {
+  const ext = path.extname(filePath).toLowerCase();
+  return ext === '.html' || ext === '.css' || ext === '.js' || ext === '.mjs' || ext === '.json' || ext === '.svg';
+}
+
+function acceptsGzip(req) {
+  return /\bgzip\b/i.test(String(req.headers['accept-encoding'] || ''));
 }
 
 function safeStaticPath(urlPath) {
@@ -164,11 +188,22 @@ function handleRequest(req, res) {
   const url = new URL(req.url, `http://${req.headers.host || 'localhost'}`);
 
   if (url.pathname === '/api/contributors') {
-    res.writeHead(200, {
-      'Content-Type': 'application/json; charset=utf-8',
-      'Cache-Control': 'no-store'
-    });
-    res.end(JSON.stringify(currentState, null, 2));
+    if (acceptsGzip(req)) {
+      res.writeHead(200, {
+        'Content-Type': 'application/json; charset=utf-8',
+        'Content-Encoding': 'gzip',
+        'Vary': 'Accept-Encoding',
+        'Cache-Control': 'no-cache'
+      });
+      res.end(currentStateGzip);
+    } else {
+      res.writeHead(200, {
+        'Content-Type': 'application/json; charset=utf-8',
+        'Vary': 'Accept-Encoding',
+        'Cache-Control': 'no-cache'
+      });
+      res.end(currentStateJson);
+    }
     return;
   }
 
@@ -216,7 +251,7 @@ function handleRequest(req, res) {
     });
 
     res.write('retry: 1000\n\n');
-    sendSse(res, 'state', currentState);
+    sendSseRaw(res, 'state', currentStateJson);
     clients.add(res);
 
     req.on('close', () => {
@@ -232,18 +267,59 @@ function handleRequest(req, res) {
     return;
   }
 
-  fs.readFile(filePath, (error, data) => {
-    if (error) {
+  fs.stat(filePath, (statErr, stat) => {
+    if (statErr || !stat.isFile()) {
       res.writeHead(404, { 'Content-Type': 'text/plain; charset=utf-8' });
       res.end('Not found');
       return;
     }
 
-    res.writeHead(200, {
-      'Content-Type': contentType(filePath),
-      'Cache-Control': 'no-store'
+    const isVendor = url.pathname.startsWith('/vendor/');
+    const etag = `W/"${stat.size}-${Math.trunc(stat.mtimeMs)}"`;
+    const cacheControl = isVendor ? 'public, max-age=31536000, immutable' : 'no-cache';
+
+    if (req.headers['if-none-match'] === etag) {
+      res.writeHead(304, {
+        'ETag': etag,
+        'Cache-Control': cacheControl
+      });
+      res.end();
+      return;
+    }
+
+    fs.readFile(filePath, (error, data) => {
+      if (error) {
+        res.writeHead(404, { 'Content-Type': 'text/plain; charset=utf-8' });
+        res.end('Not found');
+        return;
+      }
+
+      const headers = {
+        'Content-Type': contentType(filePath),
+        'ETag': etag,
+        'Cache-Control': cacheControl
+      };
+
+      if (isCompressible(filePath) && data.length >= 1024 && acceptsGzip(req)) {
+        zlib.gzip(data, (gzipErr, compressed) => {
+          if (gzipErr) {
+            res.writeHead(200, headers);
+            res.end(data);
+            return;
+          }
+          res.writeHead(200, {
+            ...headers,
+            'Content-Encoding': 'gzip',
+            'Vary': 'Accept-Encoding'
+          });
+          res.end(compressed);
+        });
+        return;
+      }
+
+      res.writeHead(200, headers);
+      res.end(data);
     });
-    res.end(data);
   });
 }
 
@@ -252,8 +328,8 @@ function pollForChanges() {
     const nextFingerprint = computeProfilesFingerprint();
     if (nextFingerprint !== lastFingerprint) {
       lastFingerprint = nextFingerprint;
-      currentState = buildState();
-      broadcast('state', currentState);
+      setCurrentState(buildState());
+      broadcastRaw('state', currentStateJson);
       broadcast('pulse', {
         type: currentState.ok ? 'success' : 'error',
         message: currentState.message,
@@ -266,14 +342,13 @@ function pollForChanges() {
       generatedAt: new Date().toISOString(),
       count: lastGoodContributors.length,
       contributors: lastGoodContributors,
-      previewContributors: [],
       errors: [`服务读取数据失败: ${error.message}`],
       warnings: [],
       github: githubState,
       message: '服务读取数据失败，页面暂时保留上一次有效结果'
     };
-    currentState = payload;
-    broadcast('state', payload);
+    setCurrentState(payload);
+    broadcastRaw('state', currentStateJson);
   }
 }
 

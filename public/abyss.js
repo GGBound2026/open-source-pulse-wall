@@ -90,40 +90,94 @@ function createCircularPointMaterial(timeUniform, pixelRatio, minPx, maxPx, base
   });
 }
 
-function buildSkyDome(skyRoot) {
+function buildSkyDome(skyRoot, renderer) {
+  const proceduralMat = new THREE.ShaderMaterial({
+    side: THREE.BackSide,
+    depthWrite: false,
+    uniforms: { time: { value: 0 } },
+    vertexShader: `
+      varying vec3 vDir;
+      void main() {
+        vDir = normalize(position);
+        gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+      }
+    `,
+    fragmentShader: `
+      varying vec3 vDir;
+      ${ABYSS_NOISE_GLSL}
+      void main() {
+        vec3 d = normalize(vDir);
+        vec3 bandN = normalize(vec3(0.28, 1.0, 0.42));
+        float b = dot(d, bandN);
+        float band = exp(-b * b * 14.0);
+        float n1 = fbm3(d * 2.1);
+        float n2 = fbm3(d * 4.6 + n1 * 1.7);
+        vec3 col = vec3(0.0005, 0.0009, 0.0024);
+        col += vec3(0.20, 0.07, 0.36) * smoothstep(0.42, 0.86, n1 * 0.75 + n2 * 0.45) * 0.028;
+        col += vec3(0.02, 0.17, 0.27) * smoothstep(0.5, 0.9, fbm3(d * 3.0 + 7.0)) * 0.026;
+        col += vec3(0.36, 0.09, 0.11) * smoothstep(0.56, 0.95, fbm3(d * 2.4 - 3.0)) * 0.014;
+        col += vec3(0.34, 0.32, 0.46) * band * (0.25 + 0.75 * n2) * 0.036;
+        col *= 1.0 - band * smoothstep(0.48, 0.78, fbm3(d * 9.0)) * 0.68;
+        gl_FragColor = vec4(col, 1.0);
+      }
+    `
+  });
+
+  // The sky dome is completely static; bake the 5x fbm3 shader ONCE into a CubeTexture
+  // so every subsequent frame performs a single cubemap lookup instead of 200 3D hashes/px.
+  let skyMat = proceduralMat;
+  if (renderer) {
+    try {
+      const cubeType = renderer.capabilities?.isWebGL2 ? THREE.HalfFloatType : THREE.UnsignedByteType;
+      const cubeRT = new THREE.WebGLCubeRenderTarget(512, {
+        generateMipmaps: false,
+        minFilter: THREE.LinearFilter,
+        magFilter: THREE.LinearFilter,
+        type: cubeType
+      });
+      const bakeScene = new THREE.Scene();
+      const bakeGeo = new THREE.SphereGeometry(100, 32, 16);
+      const bakeMesh = new THREE.Mesh(bakeGeo, proceduralMat);
+      bakeScene.add(bakeMesh);
+
+      const prevTarget = renderer.getRenderTarget();
+      const prevAutoClear = renderer.autoClear;
+      renderer.autoClear = true;
+      const cubeCam = new THREE.CubeCamera(1, 500, cubeRT);
+      cubeCam.update(renderer, bakeScene);
+      renderer.setRenderTarget(prevTarget);
+      renderer.autoClear = prevAutoClear;
+
+      bakeGeo.dispose();
+      proceduralMat.dispose();
+
+      skyMat = new THREE.ShaderMaterial({
+        side: THREE.BackSide,
+        depthWrite: false,
+        uniforms: { uSkyMap: { value: cubeRT.texture } },
+        vertexShader: `
+          varying vec3 vDir;
+          void main() {
+            vDir = position;
+            gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+          }
+        `,
+        fragmentShader: `
+          uniform samplerCube uSkyMap;
+          varying vec3 vDir;
+          void main() {
+            gl_FragColor = textureCube(uSkyMap, normalize(vDir));
+          }
+        `
+      });
+    } catch {
+      skyMat = proceduralMat;
+    }
+  }
+
   const sky = new THREE.Mesh(
-    new THREE.SphereGeometry(735000, 64, 32),
-    new THREE.ShaderMaterial({
-      side: THREE.BackSide,
-      depthWrite: false,
-      uniforms: { time: { value: 0 } },
-      vertexShader: `
-        varying vec3 vDir;
-        void main() {
-          vDir = normalize(position);
-          gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
-        }
-      `,
-      fragmentShader: `
-        varying vec3 vDir;
-        ${ABYSS_NOISE_GLSL}
-        void main() {
-          vec3 d = normalize(vDir);
-          vec3 bandN = normalize(vec3(0.28, 1.0, 0.42));
-          float b = dot(d, bandN);
-          float band = exp(-b * b * 14.0);
-          float n1 = fbm3(d * 2.1);
-          float n2 = fbm3(d * 4.6 + n1 * 1.7);
-          vec3 col = vec3(0.0005, 0.0009, 0.0024);
-          col += vec3(0.20, 0.07, 0.36) * smoothstep(0.42, 0.86, n1 * 0.75 + n2 * 0.45) * 0.028;
-          col += vec3(0.02, 0.17, 0.27) * smoothstep(0.5, 0.9, fbm3(d * 3.0 + 7.0)) * 0.026;
-          col += vec3(0.36, 0.09, 0.11) * smoothstep(0.56, 0.95, fbm3(d * 2.4 - 3.0)) * 0.014;
-          col += vec3(0.34, 0.32, 0.46) * band * (0.25 + 0.75 * n2) * 0.036;
-          col *= 1.0 - band * smoothstep(0.48, 0.78, fbm3(d * 9.0)) * 0.68;
-          gl_FragColor = vec4(col, 1.0);
-        }
-      `
-    })
+    new THREE.SphereGeometry(735000, 24, 16),
+    skyMat
   );
   sky.renderOrder = -20;
   sky.frustumCulled = false;
@@ -186,12 +240,13 @@ function buildOriginalColossus(skyRoot, helpers = {}) {
   // Original colossal ringed gas giant recovered from pre-eye history, scaled to the expanded solar system
   const giantRadius = 107200;
   const giantPos = new THREE.Vector3(50701, 17980, -386272);
-  const { gasGiantCanvas, ringCanvas, canvasTexture, remapRingUVs } = helpers;
+  const { gasGiantCanvas, ringCanvas, canvasTexture, remapRingUVs, scheduleTexture } = helpers;
 
   const fallbackTex = new THREE.DataTexture(new Uint8Array([185, 135, 90, 255]), 1, 1);
   fallbackTex.needsUpdate = true;
 
-  const giantTex = (gasGiantCanvas && canvasTexture)
+  const hasTextureBuilders = Boolean(gasGiantCanvas && canvasTexture);
+  const giantTex = (hasTextureBuilders && !scheduleTexture)
     ? canvasTexture(gasGiantCanvas('#b9875a', 'colossus', 1024, 512, { accent: '#6fb3c8' }), { repeat: true })
     : fallbackTex;
   const lightDir = new THREE.Vector3(-0.92, 0.26, -0.29).normalize();
@@ -200,7 +255,7 @@ function buildOriginalColossus(skyRoot, helpers = {}) {
   skyRoot.add(colossusAnchor);
 
   const giant = new THREE.Mesh(
-    new THREE.SphereGeometry(giantRadius, 128, 64),
+    new THREE.SphereGeometry(giantRadius, 72, 40),
     new THREE.ShaderMaterial({
       uniforms: { map: { value: giantTex }, lightDir: { value: lightDir }, time: { value: 0 } },
       vertexShader: `
@@ -238,16 +293,16 @@ function buildOriginalColossus(skyRoot, helpers = {}) {
   );
   giant.rotation.z = 0.32;
   giant.renderOrder = -10;
-  giant.frustumCulled = false;
   colossusAnchor.add(giant);
 
   const ringInner = giantRadius * 1.32;
   const ringOuter = giantRadius * 2.35;
-  const giantRingGeo = new THREE.RingGeometry(ringInner, ringOuter, 256, 1);
+  const giantRingGeo = new THREE.RingGeometry(ringInner, ringOuter, 128, 1);
   if (remapRingUVs) remapRingUVs(giantRingGeo, ringInner, ringOuter);
 
-  const ringTex = (ringCanvas && canvasTexture)
-    ? canvasTexture(ringCanvas('colossus-ring', 1024))
+  const hasRingBuilder = Boolean(ringCanvas && canvasTexture);
+  const ringTex = (hasRingBuilder && !scheduleTexture)
+    ? canvasTexture(ringCanvas('colossus-ring', 512))
     : fallbackTex;
   const giantRing = new THREE.Mesh(
     giantRingGeo,
@@ -262,8 +317,22 @@ function buildOriginalColossus(skyRoot, helpers = {}) {
   );
   giantRing.rotation.set(-Math.PI / 2 + 0.36, 0.18, 0.32);
   giantRing.renderOrder = -9;
-  giantRing.frustumCulled = false;
   colossusAnchor.add(giantRing);
+
+  if (scheduleTexture && hasTextureBuilders) {
+    scheduleTexture(0, () => {
+      giant.material.uniforms.map.value = canvasTexture(
+        gasGiantCanvas('#b9875a', 'colossus', 1024, 512, { accent: '#6fb3c8' }),
+        { repeat: true }
+      );
+    });
+  }
+  if (scheduleTexture && hasRingBuilder) {
+    scheduleTexture(0, () => {
+      giantRing.material.map = canvasTexture(ringCanvas('colossus-ring', 512));
+      giantRing.material.needsUpdate = true;
+    });
+  }
 
   return { colossusAnchor, giant, giantRing };
 }
@@ -276,7 +345,94 @@ const DISTANT_GALAXIES = [
   { pos: [-345000, -70000, 405000], radius: 42000, arms: 2, rot: [1.18, -0.40, -0.60], spin: 0.0028, core: '#fef08a', arm: '#5eead4', outer: '#60a5fa', seed: 0x7071 }
 ];
 
-function buildDistantGalaxies(skyRoot, galaxyStarMat) {
+function createGalaxyNebulaMaterial(cfg, forBake = false) {
+  return new THREE.ShaderMaterial({
+    uniforms: {
+      uArms: { value: cfg.arms },
+      uCoreColor: { value: new THREE.Color(cfg.core) },
+      uArmColor: { value: new THREE.Color(cfg.arm) },
+      uOuterColor: { value: new THREE.Color(cfg.outer) },
+      uSeed: { value: (cfg.seed % 97) * 0.37 }
+    },
+    vertexShader: `
+      varying vec2 vUv;
+      void main() {
+        vUv = uv - vec2(0.5);
+        gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+      }
+    `,
+    fragmentShader: `
+      uniform float uArms;
+      uniform vec3 uCoreColor;
+      uniform vec3 uArmColor;
+      uniform vec3 uOuterColor;
+      uniform float uSeed;
+      varying vec2 vUv;
+      ${ABYSS_NOISE_GLSL}
+      void main() {
+        float r = length(vUv) * 2.0;
+        if (r > 0.96) discard;
+        float angle = atan(vUv.y, vUv.x);
+        float twist = log(max(r, 0.045)) * 3.1;
+        float n = fbm3(vec3(vUv * 5.2, uSeed));
+
+        float armWave = 0.5 + 0.5 * cos(uArms * (angle + twist) + (n - 0.5) * 1.45);
+        float armGlow = pow(armWave, 1.5) * exp(-r * 2.4);
+        float discHaze = exp(-r * 3.1) * 0.30;
+        float bulge = exp(-r * r * 36.0) * 0.62;
+        float rimFade = smoothstep(0.95, 0.35, r);
+
+        vec3 col = mix(uOuterColor, uArmColor, smoothstep(0.85, 0.22, r));
+        col = mix(col, uCoreColor, clamp(bulge * 1.6, 0.0, 1.0));
+        float lum = clamp((bulge + armGlow * 0.28 + discHaze) * rimFade, 0.0, 0.54);
+
+        gl_FragColor = vec4(col * lum, lum);
+      }
+    `,
+    side: THREE.DoubleSide,
+    transparent: !forBake,
+    depthWrite: false,
+    blending: forBake ? THREE.NoBlending : THREE.AdditiveBlending
+  });
+}
+
+function bakeGalaxyDiscTexture(renderer, cfg) {
+  const rtType = renderer.capabilities?.isWebGL2 ? THREE.HalfFloatType : THREE.UnsignedByteType;
+  const rt = new THREE.WebGLRenderTarget(256, 256, {
+    generateMipmaps: false,
+    minFilter: THREE.LinearFilter,
+    magFilter: THREE.LinearFilter,
+    type: rtType
+  });
+  const bakeScene = new THREE.Scene();
+  const bakeCam = new THREE.OrthographicCamera(-1, 1, 1, -1, 0, 2);
+  bakeCam.position.z = 1;
+  const quadGeo = new THREE.PlaneGeometry(2, 2);
+  const quadMat = createGalaxyNebulaMaterial(cfg, true);
+  bakeScene.add(new THREE.Mesh(quadGeo, quadMat));
+
+  const prevTarget = renderer.getRenderTarget();
+  const prevClearColor = new THREE.Color();
+  renderer.getClearColor(prevClearColor);
+  const prevClearAlpha = renderer.getClearAlpha();
+  const prevAutoClear = renderer.autoClear;
+
+  renderer.autoClear = true;
+  renderer.setRenderTarget(rt);
+  renderer.setClearColor(0x000000, 0);
+  renderer.clear(true, false, false);
+  renderer.render(bakeScene, bakeCam);
+
+  renderer.setClearColor(prevClearColor, prevClearAlpha);
+  renderer.setRenderTarget(prevTarget);
+  renderer.autoClear = prevAutoClear;
+
+  quadGeo.dispose();
+  quadMat.dispose();
+  return rt.texture;
+}
+
+function buildDistantGalaxies(skyRoot, galaxyStarMat, renderer) {
   const spinners = [];
 
   for (const cfg of DISTANT_GALAXIES) {
@@ -291,57 +447,25 @@ function buildDistantGalaxies(skyRoot, galaxyStarMat) {
 
     const planeSize = cfg.radius * 2.2;
     const planeGeo = new THREE.PlaneGeometry(planeSize, planeSize, 1, 1).rotateX(-Math.PI / 2);
-    const nebulaMat = new THREE.ShaderMaterial({
-      uniforms: {
-        uArms: { value: cfg.arms },
-        uCoreColor: { value: new THREE.Color(cfg.core) },
-        uArmColor: { value: new THREE.Color(cfg.arm) },
-        uOuterColor: { value: new THREE.Color(cfg.outer) },
-        uSeed: { value: (cfg.seed % 97) * 0.37 }
-      },
-      vertexShader: `
-        varying vec2 vUv;
-        void main() {
-          vUv = uv - vec2(0.5);
-          gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
-        }
-      `,
-      fragmentShader: `
-        uniform float uArms;
-        uniform vec3 uCoreColor;
-        uniform vec3 uArmColor;
-        uniform vec3 uOuterColor;
-        uniform float uSeed;
-        varying vec2 vUv;
-        ${ABYSS_NOISE_GLSL}
-        void main() {
-          float r = length(vUv) * 2.0;
-          if (r > 0.96) discard;
-          float angle = atan(vUv.y, vUv.x);
-          float twist = log(max(r, 0.045)) * 3.1;
-          float n = fbm3(vec3(vUv * 5.2, uSeed));
-
-          float armWave = 0.5 + 0.5 * cos(uArms * (angle + twist) + (n - 0.5) * 1.45);
-          float armGlow = pow(armWave, 1.5) * exp(-r * 2.4);
-          float discHaze = exp(-r * 3.1) * 0.30;
-          float bulge = exp(-r * r * 36.0) * 0.62;
-          float rimFade = smoothstep(0.95, 0.35, r);
-
-          vec3 col = mix(uOuterColor, uArmColor, smoothstep(0.85, 0.22, r));
-          col = mix(col, uCoreColor, clamp(bulge * 1.6, 0.0, 1.0));
-          float lum = clamp((bulge + armGlow * 0.28 + discHaze) * rimFade, 0.0, 0.54);
-
-          gl_FragColor = vec4(col * lum, lum);
-        }
-      `,
-      side: THREE.DoubleSide,
-      transparent: true,
-      depthWrite: false,
-      blending: THREE.AdditiveBlending
-    });
+    let nebulaMat;
+    if (renderer) {
+      try {
+        const bakedTex = bakeGalaxyDiscTexture(renderer, cfg);
+        nebulaMat = new THREE.MeshBasicMaterial({
+          map: bakedTex,
+          side: THREE.DoubleSide,
+          transparent: true,
+          depthWrite: false,
+          blending: THREE.AdditiveBlending
+        });
+      } catch {
+        nebulaMat = createGalaxyNebulaMaterial(cfg, false);
+      }
+    } else {
+      nebulaMat = createGalaxyNebulaMaterial(cfg, false);
+    }
     const discMesh = new THREE.Mesh(planeGeo, nebulaMat);
     discMesh.renderOrder = -12;
-    discMesh.frustumCulled = false;
     spinner.add(discMesh);
 
     const rand = mulberry32(cfg.seed);
@@ -384,10 +508,10 @@ function buildDistantGalaxies(skyRoot, galaxyStarMat) {
     geo.setAttribute('aColor', new THREE.BufferAttribute(colors, 3));
     geo.setAttribute('aSize', new THREE.BufferAttribute(sizes, 1));
     geo.setAttribute('aPhase', new THREE.BufferAttribute(phases, 1));
+    geo.computeBoundingSphere();
 
     const pts = new THREE.Points(geo, galaxyStarMat);
     pts.renderOrder = -11;
-    pts.frustumCulled = false;
     spinner.add(pts);
   }
 
@@ -403,10 +527,11 @@ export function buildAbyss(bg, helpers = {}) {
 
   const domePointMat = createCircularPointMaterial(timeUniform, pixelRatio, 1.1, 4.4, 0.94);
   const galaxyPointMat = createCircularPointMaterial(timeUniform, pixelRatio, 1.0, 3.6, 0.88);
+  const renderer = helpers.renderer || null;
 
-  buildSkyDome(skyRoot);
+  buildSkyDome(skyRoot, renderer);
   const dome = buildStarDome(skyRoot, domePointMat);
-  const galaxies = buildDistantGalaxies(skyRoot, galaxyPointMat);
+  const galaxies = buildDistantGalaxies(skyRoot, galaxyPointMat, renderer);
   const { colossusAnchor, giant } = buildOriginalColossus(skyRoot, helpers);
 
   return {

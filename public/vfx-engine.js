@@ -4092,14 +4092,24 @@
       this.nextHoverBurstAt = 0;
       this.lastAmbientCard = null;
       this.introQueued = false;
+      this.canvasSized = false;
+      this.radiusCache = new WeakMap();
 
       if (!this.canvas || !this.ctx) return;
       this.handleResize = this.handleResize.bind(this);
+      this.handleVisibility = this.handleVisibility.bind(this);
       this.tick = this.tick.bind(this);
-      this.handleResize();
       window.addEventListener('resize', this.handleResize, { passive: true });
+      document.addEventListener('visibilitychange', this.handleVisibility);
       this.bindMotionMedia();
-      this.startLoop();
+      if (this.ambient) {
+        this.handleResize();
+        this.startLoop();
+      } else {
+        // Keep the overlay canvas 1x1 until an effect actually runs (saves ~20MB backing store on idle).
+        this.canvas.width = 1;
+        this.canvas.height = 1;
+      }
     }
 
     bindMotionMedia() {
@@ -4112,9 +4122,40 @@
       if (mq.addEventListener) mq.addEventListener('change', update);
     }
 
-    handleResize() {
+    handleVisibility() {
+      if (document.hidden) {
+        this.stopLoop();
+      } else if (this.shouldKeepRunning()) {
+        this.ensureLoop();
+      }
+    }
+
+    hasActiveVisuals() {
+      return Boolean(
+        this.effects.length ||
+        this.sparks.length ||
+        this.motes.length ||
+        this.borderFlashes.length ||
+        this.cardHalos.length
+      );
+    }
+
+    shouldKeepRunning() {
+      if (this.paused || this.reducedMotion || document.hidden) return false;
+      return Boolean(this.ambient || this.hoveredCard || this.hasActiveVisuals());
+    }
+
+    ensureCanvasSized() {
       if (!this.canvas) return;
-      this.dpr = Math.min(window.devicePixelRatio || 1, 2);
+      const curDpr = Math.min(window.devicePixelRatio || 1, 2);
+      if (!this.canvasSized || window.innerWidth !== this.width || window.innerHeight !== this.height || curDpr !== this.dpr) {
+        this.resizeCanvasNow(curDpr);
+      }
+    }
+
+    resizeCanvasNow(curDpr = Math.min(window.devicePixelRatio || 1, 2)) {
+      if (!this.canvas) return;
+      this.dpr = curDpr;
       this.width = window.innerWidth;
       this.height = window.innerHeight;
       this.canvas.width = Math.round(this.width * this.dpr);
@@ -4122,12 +4163,48 @@
       this.canvas.style.width = `${this.width}px`;
       this.canvas.style.height = `${this.height}px`;
       this.ctx.setTransform(this.dpr, 0, 0, this.dpr, 0, 0);
+      this.canvasSized = true;
+    }
+
+    ensureLoop() {
+      if (!this.canvas || !this.ctx || !this.shouldKeepRunning()) return;
+      this.ensureCanvasSized();
+      if (!this.rafId) {
+        this.lastFrameAt = performance.now();
+        this.rafId = window.requestAnimationFrame(this.tick);
+      }
+    }
+
+    stopLoop() {
+      if (this.rafId) {
+        window.cancelAnimationFrame(this.rafId);
+        this.rafId = 0;
+      }
+    }
+
+    getCardBorderRadius(card, fallback = 4) {
+      if (!card) return fallback;
+      let radius = this.radiusCache.get(card);
+      if (radius === undefined) {
+        radius = parseFloat(window.getComputedStyle(card).borderRadius) || fallback;
+        this.radiusCache.set(card, radius);
+      }
+      return radius;
+    }
+
+    handleResize() {
+      if (!this.canvas) return;
+      if (!this.canvasSized && !this.ambient && !this.hasActiveVisuals() && !this.hoveredCard) return;
+      this.resizeCanvasNow();
     }
 
     setPaused(paused) {
       this.paused = Boolean(paused);
       if (this.paused) this.clearAll();
-      else this.nextAmbientAt = performance.now() + 650;
+      else {
+        this.nextAmbientAt = performance.now() + 650;
+        if (this.shouldKeepRunning()) this.ensureLoop();
+      }
     }
 
     clearAll() {
@@ -4138,7 +4215,8 @@
       this.cardHalos.length = 0;
       this.setSpotlightCard(null);
       this.awaitingBreather = false;
-      if (this.ctx) this.ctx.clearRect(0, 0, this.width, this.height);
+      if (this.ctx && this.canvasSized) this.ctx.clearRect(0, 0, this.width, this.height);
+      if (!this.shouldKeepRunning()) this.stopLoop();
     }
 
     setSpotlightCard(card) {
@@ -4231,6 +4309,7 @@
           this.triggerForCard(this.hoveredCard, { intensity: 1.18, unleashed: true });
         }
         this.nextHoverBurstAt = performance.now() + rand(2100, 2600);
+        this.ensureLoop();
       } else if (!this.hoveredCard && this.directorMode === 'spotlight' && this.effects.length === 0) {
         this.setSpotlightCard(null);
       }
@@ -4353,6 +4432,7 @@
       const rect = card.getBoundingClientRect();
       if (rect.width < 20 || rect.height < 20) return;
 
+      this.ensureCanvasSized();
       if (this.effects.length >= this.maxEffects) this.effects.shift();
 
       switch (lineageId) {
@@ -4408,6 +4488,7 @@
           this.spawnDragonSummon(card, rect, spec, tier, intensity, unleashed);
           break;
       }
+      this.ensureLoop();
     }
 
     // =========================================================================
@@ -5937,7 +6018,7 @@
       if (p < 0.45) {
         const wp = p / 0.45;
         const expand = wp * 34;
-        const baseR = parseFloat(window.getComputedStyle(fx.card).borderRadius) || 14;
+        const baseR = this.getCardBorderRadius(fx.card, 14);
         ctx.save();
         roundedRectPath(
           ctx,
@@ -6483,22 +6564,22 @@
     // MAIN UPDATE & RENDER LOOP
     // =========================================================================
     startLoop() {
+      this.ensureCanvasSized();
       this.lastFrameAt = performance.now();
       this.nextAmbientAt = this.lastFrameAt + 1900;
-      this.rafId = window.requestAnimationFrame(this.tick);
+      if (!this.rafId) {
+        this.rafId = window.requestAnimationFrame(this.tick);
+      }
     }
 
     tick(now) {
-      this.rafId = window.requestAnimationFrame(this.tick);
+      this.rafId = 0;
       const dt = Math.min(0.05, Math.max(0.001, (now - this.lastFrameAt) / 1000));
       this.lastFrameAt = now;
 
       if (this.paused || this.reducedMotion || document.hidden) return;
 
-      const curDpr = Math.min(window.devicePixelRatio || 1, 2);
-      if (window.innerWidth !== this.width || window.innerHeight !== this.height || curDpr !== this.dpr) {
-        this.handleResize();
-      }
+      this.ensureCanvasSized();
 
       if (this.directorMode === 'spotlight') {
         // Spotlight Director: strictly ONE actor at a time -> curtain close -> 1.5s-2.5s breather -> next podium card (#1 -> #2 -> #3...)
@@ -6567,12 +6648,26 @@
         }
       }
 
-      if (!this.effects.length && !this.sparks.length && !this.motes.length && !this.borderFlashes.length && !this.cardHalos.length) {
+      if (!this.hasActiveVisuals()) {
+        if (this.shouldKeepRunning()) {
+          this.rafId = window.requestAnimationFrame(this.tick);
+        }
         return;
       }
 
       const ctx = this.ctx;
       ctx.clearRect(0, 0, this.width, this.height);
+
+      // Cache card bounding rects once per frame across halos, flashes, and effects.
+      const frameRects = new Map();
+      const rectFor = (card) => {
+        let r = frameRects.get(card);
+        if (r === undefined) {
+          r = card.getBoundingClientRect();
+          frameRects.set(card, r);
+        }
+        return r;
+      };
 
       for (let i = this.cardHalos.length - 1; i >= 0; i -= 1) {
         const halo = this.cardHalos[i];
@@ -6581,7 +6676,7 @@
           this.cardHalos.splice(i, 1);
           continue;
         }
-        this.drawCardHalo(ctx, halo);
+        this.drawCardHalo(ctx, halo, rectFor(halo.card));
       }
 
       for (let i = this.borderFlashes.length - 1; i >= 0; i -= 1) {
@@ -6591,7 +6686,7 @@
           this.borderFlashes.splice(i, 1);
           continue;
         }
-        this.drawBorderFlash(ctx, flash);
+        this.drawBorderFlash(ctx, flash, rectFor(flash.card));
       }
 
       for (let i = this.effects.length - 1; i >= 0; i -= 1) {
@@ -6601,7 +6696,7 @@
           this.effects.splice(i, 1);
           continue;
         }
-        const rect = fx.card.getBoundingClientRect();
+        const rect = rectFor(fx.card);
         if (rect.width < 10 || rect.height < 10) continue;
 
         switch (fx.type) {
@@ -6706,16 +6801,23 @@
         ctx.stroke();
         ctx.restore();
       }
+
+      if (this.shouldKeepRunning()) {
+        this.rafId = window.requestAnimationFrame(this.tick);
+      } else {
+        // Clear final frame cleanly before putting the loop to sleep.
+        ctx.clearRect(0, 0, this.width, this.height);
+      }
     }
 
-    drawCardHalo(ctx, halo) {
-      const rect = halo.card.getBoundingClientRect();
+    drawCardHalo(ctx, halo, cachedRect = null) {
+      const rect = cachedRect || halo.card.getBoundingClientRect();
       if (rect.width < 20 || rect.height < 20) return;
       const p = clamp(halo.age / Math.max(0.05, halo.duration), 0, 1);
       const env = p < 0.18 ? p / 0.18 : Math.pow(1 - (p - 0.18) / 0.82, 1.4);
       const expand = lerp(0, 6, p);
 
-      const baseRadius = parseFloat(window.getComputedStyle(halo.card).borderRadius) || 4;
+      const baseRadius = this.getCardBorderRadius(halo.card, 4);
       ctx.save();
       roundedRectPath(ctx, rect.left - expand, rect.top - expand, rect.width + expand * 2, rect.height + expand * 2, baseRadius + expand * 0.4);
       ctx.globalAlpha = env * 0.44 * halo.strength;
@@ -6736,8 +6838,8 @@
       ctx.restore();
     }
 
-    drawBorderFlash(ctx, flash) {
-      const rect = flash.card.getBoundingClientRect();
+    drawBorderFlash(ctx, flash, cachedRect = null) {
+      const rect = cachedRect || flash.card.getBoundingClientRect();
       if (rect.width < 10 || rect.height < 10) return;
       const p = clamp(flash.age / Math.max(0.05, flash.duration), 0, 1);
       const alpha = Math.pow(1 - p, 1.5);

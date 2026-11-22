@@ -1089,6 +1089,19 @@ function collectRecentCheers(contributors) {
   return items.slice(0, RECENT_CHEERS_LIMIT);
 }
 
+function sanitizePublicGithubState(githubState) {
+  if (!githubState || typeof githubState !== 'object') return githubState;
+  const {
+    scoringCommits: _scoringCommits,
+    fileContributors: _fileContributors,
+    commits: _commits,
+    issues: _issues,
+    pullRequests: _pullRequests,
+    ...publicGithub
+  } = githubState;
+  return publicGithub;
+}
+
 function buildContributorState({ githubState = buildUnconfiguredGithubState(), fallbackContributors = [] } = {}) {
   const generatedAt = new Date().toISOString();
   const fingerprint = computeProfilesFingerprint();
@@ -1109,7 +1122,6 @@ function buildContributorState({ githubState = buildUnconfiguredGithubState(), f
   const ok = result.errors.length === 0;
   const contributors = ok ? normalized : fallbackContributors;
   const cheersTotal = contributors.reduce((sum, profile) => sum + profile.cheers.length, 0);
-  const recentCheers = collectRecentCheers(contributors);
 
   return {
     ok,
@@ -1117,10 +1129,8 @@ function buildContributorState({ githubState = buildUnconfiguredGithubState(), f
     fingerprint,
     count: contributors.length,
     contributors,
-    previewContributors: normalized,
     cheersTotal,
-    recentCheers,
-    github: githubState,
+    github: sanitizePublicGithubState(githubState),
     errors: result.errors,
     warnings: result.warnings,
     message: ok

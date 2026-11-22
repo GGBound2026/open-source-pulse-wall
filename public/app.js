@@ -1308,26 +1308,39 @@ function makeValueNoise(seed) {
   const rand = seededRandom(seed);
   const grid = new Float32Array(N * N);
   for (let i = 0; i < grid.length; i += 1) grid[i] = rand();
-  // period-aware lookup → seamless in x for equirect textures
-  const noise = (x, y, period) => {
-    const xi = Math.floor(x);
-    const yi = Math.floor(y);
-    const xf = x - xi;
-    const yf = y - yi;
-    const px = (i) => ((i % period) + period) % period;
-    const g = (i, j) => grid[(((j % N) + N) % N) * N + px(i)];
-    const u = xf * xf * (3 - 2 * xf);
-    const v = yf * yf * (3 - 2 * yf);
-    const a = g(xi, yi) + (g(xi + 1, yi) - g(xi, yi)) * u;
-    const b = g(xi, yi + 1) + (g(xi + 1, yi + 1) - g(xi, yi + 1)) * u;
-    return a + (b - a) * v;
-  };
+  // period-aware lookup → seamless in x for equirect textures (inlined for hot pixel loops)
   return (u, v, base = 8, octaves = 4) => {
     let sum = 0;
     let amp = 0.5;
     let freq = base;
     for (let o = 0; o < octaves; o += 1) {
-      sum += amp * noise(u * freq, v * freq * 0.5, freq);
+      const x = u * freq;
+      const y = v * freq * 0.5;
+      const xi = x | 0;
+      const yi = y | 0;
+      const xf = x - xi;
+      const yf = y - yi;
+      const fx = xf * xf * (3 - 2 * xf);
+      const fy = yf * yf * (3 - 2 * yf);
+      const y0 = (yi & 255) << 8;
+      const y1 = ((yi + 1) & 255) << 8;
+      let x0;
+      let x1;
+      if ((freq & (freq - 1)) === 0) {
+        const mask = freq - 1;
+        x0 = xi & mask;
+        x1 = (xi + 1) & mask;
+      } else {
+        x0 = xi % freq;
+        x1 = (xi + 1) % freq;
+      }
+      const g00 = grid[y0 + x0];
+      const g10 = grid[y0 + x1];
+      const g01 = grid[y1 + x0];
+      const g11 = grid[y1 + x1];
+      const a = g00 + (g10 - g00) * fx;
+      const b = g01 + (g11 - g01) * fx;
+      sum += amp * (a + (b - a) * fy);
       freq *= 2;
       amp *= 0.5;
     }
@@ -1596,16 +1609,17 @@ function rockyCanvas(seedKey, width = 256, height = 128) {
   return canvas;
 }
 
-function ringCanvas(seedKey, styleOrWidth = 'single', bandIdx = 0, width = 1024) {
+function ringCanvas(seedKey, styleOrWidth = 'single', bandIdx = 0, width = 512) {
   let styleId = 'single';
   let w = width;
   if (typeof styleOrWidth === 'number') w = styleOrWidth;
   else if (typeof styleOrWidth === 'string') styleId = styleOrWidth;
 
-  const canvas = makeCanvas(w, 16);
+  const h = 2;
+  const canvas = makeCanvas(w, h);
   const g = canvas.getContext('2d');
   const rand = seededRandom(hashString(`${seedKey}:${styleId}:${bandIdx}`, 0x1b873593));
-  const img = g.createImageData(w, 16);
+  const img = g.createImageData(w, h);
   const data = img.data;
   const finePhase = rand() * TAU;
 
@@ -1669,13 +1683,16 @@ function ringCanvas(seedKey, styleOrWidth = 'single', bandIdx = 0, width = 1024)
     const gc = Math.round(218 + warm * 24);
     const b = Math.round(246 - warm * 38);
     const alphaByte = Math.round(a * 255);
-    for (let y = 0; y < 16; y += 1) {
-      const i = (y * w + x) * 4;
-      data[i] = r;
-      data[i + 1] = gc;
-      data[i + 2] = b;
-      data[i + 3] = alphaByte;
-    }
+    const i0 = x * 4;
+    const i1 = (w + x) * 4;
+    data[i0] = r;
+    data[i0 + 1] = gc;
+    data[i0 + 2] = b;
+    data[i0 + 3] = alphaByte;
+    data[i1] = r;
+    data[i1 + 1] = gc;
+    data[i1 + 2] = b;
+    data[i1 + 3] = alphaByte;
   }
   g.putImageData(img, 0, 0);
   return canvas;
@@ -1745,12 +1762,69 @@ const world = {
   belt: null,
   background: null,
   links: null,
-  textures: {}
+  textures: {},
+  materials: {}
 };
 
+let viewportW = typeof window !== 'undefined' ? window.innerWidth : 1280;
+let viewportH = typeof window !== 'undefined' ? window.innerHeight : 720;
+let hasCardOpen = false;
+let renderRafId = 0;
+
 const SPHERE_GEO = new THREE.SphereGeometry(1, 64, 40);
+const SMALL_PLANET_GEO = new THREE.SphereGeometry(1, 36, 24);
+const ATMO_SPHERE_GEO = new THREE.SphereGeometry(1, 32, 20);
+const MOON_SPHERE_GEO = new THREE.SphereGeometry(1, 16, 12);
 const SHOCK_GEO = new THREE.RingGeometry(0.94, 1, 128).rotateX(-Math.PI / 2);
 const textureCache = new Map();
+const solidTextureCache = new Map();
+
+function yieldToMain() {
+  if (typeof window !== 'undefined' && 'scheduler' in window && typeof window.scheduler?.yield === 'function') {
+    return window.scheduler.yield();
+  }
+  return new Promise((resolve) => window.setTimeout(resolve, 0));
+}
+
+const textureQueue = [];
+let textureQueueRunning = false;
+
+function scheduleTextureTask(priority, taskFn) {
+  textureQueue.push({ priority, taskFn });
+  if (textureQueueRunning) return;
+  textureQueueRunning = true;
+  (async () => {
+    // Let the first frame paint before crunching procedural canvas textures.
+    await yieldToMain();
+    while (textureQueue.length > 0) {
+      textureQueue.sort((a, b) => a.priority - b.priority);
+      const sliceStart = performance.now();
+      while (textureQueue.length > 0) {
+        const job = textureQueue.shift();
+        try {
+          job.taskFn();
+        } catch {
+          // Keep remaining queued textures running on individual failure
+        }
+        if (performance.now() - sliceStart >= 6) break;
+      }
+      if (textureQueue.length > 0) await yieldToMain();
+    }
+    textureQueueRunning = false;
+  })();
+}
+
+function solidColorTexture(hex) {
+  let tex = solidTextureCache.get(hex);
+  if (!tex) {
+    const [r, g, b] = hexToRgb(hex);
+    tex = new THREE.DataTexture(new Uint8Array([r, g, b, 255]), 1, 1);
+    tex.colorSpace = THREE.SRGBColorSpace;
+    tex.needsUpdate = true;
+    solidTextureCache.set(hex, tex);
+  }
+  return tex;
+}
 
 const fresnelVertex = `
   varying vec3 vNormal;
@@ -2008,16 +2082,19 @@ function orbitPosition(orbitId, angle, radius, y, out) {
 
 function initWorld() {
   const canvas = elements.canvas;
+  viewportW = window.innerWidth;
+  viewportH = window.innerHeight;
   let renderer;
   try {
-    renderer = new THREE.WebGLRenderer({ canvas, antialias: true, powerPreference: 'high-performance' });
+    // EffectComposer renders into its own offscreen FBO, so default-backbuffer MSAA is unused overhead.
+    renderer = new THREE.WebGLRenderer({ canvas, antialias: false, powerPreference: 'high-performance' });
   } catch (error) {
     if (elements.webglFallback) elements.webglFallback.hidden = false;
     console.warn('WebGL unavailable', error);
     return false;
   }
   renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 1.6));
-  renderer.setSize(window.innerWidth, window.innerHeight, false);
+  renderer.setSize(viewportW, viewportH, false);
   renderer.toneMapping = THREE.ACESFilmicToneMapping;
   renderer.toneMappingExposure = 1.0;
   renderer.outputColorSpace = THREE.SRGBColorSpace;
@@ -2026,7 +2103,7 @@ function initWorld() {
   bgScene.background = new THREE.Color(0x010207);
   const s3 = new THREE.Scene();
   s3.background = null;
-  const camera = new THREE.PerspectiveCamera(fovForAspect(window.innerWidth / window.innerHeight), window.innerWidth / window.innerHeight, 0.6, 750000);
+  const camera = new THREE.PerspectiveCamera(fovForAspect(viewportW / viewportH), viewportW / viewportH, 0.6, 750000);
   camera.position.set(...CAMERA_PRESETS.gaze.position);
 
   const controls = new OrbitControls(camera, canvas);
@@ -2059,8 +2136,10 @@ function initWorld() {
   mainPass.clear = false;
   mainPass.clearDepth = true;
   composer.addPass(mainPass);
-  const bloom = new UnrealBloomPass(new THREE.Vector2(window.innerWidth / 2, window.innerHeight / 2), 0.46, 0.42, 0.92);
+  const bloom = new UnrealBloomPass(new THREE.Vector2(viewportW / 2, viewportH / 2), 0.46, 0.42, 0.92);
   composer.addPass(bloom);
+  // EffectComposer.addPass overwrites bloom size to full DPR; restore half-res CSS pixels.
+  bloom.setSize(Math.max(1, Math.floor(viewportW * 0.5)), Math.max(1, Math.floor(viewportH * 0.5)));
   composer.addPass(new OutputPass());
 
   Object.assign(world, { ok: true, renderer, bgScene, scene: s3, camera, controls, composer, bloom, root });
@@ -2082,13 +2161,21 @@ function fovForAspect(aspect) {
 
 function resizeWorld() {
   if (!world.ok) return;
-  const w = window.innerWidth;
-  const h = window.innerHeight;
+  viewportW = window.innerWidth;
+  viewportH = window.innerHeight;
+  const w = viewportW;
+  const h = viewportH;
   world.renderer.setSize(w, h, false);
   world.camera.aspect = w / h;
   world.camera.fov = fovForAspect(w / h);
   world.camera.updateProjectionMatrix();
   world.composer.setSize(w, h);
+  if (world.bloom) {
+    world.bloom.setSize(Math.max(1, Math.floor(w * 0.5)), Math.max(1, Math.floor(h * 0.5)));
+  }
+  nav.lastViewShift = NaN;
+  hudRectCache.at = -1;
+  orbitLabelCamKey = '';
 }
 
 /* ------------------------------------------------------------ background */
@@ -2098,7 +2185,14 @@ function buildBackground() {
   world.bgScene.add(bg);
 
   // Colossal ringed world and distant galaxies framing our tiny solar system.
-  const abyss = buildAbyss(bg, { gasGiantCanvas, ringCanvas, canvasTexture, remapRingUVs });
+  const abyss = buildAbyss(bg, {
+    renderer: world.renderer,
+    gasGiantCanvas,
+    ringCanvas,
+    canvasTexture,
+    remapRingUVs,
+    scheduleTexture: scheduleTextureTask
+  });
 
   // Near-field dust for parallax depth
   const dustCount = 3800;
@@ -2194,11 +2288,11 @@ function buildSun() {
       }
     `
   });
-  const mesh = new THREE.Mesh(new THREE.SphereGeometry(SUN_RADIUS, 128, 64), material);
+  const mesh = new THREE.Mesh(new THREE.SphereGeometry(SUN_RADIUS, 80, 48), material);
   mesh.userData.isSun = true;
   group.add(mesh);
 
-  const halo = new THREE.Mesh(SPHERE_GEO, atmosphereMaterial('#ff7b24', 1.15, 3.2));
+  const halo = new THREE.Mesh(ATMO_SPHERE_GEO, atmosphereMaterial('#ff7b24', 1.15, 3.2));
   halo.scale.setScalar(SUN_RADIUS * 1.11);
   group.add(halo);
 
@@ -2220,10 +2314,23 @@ function buildSun() {
   glow.scale.setScalar(SUN_RADIUS * 4.0);
   group.add(glow);
 
-  const corona = new THREE.Sprite(spriteMat(coronaCanvas(), 0.72));
+  const coronaTex = canvasTexture(coronaCanvas(512));
+  const corona = new THREE.Sprite(new THREE.SpriteMaterial({
+    map: coronaTex,
+    transparent: true,
+    opacity: 0.72,
+    depthWrite: false,
+    blending: THREE.AdditiveBlending
+  }));
   corona.scale.setScalar(SUN_RADIUS * 3.8);
   group.add(corona);
-  const corona2 = new THREE.Sprite(spriteMat(coronaCanvas(), 0.45));
+  const corona2 = new THREE.Sprite(new THREE.SpriteMaterial({
+    map: coronaTex,
+    transparent: true,
+    opacity: 0.45,
+    depthWrite: false,
+    blending: THREE.AdditiveBlending
+  }));
   corona2.scale.setScalar(SUN_RADIUS * 3.1);
   corona2.material.rotation = 1.3;
   group.add(corona2);
@@ -2244,11 +2351,11 @@ function buildSun() {
   const disk = new THREE.Group();
   disk.rotation.set(0.42, 0, -0.18);
   group.add(disk);
-  const ringGeo = new THREE.RingGeometry(SUN_RADIUS * 1.28, SUN_RADIUS * 1.66, 256, 1);
+  const ringGeo = new THREE.RingGeometry(SUN_RADIUS * 1.28, SUN_RADIUS * 1.66, 160, 1);
   remapRingUVs(ringGeo, SUN_RADIUS * 1.28, SUN_RADIUS * 1.66);
   ringGeo.rotateX(-Math.PI / 2);
   const throneRing = new THREE.Mesh(ringGeo, new THREE.MeshBasicMaterial({
-    map: canvasTexture(ringCanvas('throne', 1024)),
+    map: canvasTexture(ringCanvas('throne', 512)),
     color: new THREE.Color('#ffcf7a'),
     transparent: true,
     opacity: 0,
@@ -2389,7 +2496,7 @@ function buildOrbits() {
     group.quaternion.copy(quat);
     world.root.add(group);
     const width = orbit.belt ? 1800 : 1400;
-    const geo = new THREE.RingGeometry(orbit.r - width, orbit.r + width, 512, 1).rotateX(-Math.PI / 2);
+    const geo = new THREE.RingGeometry(orbit.r - width, orbit.r + width, 256, 1).rotateX(-Math.PI / 2);
     const corePx = corePxByStyle[orbit.style] ?? 1.3;
     const sheetVar = orbit.belt ? 1600000 : 260000;
     const material = orbitSheetMaterial(orbit.color, { corePx, sheetVar, style: orbit.style });
@@ -2570,23 +2677,27 @@ function makeRockMaterial() {
         varying float vViewDist;
         ${ROCK_BUMP_GLSL}`)
       .replace('#include <clipping_planes_fragment>', `#include <clipping_planes_fragment>
-        float rockFade = smoothstep(uFadeNear, uFadeFar, vViewDist);
-        float rockDither = fract(52.9829189 * fract(dot(gl_FragCoord.xy, vec2(0.06711056, 0.00583715))));
-        if (rockFade < rockDither) discard;`)
+        if (vViewDist < uFadeFar) {
+          float rockFade = smoothstep(uFadeNear, uFadeFar, vViewDist);
+          float rockDither = fract(52.9829189 * fract(dot(gl_FragCoord.xy, vec2(0.06711056, 0.00583715))));
+          if (rockFade < rockDither) discard;
+        }`)
       .replace('#include <color_fragment>', `#include <color_fragment>
         float rockDetail = 1.0 - smoothstep(450.0, 4500.0, vViewDist);
-        float rockLarge = fbm3(vRockPos * 2.6 + 4.0);
-        float rockFine = noise3(vRockPos * 16.0) * rockDetail;
+        float rockLarge = rockDetail > 0.005 ? fbm3(vRockPos * 2.6 + 4.0) : noise3(vRockPos * 2.6 + 4.0);
+        float rockFine = rockDetail > 0.005 ? noise3(vRockPos * 16.0) * rockDetail : 0.0;
         diffuseColor.rgb *= 0.55 + 0.7 * rockLarge + 0.1 * rockFine;
         diffuseColor.rgb = mix(diffuseColor.rgb, diffuseColor.rgb * vec3(1.18, 1.05, 0.9), smoothstep(0.55, 0.8, rockLarge) * 0.5);`)
       .replace('#include <normal_fragment_maps>', `#include <normal_fragment_maps>
-        float rockHeight = fbm3(vRockPos * 5.5) * 0.7 + noise3(vRockPos * 20.0) * 0.22 * rockDetail;
-        normal = rockBump(-vViewPosition, normal, vec2(dFdx(rockHeight), dFdy(rockHeight)) * (0.5 + 1.1 * rockDetail));`)
+        if (rockDetail > 0.005) {
+          float rockHeight = fbm3(vRockPos * 5.5) * 0.7 + noise3(vRockPos * 20.0) * 0.22 * rockDetail;
+          normal = rockBump(-vViewPosition, normal, vec2(dFdx(rockHeight), dFdy(rockHeight)) * (0.5 + 1.1 * rockDetail));
+        }`)
       .replace('#include <emissivemap_fragment>', `#include <emissivemap_fragment>
         float rockRim = pow(1.0 - clamp(abs(dot(normal, normalize(vViewPosition))), 0.0, 1.0), 3.0);
         totalEmissiveRadiance += vec3(0.22, 0.28, 0.42) * rockRim * 0.45 + diffuseColor.rgb * 0.05;`);
   };
-  material.customProgramCacheKey = () => 'pulse-rock-v3';
+  material.customProgramCacheKey = () => 'pulse-rock-v4';
   return material;
 }
 
@@ -2625,36 +2736,38 @@ function makeContributorRockMaterial(seedKey) {
         }`)
       .replace('#include <color_fragment>', `#include <color_fragment>
         float rockDetail = 1.0 - smoothstep(180.0, 1200.0, vViewDist);
-        float rockLarge = fbm3(vRockPos * 2.8 + uSeed);
-        float rockFine = noise3(vRockPos * 14.0 + uSeed) * rockDetail;
+        float rockLarge = rockDetail > 0.01 ? fbm3(vRockPos * 2.8 + uSeed) : noise3(vRockPos * 2.8 + uSeed);
+        float rockFine = rockDetail > 0.01 ? noise3(vRockPos * 14.0 + uSeed) * rockDetail : 0.0;
         vec3 rockTint = mix(vec3(0.46, 0.5, 0.58), vec3(0.76, 0.72, 0.68), rockLarge);
         diffuseColor.rgb *= rockTint * (0.64 + 0.56 * rockLarge + 0.14 * rockFine);`)
       .replace('#include <normal_fragment_maps>', `#include <normal_fragment_maps>
         vec3 smoothViewNormal = normal;
-        float eps = 0.015;
-        float h0 = rockSample(vRockPos, rockDetail);
-        vec3 gradObj = vec3(
-          rockSample(vRockPos + vec3(eps, 0.0, 0.0), rockDetail) - h0,
-          rockSample(vRockPos + vec3(0.0, eps, 0.0), rockDetail) - h0,
-          rockSample(vRockPos + vec3(0.0, 0.0, eps), rockDetail) - h0
-        ) / eps;
-        vec3 nObj = normalize(vObjNormal);
-        vec3 tangentGradObj = gradObj - nObj * dot(gradObj, nObj);
-        float bumpStrength = 0.04 + 0.04 * rockDetail;
-        normal = normalize(normalMatrix * (nObj - bumpStrength * tangentGradObj));`)
+        if (rockDetail > 0.01) {
+          float eps = 0.015;
+          float h0 = rockSample(vRockPos, rockDetail);
+          vec3 gradObj = vec3(
+            rockSample(vRockPos + vec3(eps, 0.0, 0.0), rockDetail) - h0,
+            rockSample(vRockPos + vec3(0.0, eps, 0.0), rockDetail) - h0,
+            rockSample(vRockPos + vec3(0.0, 0.0, eps), rockDetail) - h0
+          ) / eps;
+          vec3 nObj = normalize(vObjNormal);
+          vec3 tangentGradObj = gradObj - nObj * dot(gradObj, nObj);
+          float bumpStrength = 0.04 + 0.04 * rockDetail;
+          normal = normalize(normalMatrix * (nObj - bumpStrength * tangentGradObj));
+        }`)
       .replace('#include <emissivemap_fragment>', `#include <emissivemap_fragment>
         float rockRim = pow(1.0 - clamp(abs(dot(smoothViewNormal, normalize(vViewPosition))), 0.0, 1.0), 3.0);
         totalEmissiveRadiance += vec3(0.24, 0.32, 0.48) * rockRim * 0.42 + diffuseColor.rgb * 0.05;`);
   };
-  material.customProgramCacheKey = () => 'pulse-contributor-rock-v2';
+  material.customProgramCacheKey = () => 'pulse-contributor-rock-v3';
   return material;
 }
 
 function buildBelt() {
   const orbit = ORBIT_BY_ID.outer;
   const rand = seededRandom(0xa57e);
-  const smallVariants = Array.from({ length: 6 }, (_, i) => makeRockGeometry(0x1000 + i * 977, 2));
-  const bigVariants = Array.from({ length: 3 }, (_, i) => makeRockGeometry(0x9000 + i * 1543, 4));
+  const smallVariants = Array.from({ length: 6 }, (_, i) => makeRockGeometry(0x1000 + i * 977, 1));
+  const bigVariants = Array.from({ length: 3 }, (_, i) => makeRockGeometry(0x9000 + i * 1543, 3));
   const material = makeRockMaterial();
   const buckets = new Map();
   const add = (geo, entry) => {
@@ -2710,17 +2823,24 @@ function buildBelt() {
 
 /* --------------------------------------------------------------- planets */
 
+function planetTextureKey(planet) {
+  return `${planet.orbitId}:${planet.key}:${planet.color}:${planet.ringColor}`;
+}
+
 function planetTexture(planet) {
-  const key = `${planet.orbitId}:${planet.key}:${planet.color}:${planet.ringColor}`;
+  const key = planetTextureKey(planet);
   let texture = textureCache.get(key);
   if (!texture) {
     let canvas;
+    const isHiRes = planet.orbitId === 'top5' || planet.orbitId === 'tier3';
+    const texW = isHiRes ? 512 : 256;
+    const texH = isHiRes ? 256 : 128;
     if (planet.orbitId === 'tier1') {
-      canvas = terrestrialCanvas(planet.color, planet.key, 512, 256);
+      canvas = terrestrialCanvas(planet.color, planet.key, texW, texH);
     } else if (planet.orbitId === 'tier2') {
-      canvas = iceGiantCanvas(planet.color, planet.key, 512, 256, { accent: planet.ringColor });
+      canvas = iceGiantCanvas(planet.color, planet.key, texW, texH, { accent: planet.ringColor });
     } else if (planet.starred) {
-      canvas = gasGiantCanvas(planet.color, planet.key, 512, 256, { accent: planet.ringColor, rich: planet.orbitId === 'top5' });
+      canvas = gasGiantCanvas(planet.color, planet.key, texW, texH, { accent: planet.ringColor, rich: planet.orbitId === 'top5' });
     } else {
       canvas = rockyCanvas(planet.key);
     }
@@ -2767,7 +2887,7 @@ function ensurePlanetObject(planet) {
   };
 
   if (isOuter) {
-    const rockGeo = makeRockGeometry(hashString(planet.key, 0x3c6ef372), 4, {
+    const rockGeo = makeRockGeometry(hashString(planet.key, 0x3c6ef372), 3, {
       lumpy: 0.16,
       medium: 0.06,
       fine: 0.02,
@@ -2792,26 +2912,44 @@ function ensurePlanetObject(planet) {
   } else {
     const isIce = planet.orbitId === 'tier2';
     const isTerrestrial = planet.orbitId === 'tier1';
+    const texKey = planetTextureKey(planet);
+    const cachedTex = textureCache.get(texKey);
     material = new THREE.MeshStandardMaterial({
-      map: planetTexture(planet),
+      map: cachedTex || solidColorTexture(planet.color),
       roughness: isIce ? 0.62 : (isTerrestrial ? 0.76 : 0.78),
       metalness: isTerrestrial ? 0.05 : 0.02,
       emissive: new THREE.Color(planet.color),
       emissiveIntensity: planet.orbitId === 'top5' ? 0.05 : 0.035
     });
-    body = new THREE.Mesh(SPHERE_GEO, material);
+    if (!cachedTex) {
+      const priority = planet.orbitId === 'top5' ? 1 : (planet.orbitId === 'tier3' ? 2 : (planet.orbitId === 'tier2' ? 3 : 4));
+      const targetMat = material;
+      const snapshot = {
+        orbitId: planet.orbitId,
+        key: planet.key,
+        color: planet.color,
+        ringColor: planet.ringColor,
+        starred: planet.starred
+      };
+      scheduleTextureTask(priority, () => {
+        if (planet.obj?.material !== targetMat) return;
+        targetMat.map = planetTexture(snapshot);
+        targetMat.needsUpdate = true;
+      });
+    }
+    body = new THREE.Mesh(isTerrestrial ? SMALL_PLANET_GEO : SPHERE_GEO, material);
     axialGroup.add(body);
 
     atmosphereBaseIntensity = isIce ? 0.72 : (isTerrestrial ? 0.64 : (planet.orbitId === 'top5' ? 0.78 : 0.7));
     const atmoPower = isIce ? 2.4 : (isTerrestrial ? 2.7 : 2.5);
     const atmoScale = isTerrestrial ? 1.055 : 1.075;
     const limbPeak = isTerrestrial ? 0.32 : 0.37;
-    atmosphere = new THREE.Mesh(SPHERE_GEO, planetBackAtmosphereMaterial(planet.color, atmosphereBaseIntensity, atmoPower, limbPeak));
+    atmosphere = new THREE.Mesh(ATMO_SPHERE_GEO, planetBackAtmosphereMaterial(planet.color, atmosphereBaseIntensity, atmoPower, limbPeak));
     atmosphere.scale.setScalar(atmoScale);
     axialGroup.add(atmosphere);
 
     sheenBaseIntensity = isIce ? 0.3 : (isTerrestrial ? 0.26 : 0.28);
-    atmosphereSheen = new THREE.Mesh(SPHERE_GEO, planetFrontAtmosphereMaterial(planet.color, sheenBaseIntensity, 4.2));
+    atmosphereSheen = new THREE.Mesh(ATMO_SPHERE_GEO, planetFrontAtmosphereMaterial(planet.color, sheenBaseIntensity, 4.2));
     atmosphereSheen.scale.setScalar(1.006);
     axialGroup.add(atmosphereSheen);
 
@@ -2849,10 +2987,10 @@ function ensurePlanetObject(planet) {
 
     const bands = Array.isArray(style.bands) ? style.bands : [[1.4, style.outer || 2.1]];
     bands.forEach(([inner, outer], bandIdx) => {
-      const geo = new THREE.RingGeometry(inner, outer, 192, 4);
+      const geo = new THREE.RingGeometry(inner, outer, 128, 1);
       remapRingUVs(geo, inner, outer);
       geo.rotateX(-Math.PI / 2);
-      const tex = canvasTexture(ringCanvas(`${planet.key}:ring:${bandIdx}`, style.id, bandIdx, 1024));
+      const tex = canvasTexture(ringCanvas(`${planet.key}:ring:${bandIdx}`, style.id, bandIdx, 512));
       const mat = planetRingMaterial(tex, ringTint, style.opacity ?? 0.78);
       const mesh = new THREE.Mesh(geo, mat);
       ringGroup.add(mesh);
@@ -2887,13 +3025,16 @@ function ensurePlanetObject(planet) {
     if (!world.textures.moon) {
       world.textures.moon = canvasTexture(rockyCanvas('moon-surface', 256, 128), { repeat: true });
     }
-    const isTerrestrial = planet.orbitId === 'tier1';
-    for (let m = 0; m < planet.moonCount; m += 1) {
-      const moon = new THREE.Mesh(SPHERE_GEO, new THREE.MeshStandardMaterial({
+    if (!world.materials.moon) {
+      world.materials.moon = new THREE.MeshStandardMaterial({
         map: world.textures.moon,
         roughness: 0.92,
         metalness: 0.04
-      }));
+      });
+    }
+    const isTerrestrial = planet.orbitId === 'tier1';
+    for (let m = 0; m < planet.moonCount; m += 1) {
+      const moon = new THREE.Mesh(MOON_SPHERE_GEO, world.materials.moon);
       moon.scale.setScalar(isTerrestrial ? 0.12 - m * 0.02 : 0.13 - m * 0.02);
       moon.userData = {
         radius: (ringOuter > 1.0 ? ringOuter + 0.48 + m * 0.48 : 2.0 + m * 0.55),
@@ -2932,7 +3073,15 @@ function disposePlanetObject(planet, { keepLabel = false } = {}) {
   const obj = planet.obj;
   if (obj) {
     world.root.remove(obj.group);
-    if (obj.body?.geometry && obj.body.geometry !== SPHERE_GEO) obj.body.geometry.dispose();
+    if (
+      obj.body?.geometry &&
+      obj.body.geometry !== SPHERE_GEO &&
+      obj.body.geometry !== SMALL_PLANET_GEO &&
+      obj.body.geometry !== ATMO_SPHERE_GEO &&
+      obj.body.geometry !== MOON_SPHERE_GEO
+    ) {
+      obj.body.geometry.dispose();
+    }
     obj.material.dispose();
     obj.atmosphere?.material.dispose();
     obj.atmosphereSheen?.material.dispose();
@@ -2946,7 +3095,9 @@ function disposePlanetObject(planet, { keepLabel = false } = {}) {
       obj.ringDust.geometry.dispose();
       obj.ringDust.material.dispose();
     }
-    obj.moons.forEach((moon) => moon.material.dispose());
+    obj.moons.forEach((moon) => {
+      if (moon.material && moon.material !== world.materials.moon) moon.material.dispose();
+    });
     planet.obj = null;
   }
   if (!keepLabel && planet.labelEl) {
@@ -2970,7 +3121,8 @@ function buildLinkLayer() {
   world.root.add(lines);
 
   const sparkTex = canvasTexture(radialGlowCanvas([[0, 'rgba(255,255,255,1)'], [0.25, 'rgba(255,255,255,0.6)'], [1, 'rgba(255,255,255,0)']], 64));
-  world.links = { lines };
+  lines.visible = false;
+  world.links = { lines, lastVertexCount: 0 };
   world.textures.spark = sparkTex;
 }
 
@@ -3028,6 +3180,14 @@ function updateLinks() {
   if (!layer) return;
   const focusKey = scene.selectedKey || scene.lockedKey;
   const list = focusKey ? (scene.linksByKey.get(focusKey) || []) : (scene.constellation ? scene.links : []);
+  if (!list.length) {
+    if (layer.lastVertexCount !== 0) {
+      layer.lines.geometry.setDrawRange(0, 0);
+      layer.lines.visible = false;
+      layer.lastVertexCount = 0;
+    }
+    return;
+  }
   const pos = layer.lines.geometry.attributes.position;
   const col = layer.lines.geometry.attributes.color;
   const strong = Boolean(focusKey);
@@ -3036,7 +3196,9 @@ function updateLinks() {
   const speed = strong ? 0.22 : 0.12;
   let v = 0;
 
-  for (const link of list.slice(0, MAX_LINKS)) {
+  const limit = Math.min(list.length, MAX_LINKS);
+  for (let idx = 0; idx < limit; idx += 1) {
+    const link = list[idx];
     const A = scene.planetByKey.get(link.fromKey);
     const B = scene.planetByKey.get(link.toKey);
     if (!A || !B || (!A.isChampion && !A.visible) || (!B.isChampion && !B.visible)) continue;
@@ -3066,8 +3228,18 @@ function updateLinks() {
     }
   }
   layer.lines.geometry.setDrawRange(0, v);
-  pos.needsUpdate = true;
-  col.needsUpdate = true;
+  layer.lines.visible = v > 0;
+  layer.lastVertexCount = v;
+  if (v > 0) {
+    if (typeof pos.clearUpdateRanges === 'function') {
+      pos.clearUpdateRanges();
+      pos.addUpdateRange(0, v * 3);
+      col.clearUpdateRanges();
+      col.addUpdateRange(0, v * 3);
+    }
+    pos.needsUpdate = true;
+    col.needsUpdate = true;
+  }
 }
 
 /* --------------------------------------------------------------- effects */
@@ -3377,12 +3549,16 @@ function updateCamera(dt) {
     }
   }
 
-  const wantShift = document.body.classList.contains('has-card') && window.innerWidth > 900 ? Math.min(220, window.innerWidth * 0.12) : 0;
+  const wantShift = hasCardOpen && viewportW > 900 ? Math.min(220, viewportW * 0.12) : 0;
   nav.viewShift = (nav.viewShift || 0) + (wantShift - (nav.viewShift || 0)) * Math.min(1, dt * 4);
   if (Math.abs(nav.viewShift) > 0.5) {
-    camera.setViewOffset(window.innerWidth, window.innerHeight, nav.viewShift, 0, window.innerWidth, window.innerHeight);
+    if (Math.abs(nav.viewShift - (nav.lastViewShift ?? NaN)) > 0.05 || !camera.view?.enabled) {
+      camera.setViewOffset(viewportW, viewportH, nav.viewShift, 0, viewportW, viewportH);
+      nav.lastViewShift = nav.viewShift;
+    }
   } else if (camera.view?.enabled) {
     camera.clearViewOffset();
+    nav.lastViewShift = 0;
   }
 
   const idle = scene.time - scene.lastInteractionAt;
@@ -3398,6 +3574,8 @@ function updateCamera(dt) {
 }
 
 function renderFrame() {
+  renderRafId = 0;
+  if (document.hidden) return;
   const dt = Math.min(world.clock.getDelta(), 0.05);
   scene.time += dt;
   if (world.ok) {
@@ -3413,29 +3591,48 @@ function renderFrame() {
     updateLabels();
     positionTooltip();
   }
-  window.requestAnimationFrame(renderFrame);
+  renderRafId = window.requestAnimationFrame(renderFrame);
+}
+
+function startRenderLoop() {
+  if (!world.ok || renderRafId || document.hidden) return;
+  world.clock.getDelta();
+  renderRafId = window.requestAnimationFrame(renderFrame);
+}
+
+function stopRenderLoop() {
+  if (renderRafId) {
+    window.cancelAnimationFrame(renderRafId);
+    renderRafId = 0;
+  }
 }
 
 /* ---------------------------------------------------------------- labels */
 
 const _proj = new THREE.Vector3();
 
-function screenOf(position, radius) {
+function screenOf(position, radius, out = null) {
   const camera = world.camera;
   _proj.copy(position).project(camera);
   const behind = _proj.z > 1 || _proj.z < -1;
-  const w = window.innerWidth;
-  const h = window.innerHeight;
+  const w = viewportW;
+  const h = viewportH;
   const dist = camera.position.distanceTo(position);
   const rpx = (radius / Math.max(1, dist)) / Math.tan((camera.fov * Math.PI) / 360) * (h / 2);
-  return { x: (_proj.x * 0.5 + 0.5) * w, y: (-_proj.y * 0.5 + 0.5) * h, r: rpx, dist, behind };
+  const target = out || { x: 0, y: 0, r: 0, dist: 0, behind: false };
+  target.x = (_proj.x * 0.5 + 0.5) * w;
+  target.y = (-_proj.y * 0.5 + 0.5) * h;
+  target.r = rpx;
+  target.dist = dist;
+  target.behind = behind;
+  return target;
 }
 
 function labelMarkup(body) {
   const halo = body.rank ? (TOP5_PALETTE[body.rank]?.halo || '#ffd166') : body.color;
   const showAvatar = body.rank || body.freshTag;
   return `
-    ${showAvatar ? `<img class="avatar-image" src="${htmlEscape(avatarForProfile(body.profile, 64))}" alt="" width="20" height="20" decoding="async" data-fallback-src="${AVATAR_WARNING_FALLBACK}" />` : ''}
+    ${showAvatar ? `<img class="avatar-image" src="${htmlEscape(avatarForProfile(body.profile, 96))}" alt="" width="20" height="20" decoding="async" data-fallback-src="${AVATAR_WARNING_FALLBACK}" />` : ''}
     ${body.rank ? `<b style="color:${htmlEscape(halo)}">${body.rank}</b>` : (body.freshTag ? '<b class="fresh">✦</b>' : '')}
     <span>${htmlEscape(displayName(body.profile))}</span>
     ${body.starred ? `<em style="color:${htmlEscape(body.color)}">${body.score.points}</em>` : ''}
@@ -3447,6 +3644,10 @@ function ensureLabel(body) {
   if (!layer) return null;
   if (!body.labelEl) {
     body.labelEl = document.createElement('div');
+    body._lastTx = '';
+    body._lastVis = false;
+    body._lastStrong = false;
+    body._lastDim = false;
     layer.append(body.labelEl);
   }
   const sig = `${displayName(body.profile)}|${body.rank}|${body.score.points}|${body.freshTag}|${body.color}|${body.isChampion}`;
@@ -3464,15 +3665,38 @@ function ensureLabel(body) {
       body.labelEl.className = `planet-label${body.rank ? ' is-top' : ''}`;
       body.labelEl.innerHTML = labelMarkup(body);
     }
+    body._lastVis = false;
+    body._lastStrong = false;
+    body._lastDim = false;
   }
   return body.labelEl;
 }
 
 let emptyThroneEl = null;
 let hudRectCache = { at: -1, rects: [] };
+let lastLabelLayerOpacity = '';
+let orbitLabelCamKey = '';
+const orbitLabelEls = new Map();
+const orbitAnchorsCache = new Map();
+const orbitSamplePool = Array.from({ length: 48 }, () => ({ x: 0, y: 0, r: 0, dist: 0, behind: false }));
+const _sunScreen = { x: 0, y: 0, r: 0, dist: 0, behind: false };
+const _focusScreen = { x: 0, y: 0, r: 0, dist: 0, behind: false };
+const _tipScreen = { x: 0, y: 0, r: 0, dist: 0, behind: false };
+
+function setElVisible(node, cacheObj, visible) {
+  if (cacheObj._lastVis === visible) return;
+  cacheObj._lastVis = visible;
+  node.classList.toggle('is-visible', visible);
+}
+
+function setElTransform(node, cacheObj, tx) {
+  if (cacheObj._lastTx === tx) return;
+  cacheObj._lastTx = tx;
+  node.style.transform = tx;
+}
 
 function hudRects() {
-  if (scene.time - hudRectCache.at > 0.5) {
+  if (hudRectCache.at < 0 || scene.time - hudRectCache.at > 0.5) {
     const selectors = ['.masthead', '.podium', '.toolbar', '.dock', '.ticker', '.planet-card-host:not([hidden])'];
     hudRectCache = {
       at: scene.time,
@@ -3487,21 +3711,26 @@ function hudRects() {
   }
   return hudRectCache.rects.slice();
 }
-const orbitLabelEls = new Map();
 
 function updateLabels() {
   const layer = elements.labelLayer;
   if (!layer) return;
   const camDist = world.camera.position.length();
   const labelFade = clamp((320000 - camDist) / 100000, 0, 1);
-  layer.style.opacity = labelFade < 0.999 ? labelFade.toFixed(3) : '';
-  const sunScreen = screenOf(_tmp.set(0, 0, 0), SUN_RADIUS);
+  const nextOpacity = labelFade < 0.999 ? labelFade.toFixed(3) : '';
+  if (nextOpacity !== lastLabelLayerOpacity) {
+    lastLabelLayerOpacity = nextOpacity;
+    layer.style.opacity = nextOpacity;
+  }
+  if (labelFade <= 0.001) return;
+
+  const sunScreen = screenOf(_tmp.set(0, 0, 0), SUN_RADIUS, _sunScreen);
   const placed = hudRects();
   const activeKey = scene.selectedKey || scene.lockedKey;
   const selectedLinks = activeKey ? linkedKeysOf(activeKey) : null;
   const focusBody = nav.followKey ? scene.planetByKey.get(nav.followKey) : null;
   const focusScreen = focusBody && !focusBody.isChampion && focusBody.visible && focusBody.obj
-    ? screenOf(focusBody.pos, focusBody.size * 1.12)
+    ? screenOf(focusBody.pos, focusBody.size * 1.12, _focusScreen)
     : null;
   const zoomIsolate = Boolean(focusScreen && !focusScreen.behind && focusScreen.r > 55);
   if (focusScreen && !focusScreen.behind) {
@@ -3516,10 +3745,10 @@ function updateLabels() {
 
   for (const planet of scene.planets) {
     if (!planet.visible || !planet.obj || planet.alpha < 0.6) {
-      if (planet.labelEl) planet.labelEl.classList.remove('is-visible');
+      if (planet.labelEl) setElVisible(planet.labelEl, planet, false);
       continue;
     }
-    const sp = screenOf(planet.pos, planet.size);
+    const sp = screenOf(planet.pos, planet.size, planet.screen);
     planet.screen = sp;
     const occluded = sp.dist > sunScreen.dist && Math.hypot(sp.x - sunScreen.x, sp.y - sunScreen.y) < sunScreen.r * 0.98;
     const focusOccluded = Boolean(
@@ -3539,73 +3768,147 @@ function updateLabels() {
     else if (scene.matchKeys?.has(planet.key) && scene.matchKeys.size <= 14) priority = 66;
     else if (planet.freshTag) priority = 60;
     else if (sp.r > 9 && planet.dim > 0.5) priority = 10 + Math.min(40, sp.r);
-    if (sp.behind || occluded || focusOccluded || suppressedByZoom || sp.x < -50 || sp.x > window.innerWidth + 50 || sp.y < -50 || sp.y > window.innerHeight + 50) priority = 0;
+    if (sp.behind || occluded || focusOccluded || suppressedByZoom || sp.x < -50 || sp.x > viewportW + 50 || sp.y < -50 || sp.y > viewportH + 50) priority = 0;
     if (!priority) {
-      if (planet.labelEl) planet.labelEl.classList.remove('is-visible');
+      if (planet.labelEl) setElVisible(planet.labelEl, planet, false);
       continue;
     }
     candidates.push({ planet, sp, priority });
   }
 
+  // Batch DOM creation + offsetWidth reads BEFORE mutating transforms/classes to prevent layout thrashing.
+  candidates.sort((a, b) => b.priority - a.priority);
+  const toMeasure = [];
+  for (const item of candidates) {
+    const el = ensureLabel(item.planet);
+    item.el = el;
+    if (el && !item.planet.labelW) toMeasure.push(item);
+  }
+  for (const item of toMeasure) {
+    item.planet.labelW = item.el.offsetWidth || 90;
+  }
+
   // Champion headline above the sun
   if (scene.champion && !sunScreen.behind) {
     const el = ensureLabel(scene.champion);
-    if (emptyThroneEl) emptyThroneEl.classList.remove('is-visible');
+    if (emptyThroneEl && emptyThroneEl._lastVis) {
+      emptyThroneEl._lastVis = false;
+      emptyThroneEl.classList.remove('is-visible');
+    }
     const y = sunScreen.y - sunScreen.r * 1.15;
-    el.style.transform = `translate3d(${sunScreen.x.toFixed(1)}px, ${y.toFixed(1)}px, 0) translate(-50%, -100%)`;
     const champRect = { x: sunScreen.x - 150, y: y - 86, w: 300, h: 86 };
     const champBlocked = placed.some((o) => champRect.x < o.x + o.w && champRect.x + champRect.w > o.x && champRect.y < o.y + o.h && champRect.y + champRect.h > o.y);
-    el.classList.toggle('is-visible', sunScreen.r > 18 && !champBlocked);
+    const champVis = sunScreen.r > 18 && !champBlocked;
+    if (champVis) {
+      setElTransform(el, scene.champion, `translate3d(${(Math.round(sunScreen.x * 2) * 0.5).toFixed(1)}px, ${(Math.round(y * 2) * 0.5).toFixed(1)}px, 0) translate(-50%, -100%)`);
+    }
+    setElVisible(el, scene.champion, champVis);
     placed.push(champRect);
   } else {
-    if (scene.champion?.labelEl) scene.champion.labelEl.classList.remove('is-visible');
+    if (scene.champion?.labelEl) setElVisible(scene.champion.labelEl, scene.champion, false);
     if (!emptyThroneEl) {
       emptyThroneEl = document.createElement('div');
       emptyThroneEl.className = 'champion-label is-empty';
       emptyThroneEl.innerHTML = '<span class="champion-kicker">#1 · 恒星王座</span><span class="champion-name">虚位以待</span><span class="champion-meta">点亮 Star、送出寄语，成为照亮星系的那颗恒星</span>';
+      emptyThroneEl._lastTx = '';
+      emptyThroneEl._lastVis = false;
       layer.append(emptyThroneEl);
     }
     const y = sunScreen.y - sunScreen.r * 1.15;
-    emptyThroneEl.style.transform = `translate3d(${sunScreen.x.toFixed(1)}px, ${y.toFixed(1)}px, 0) translate(-50%, -100%)`;
-    emptyThroneEl.classList.toggle('is-visible', !sunScreen.behind && sunScreen.r > 18 && scene.bootstrapped);
+    const emptyVis = !sunScreen.behind && sunScreen.r > 18 && scene.bootstrapped;
+    if (emptyVis) {
+      setElTransform(emptyThroneEl, emptyThroneEl, `translate3d(${(Math.round(sunScreen.x * 2) * 0.5).toFixed(1)}px, ${(Math.round(y * 2) * 0.5).toFixed(1)}px, 0) translate(-50%, -100%)`);
+    }
+    setElVisible(emptyThroneEl, emptyThroneEl, emptyVis);
   }
   placed.push({ x: sunScreen.x - sunScreen.r, y: sunScreen.y - sunScreen.r, w: sunScreen.r * 2, h: sunScreen.r * 2 });
 
-  candidates.sort((a, b) => b.priority - a.priority);
   let shown = 0;
-  for (const { planet, sp, priority } of candidates) {
-    const el = ensureLabel(planet);
-    if (!planet.labelW) planet.labelW = el.offsetWidth || 90;
-    const w = planet.labelW;
+  for (const { planet, sp, priority, el } of candidates) {
+    if (!el) continue;
+    const w = planet.labelW || 90;
     const h = 24;
     const x = sp.x - w / 2;
     const y = sp.y + Math.max(sp.r * (planet.ringStyle ? 1.6 : 1.15), 6) + 4;
     const rect = { x, y, w, h };
     const overlaps = placed.some((o) => rect.x < o.x + o.w && rect.x + rect.w > o.x && rect.y < o.y + o.h && rect.y + rect.h > o.y);
     if ((overlaps && priority < 90) || shown > 46) {
-      el.classList.remove('is-visible');
+      setElVisible(el, planet, false);
       continue;
     }
     placed.push(rect);
     shown += 1;
-    el.style.transform = `translate3d(${x.toFixed(1)}px, ${y.toFixed(1)}px, 0)`;
-    el.classList.add('is-visible');
-    el.classList.toggle('is-strong', priority >= 90);
-    el.classList.toggle('is-dim', planet.dim < 0.6 && priority < 90);
+    setElTransform(el, planet, `translate3d(${(Math.round(x * 2) * 0.5).toFixed(1)}px, ${(Math.round(y * 2) * 0.5).toFixed(1)}px, 0)`);
+    setElVisible(el, planet, true);
+    const isStrong = priority >= 90;
+    if (planet._lastStrong !== isStrong) {
+      planet._lastStrong = isStrong;
+      el.classList.toggle('is-strong', isStrong);
+    }
+    const isDim = planet.dim < 0.6 && priority < 90;
+    if (planet._lastDim !== isDim) {
+      planet._lastDim = isDim;
+      el.classList.toggle('is-dim', isDim);
+    }
   }
 
   updateOrbitLabels(placed);
 }
 
+function computeOrbitAnchors(orbit) {
+  let count = 0;
+  const r = orbit.r + (orbit.belt ? orbit.belt * 0.9 : 0);
+  const maxY = viewportH - 120;
+  const maxX = viewportW - 180;
+  for (let i = 0; i < 48; i += 1) {
+    orbitPosition(orbit.id, (i / 48) * TAU, r, 0, _tmp);
+    const sp = screenOf(_tmp, 1, orbitSamplePool[count]);
+    if (sp.behind || sp.y < 90 || sp.y > maxY || sp.x < 40 || sp.x > maxX) continue;
+    count += 1;
+  }
+  if (!count) return [];
+  let best0 = orbitSamplePool[0];
+  let best1 = orbitSamplePool[0];
+  let best2 = orbitSamplePool[0];
+  let best3 = orbitSamplePool[0];
+  let s0 = best0.x;
+  let s1 = best1.x - best1.y * 0.75;
+  let s2 = best2.x + best2.y * 0.75;
+  let s3 = -best3.x;
+  for (let i = 1; i < count; i += 1) {
+    const p = orbitSamplePool[i];
+    if (p.x > s0) { s0 = p.x; best0 = p; }
+    const v1 = p.x - p.y * 0.75;
+    if (v1 > s1) { s1 = v1; best1 = p; }
+    const v2 = p.x + p.y * 0.75;
+    if (v2 > s2) { s2 = v2; best2 = p; }
+    if (-p.x > s3) { s3 = -p.x; best3 = p; }
+  }
+  return [
+    { x: best0.x, y: best0.y },
+    { x: best1.x, y: best1.y },
+    { x: best2.x, y: best2.y },
+    { x: best3.x, y: best3.y }
+  ];
+}
+
 function updateOrbitLabels(placed) {
   const layer = elements.labelLayer;
-  const compact = window.innerWidth < 760;
+  const compact = viewportW < 760;
+  const cam = world.camera;
+  const camKey = `${cam.position.x.toFixed(1)},${cam.position.y.toFixed(1)},${cam.position.z.toFixed(1)}|${cam.quaternion.x.toFixed(4)},${cam.quaternion.y.toFixed(4)},${cam.quaternion.z.toFixed(4)},${cam.quaternion.w.toFixed(4)}|${nav.lastViewShift || 0}|${viewportW}x${viewportH}`;
+  const camChanged = camKey !== orbitLabelCamKey;
+  if (camChanged) orbitLabelCamKey = camKey;
+
   for (const orbit of ORBITS) {
     let el = orbitLabelEls.get(orbit.id);
     if (!el) {
       el = document.createElement('div');
       el.className = 'orbit-label';
       el.style.setProperty('--orbit-color', orbit.color);
+      el._lastTx = '';
+      el._lastVis = false;
+      el._lastEmpty = false;
       layer.append(el);
       orbitLabelEls.set(orbit.id, el);
     }
@@ -3616,28 +3919,18 @@ function updateOrbitLabels(placed) {
       el.innerHTML = text;
     }
     if (compact || !scene.bootstrapped) {
-      el.classList.remove('is-visible');
+      setElVisible(el, el, false);
       continue;
     }
-    // Collect multiple viewport-safe points along the inclined orbit so labels don't drop on steep inclinations
-    const samplePts = [];
-    for (let i = 0; i < 48; i += 1) {
-      orbitPosition(orbit.id, (i / 48) * TAU, orbit.r + (orbit.belt ? orbit.belt * 0.9 : 0), 0, _tmp);
-      const sp = screenOf(_tmp, 1);
-      if (sp.behind || sp.y < 90 || sp.y > window.innerHeight - 120 || sp.x < 40 || sp.x > window.innerWidth - 180) continue;
-      samplePts.push(sp);
+    let anchors = orbitAnchorsCache.get(orbit.id);
+    if (camChanged || !anchors) {
+      anchors = computeOrbitAnchors(orbit);
+      orbitAnchorsCache.set(orbit.id, anchors);
     }
-    if (!samplePts.length) {
-      el.classList.remove('is-visible');
+    if (!anchors.length) {
+      setElVisible(el, el, false);
       continue;
     }
-    const pickExtreme = (scoreFn) => samplePts.reduce((acc, p) => (scoreFn(p) > scoreFn(acc) ? p : acc), samplePts[0]);
-    const anchors = [
-      pickExtreme((p) => p.x),
-      pickExtreme((p) => p.x - p.y * 0.75),
-      pickExtreme((p) => p.x + p.y * 0.75),
-      pickExtreme((p) => -p.x)
-    ];
     let chosenRect = null;
     for (const anchor of anchors) {
       const rect = { x: anchor.x + 8, y: anchor.y - 10, w: 130, h: 30 };
@@ -3647,11 +3940,15 @@ function updateOrbitLabels(placed) {
         break;
       }
     }
-    el.classList.toggle('is-visible', Boolean(chosenRect));
-    el.classList.toggle('is-empty', !count);
+    setElVisible(el, el, Boolean(chosenRect));
+    const isEmpty = !count;
+    if (el._lastEmpty !== isEmpty) {
+      el._lastEmpty = isEmpty;
+      el.classList.toggle('is-empty', isEmpty);
+    }
     if (chosenRect) {
       placed.push(chosenRect);
-      el.style.transform = `translate3d(${chosenRect.x.toFixed(1)}px, ${chosenRect.y.toFixed(1)}px, 0)`;
+      setElTransform(el, el, `translate3d(${(Math.round(chosenRect.x * 2) * 0.5).toFixed(1)}px, ${(Math.round(chosenRect.y * 2) * 0.5).toFixed(1)}px, 0)`);
     }
   }
 }
@@ -3952,12 +4249,16 @@ function updateHover(hit) {
   else hideTooltip();
 }
 
+let cachedTipWidth = 0;
+let lastTipTransform = '';
+
 function showTooltip(body) {
   const tip = elements.planetTooltip;
   if (!tip || !body || scene.selectedKey === body.key) {
     hideTooltip();
     return;
   }
+  if (body.starred) ensureCardSkinsCss();
   const lockedNote = scene.lockedKey === body.key ? ' · 已锁定（单击查看名片 · 双击取消）' : '';
   const rankText = body.score.rank && body.score.starredTotal ? `第 ${body.score.rank}/${body.score.starredTotal} 名` : '';
   const pctText = body.score.poolPercentile != null ? `TOP 5 后前 ${body.score.poolPercentile}%` : '';
@@ -3970,6 +4271,8 @@ function showTooltip(body) {
     <em style="--tip-color:${htmlEscape(body.color)}">${htmlEscape(orbitLabelForPlanet(body))} · ${meta}</em>`;
   tip.dataset.anchor = body.key;
   tip.hidden = false;
+  cachedTipWidth = 0;
+  lastTipTransform = '';
 }
 
 function showSunTooltip() {
@@ -3978,18 +4281,23 @@ function showSunTooltip() {
     hideTooltip();
     return;
   }
+  if (scene.champion?.starred) ensureCardSkinsCss();
   const locked = Boolean(scene.champion && scene.lockedKey === scene.champion.key);
   tip.innerHTML = scene.champion
     ? `<strong>👑 ${htmlEscape(displayName(scene.champion.profile))}</strong><span>${locked ? '已锁定 · 单击查看名片 · 双击取消' : '第一名化身恒星 · 点击锁定并查看名片'}</span>`
     : '<strong>恒星王座 · 虚位以待</strong><span>点击查看课堂全貌</span>';
   tip.dataset.anchor = '__sun__';
   tip.hidden = false;
+  cachedTipWidth = 0;
+  lastTipTransform = '';
 }
 
 function hideTooltip() {
   if (!elements.planetTooltip) return;
   elements.planetTooltip.hidden = true;
   elements.planetTooltip.dataset.anchor = '';
+  cachedTipWidth = 0;
+  lastTipTransform = '';
 }
 
 function positionTooltip() {
@@ -3997,17 +4305,22 @@ function positionTooltip() {
   if (!tip || tip.hidden || !world.ok) return;
   const anchor = tip.dataset.anchor;
   let sp;
-  if (anchor === '__sun__') sp = screenOf(_tmp.set(0, 0, 0), SUN_RADIUS);
+  if (anchor === '__sun__') sp = screenOf(_tmp.set(0, 0, 0), SUN_RADIUS, _tipScreen);
   else {
     const body = scene.planetByKey.get(anchor);
     if (!body) return;
-    sp = screenOf(body.pos, body.size || 6);
+    sp = screenOf(body.pos, body.size || 6, _tipScreen);
   }
-  const width = tip.offsetWidth || 180;
+  if (!cachedTipWidth) cachedTipWidth = tip.offsetWidth || 180;
+  const width = cachedTipWidth;
   let left = sp.x + sp.r + 16;
-  if (left + width > window.innerWidth - 12) left = sp.x - sp.r - 16 - width;
-  const top = clamp(sp.y - 24, 12, window.innerHeight - 90);
-  tip.style.transform = `translate(${Math.round(left)}px, ${Math.round(top)}px)`;
+  if (left + width > viewportW - 12) left = sp.x - sp.r - 16 - width;
+  const top = clamp(sp.y - 24, 12, viewportH - 90);
+  const tx = `translate3d(${Math.round(left)}px, ${Math.round(top)}px, 0)`;
+  if (tx !== lastTipTransform) {
+    lastTipTransform = tx;
+    tip.style.transform = tx;
+  }
 }
 
 function bindKeyboard() {
@@ -4065,6 +4378,7 @@ function bindKeyboard() {
 function setMotionPaused(paused, { persist = true } = {}) {
   state.motionPaused = Boolean(paused);
   vfxEngine?.setPaused(state.motionPaused);
+  syncMarqueeLoop();
   document.querySelectorAll('.collector-slot').forEach((slot) => slot.classList.toggle('is-motion-paused', state.motionPaused));
   if (!elements.toggleWallMotion) toast(state.motionPaused ? '已暂停公转（空格继续）' : '公转继续', 1600);
   if (elements.toggleWallMotion) {
@@ -4146,7 +4460,10 @@ function bindHudControls() {
       const body = scene.planetByKey.get(emblem.getAttribute('data-star-emblem'));
       const card = emblem.closest('.profile-card');
       if (body && card) {
-        if (body.recipe) vfxEngine?.triggerSurge(card);
+        if (body.recipe) {
+          if (vfxEngine) vfxEngine.triggerSurge(card);
+          else ensureVfxEngine().then(() => { if (vfxEngine && card.isConnected) vfxEngine.triggerSurge(card); });
+        }
         const icon = body.recipe ? '👑' : '★';
         toast(`${icon} @${body.profile.github || body.key} · ${collectorTierCaption(body)}`, 4200);
       }
@@ -4216,7 +4533,7 @@ function renderSearchResults() {
   list.innerHTML = search.results.length
     ? search.results.map((planet, index) => `
         <li role="option" id="search-opt-${index}" aria-selected="${index === search.activeIndex}" data-focus-planet="${htmlEscape(planet.key)}" class="${index === search.activeIndex ? 'is-active' : ''}">
-          <img class="avatar-image" src="${htmlEscape(avatarForProfile(planet.profile, 64))}" alt="" width="28" height="28" loading="lazy" decoding="async" data-fallback-src="${AVATAR_WARNING_FALLBACK}" />
+          <img class="avatar-image" src="${htmlEscape(avatarForProfile(planet.profile, 96))}" alt="" width="28" height="28" loading="lazy" decoding="async" data-fallback-src="${AVATAR_WARNING_FALLBACK}" />
           <span class="result-copy">
             <strong>${htmlEscape(displayName(planet.profile))}</strong>
             <small>@${htmlEscape(planet.profile.github || planet.key)}</small>
@@ -4629,11 +4946,27 @@ function openCard(html) {
   if (!host) return;
   host.innerHTML = html;
   host.hidden = false;
+  hasCardOpen = true;
+  hudRectCache.at = -1;
   document.body.classList.add('has-card');
 }
 
-function renderPlanetCard(body) {
+let cardRenderSeq = 0;
+
+function renderPlanetCard(body, { skipCssWait = false } = {}) {
   if (!body) return;
+  const seq = ++cardRenderSeq;
+  if (body.recipe) ensureVfxEngine();
+  if (body.starred && !cardSkinsReady && !skipCssWait) {
+    Promise.race([
+      ensureCardSkinsCss(),
+      new Promise((resolve) => window.setTimeout(resolve, 150))
+    ]).then(() => {
+      if (seq === cardRenderSeq) renderPlanetCard(body, { skipCssWait: true });
+    });
+    return;
+  }
+  ensureCardSkinsCss();
   const p = body.profile;
   const score = body.score;
   const recipe = body.recipe;
@@ -4738,6 +5071,7 @@ function renderPlanetCard(body) {
 }
 
 function openOverviewCard() {
+  cardRenderSeq += 1;
   stopCollectorFx();
   scene.selectedKey = null;
   scene.overviewOpen = true;
@@ -4799,6 +5133,7 @@ function openOverviewCard() {
 }
 
 function closePlanetCard({ keepFollow = true, keepLock = true, notify = false } = {}) {
+  cardRenderSeq += 1;
   stopCollectorFx();
   const lockRefKey = scene.lockedKey || nav.followKey;
   const lockedBody = keepLock && lockRefKey ? scene.planetByKey.get(lockRefKey) : null;
@@ -4813,6 +5148,8 @@ function closePlanetCard({ keepFollow = true, keepLock = true, notify = false } 
     elements.planetCardHost.hidden = true;
     elements.planetCardHost.innerHTML = '';
   }
+  hasCardOpen = false;
+  hudRectCache.at = -1;
   document.body.classList.remove('has-card');
   updateOrbitEmphasis();
   if (notify && lockedBody) {
@@ -4867,7 +5204,49 @@ function leaderboardRow(body, position) {
     </li>`;
 }
 
-const marquee = { loop: false, height: 0, pausedUntil: 0, hover: false, raf: 0, last: 0, carry: 0 };
+const marquee = { loop: false, height: 0, pausedUntil: 0, hover: false, raf: 0, resumeTimer: 0, last: 0, carry: 0, resizeObs: null };
+
+function canRunMarquee() {
+  return Boolean(
+    marquee.loop &&
+    !marquee.hover &&
+    !state.motionPaused &&
+    !prefersReducedMotion() &&
+    !document.hidden &&
+    performance.now() >= marquee.pausedUntil
+  );
+}
+
+function stepMarquee(now) {
+  marquee.raf = 0;
+  const viewport = elements.podiumViewport;
+  if (!viewport || !canRunMarquee()) {
+    marquee.last = 0;
+    return;
+  }
+  const dt = marquee.last ? Math.min(0.05, (now - marquee.last) / 1000) : 0;
+  marquee.last = now;
+  marquee.carry += dt * 16;
+  const whole = Math.floor(marquee.carry);
+  if (whole) {
+    marquee.carry -= whole;
+    viewport.scrollTop += whole;
+  }
+  marquee.raf = window.requestAnimationFrame(stepMarquee);
+}
+
+function syncMarqueeLoop() {
+  if (canRunMarquee()) {
+    if (!marquee.raf) {
+      marquee.last = 0;
+      marquee.raf = window.requestAnimationFrame(stepMarquee);
+    }
+  } else if (marquee.raf) {
+    window.cancelAnimationFrame(marquee.raf);
+    marquee.raf = 0;
+    marquee.last = 0;
+  }
+}
 
 function renderHonorRibbon() {
   const panel = elements.honorRibbon;
@@ -4897,6 +5276,7 @@ function renderHonorRibbon() {
       track.append(clone);
     }
     viewport.scrollTop = marquee.loop ? prevScroll % Math.max(1, marquee.height) : 0;
+    syncMarqueeLoop();
   });
 }
 
@@ -4910,42 +5290,44 @@ function bindLeaderboard() {
     const button = event.target.closest('[data-focus-planet]');
     if (button) focusPlanetByKey(button.getAttribute('data-focus-planet'));
   });
-  const hold = () => { marquee.pausedUntil = performance.now() + 4000; };
-  viewport.addEventListener('pointerenter', () => { marquee.hover = true; });
+  const hold = () => {
+    marquee.pausedUntil = performance.now() + 4000;
+    syncMarqueeLoop();
+    window.clearTimeout(marquee.resumeTimer);
+    marquee.resumeTimer = window.setTimeout(syncMarqueeLoop, 4050);
+  };
+  viewport.addEventListener('pointerenter', () => { marquee.hover = true; syncMarqueeLoop(); ensureCardSkinsCss(); });
   viewport.addEventListener('pointerleave', () => { marquee.hover = false; hold(); });
-  viewport.addEventListener('focusin', () => { marquee.hover = true; });
+  viewport.addEventListener('focusin', () => { marquee.hover = true; syncMarqueeLoop(); });
   viewport.addEventListener('focusout', () => { marquee.hover = false; hold(); });
   viewport.addEventListener('wheel', hold, { passive: true });
   viewport.addEventListener('touchstart', hold, { passive: true });
+  if (typeof ResizeObserver === 'function' && elements.honorRibbonList) {
+    marquee.resizeObs = new ResizeObserver((entries) => {
+      const h = entries[0]?.contentRect?.height || 0;
+      if (h > 0) marquee.height = Math.round(h);
+    });
+    marquee.resizeObs.observe(elements.honorRibbonList);
+  }
   viewport.addEventListener('scroll', () => {
-    const loopHeight = elements.honorRibbonList?.offsetHeight || marquee.height;
-    if (loopHeight > 0) marquee.height = loopHeight;
     if (!marquee.loop || marquee.height < 1) return;
     if (viewport.scrollTop >= marquee.height) viewport.scrollTop -= marquee.height;
     else if (viewport.scrollTop <= 0 && (marquee.hover || marquee.pausedUntil > performance.now())) viewport.scrollTop += marquee.height;
   }, { passive: true });
 
-  const step = (now) => {
-    marquee.raf = window.requestAnimationFrame(step);
-    const dt = marquee.last ? Math.min(0.05, (now - marquee.last) / 1000) : 0;
-    marquee.last = now;
-    if (!marquee.loop || marquee.hover || now < marquee.pausedUntil || state.motionPaused || prefersReducedMotion() || document.hidden) return;
-    marquee.carry += dt * 16;
-    const whole = Math.floor(marquee.carry);
-    if (!whole) return;
-    marquee.carry -= whole;
-    viewport.scrollTop += whole;
-  };
-  marquee.raf = window.requestAnimationFrame(step);
+  syncMarqueeLoop();
 }
 
 /* ------------------------------------------------------- card VFX engine */
 
 let vfxEngine = null;
+let vfxEnginePromise = null;
+let cardSkinsReady = false;
+let cardSkinsPromise = null;
 const cardFx = { key: '', timer: 0, ambient: 0 };
 
 function initVfxEngine() {
-  if (!elements.vfxOverlay || typeof window.PulseWallVfxEngine !== 'function') return;
+  if (vfxEngine || !elements.vfxOverlay || typeof window.PulseWallVfxEngine !== 'function') return;
   vfxEngine = new window.PulseWallVfxEngine({
     canvas: elements.vfxOverlay,
     wallEl: elements.planetCardHost,
@@ -4956,6 +5338,65 @@ function initVfxEngine() {
   if (state.motionPaused) vfxEngine.setPaused(true);
 }
 
+function cardSkinsAssetUrl() {
+  return document.querySelector('meta[name="app-card-skins-css"]')?.getAttribute('content')?.trim() || 'card-skins.css';
+}
+
+function vfxEngineAssetUrl() {
+  return document.querySelector('meta[name="app-vfx-engine-js"]')?.getAttribute('content')?.trim() || 'vfx-engine.js';
+}
+
+function ensureCardSkinsCss() {
+  if (cardSkinsReady) return Promise.resolve();
+  if (cardSkinsPromise) return cardSkinsPromise;
+  const existing = document.querySelector('link[rel="stylesheet"][data-card-skins], link[rel="stylesheet"][href*="card-skins.css"]');
+  if (existing) {
+    cardSkinsReady = true;
+    return Promise.resolve();
+  }
+  cardSkinsPromise = new Promise((resolve) => {
+    const link = document.createElement('link');
+    link.rel = 'stylesheet';
+    link.href = cardSkinsAssetUrl();
+    link.dataset.cardSkins = '1';
+    const done = () => {
+      cardSkinsReady = true;
+      resolve();
+    };
+    link.addEventListener('load', done, { once: true });
+    link.addEventListener('error', () => {
+      cardSkinsPromise = null;
+      resolve();
+    }, { once: true });
+    document.head.appendChild(link);
+  });
+  return cardSkinsPromise;
+}
+
+function ensureVfxEngine() {
+  if (vfxEngine) return Promise.resolve(vfxEngine);
+  if (typeof window.PulseWallVfxEngine === 'function') {
+    initVfxEngine();
+    return Promise.resolve(vfxEngine);
+  }
+  if (vfxEnginePromise) return vfxEnginePromise;
+  vfxEnginePromise = new Promise((resolve) => {
+    const script = document.createElement('script');
+    script.src = vfxEngineAssetUrl();
+    script.async = true;
+    script.addEventListener('load', () => {
+      initVfxEngine();
+      resolve(vfxEngine);
+    }, { once: true });
+    script.addEventListener('error', () => {
+      vfxEnginePromise = null;
+      resolve(null);
+    }, { once: true });
+    document.head.appendChild(script);
+  });
+  return vfxEnginePromise;
+}
+
 function currentCollectorCard() {
   return elements.planetCardHost?.querySelector('.collector-slot .profile-card') || null;
 }
@@ -4963,24 +5404,37 @@ function currentCollectorCard() {
 function onCollectorCardRendered(body) {
   window.clearTimeout(cardFx.timer);
   window.clearInterval(cardFx.ambient);
-  if (!vfxEngine || !body.recipe) {
+  if (!body.recipe) {
     cardFx.key = body.key;
     return;
   }
   const fresh = cardFx.key !== body.key;
   cardFx.key = body.key;
-  if (fresh) {
-    // first open: let the card slide in, then break the frame
-    cardFx.timer = window.setTimeout(() => {
+  const expectedKey = body.key;
+  const scheduleFx = (delayMs) => {
+    if (!vfxEngine || cardFx.key !== expectedKey || !hasCardOpen) return;
+    if (fresh) {
+      // first open: let the card slide in, then break the frame
+      cardFx.timer = window.setTimeout(() => {
+        const card = currentCollectorCard();
+        if (card && vfxEngine && cardFx.key === expectedKey) vfxEngine.focusTriggerCard(card, { intensity: 1.38 });
+      }, delayMs);
+    }
+    // keep the card alive while it stays open
+    cardFx.ambient = window.setInterval(() => {
       const card = currentCollectorCard();
-      if (card) vfxEngine.focusTriggerCard(card, { intensity: 1.38 });
-    }, 520);
+      if (card && vfxEngine && !state.motionPaused && cardFx.key === expectedKey) vfxEngine.triggerSurge(card);
+    }, 7000);
+  };
+  if (vfxEngine) {
+    scheduleFx(520);
+  } else {
+    const openedAt = performance.now();
+    ensureVfxEngine().then(() => {
+      const remaining = Math.max(0, 520 - (performance.now() - openedAt));
+      scheduleFx(remaining);
+    });
   }
-  // keep the card alive while it stays open
-  cardFx.ambient = window.setInterval(() => {
-    const card = currentCollectorCard();
-    if (card && !state.motionPaused) vfxEngine.triggerSurge(card);
-  }, 7000);
 }
 
 function stopCollectorFx() {
@@ -5718,7 +6172,15 @@ async function revalidateStaticAndWorkerInBackground({ checkStatic = false } = {
     const response = await fetch(`${workerBase}/api/state`, { cache: 'no-store', priority: 'low' });
     if (!response.ok) return;
     const workerPayload = await response.json();
-    if (payloadTimestamp(workerPayload) >= state.lastPayloadTime || workerPayload.fingerprint !== state.lastFingerprint) {
+    const prevGh = state.lastPayload?.github;
+    const nextGh = workerPayload?.github;
+    const metaChanged =
+      workerPayload.fingerprint !== state.lastFingerprint ||
+      payloadTimestamp(workerPayload) > state.lastPayloadTime ||
+      prevGh?.stars !== nextGh?.stars ||
+      prevGh?.issuesTotal !== nextGh?.issuesTotal ||
+      prevGh?.awaitingReviewTotal !== nextGh?.awaitingReviewTotal;
+    if (metaChanged) {
       state.dataMode = 'worker';
       applyState(workerPayload);
     }
@@ -5764,7 +6226,6 @@ async function bootstrapState() {
 
 function init() {
   bindAvatarFallback();
-  initVfxEngine();
   const ok = initWorld();
   window.addEventListener('resize', resizeWorld);
   bindCanvasInteractions();
@@ -5781,7 +6242,15 @@ function init() {
     const preset = CAMERA_PRESETS.awe;
     tweenCamera(new THREE.Vector3(...preset.position), new THREE.Vector3(...preset.target), prefersReducedMotion() ? 0.6 : 8.5, null, { logZoom: true });
     if (elements.btnZoomReset) elements.btnZoomReset.textContent = `视角 · ${preset.label}`;
-    window.requestAnimationFrame(renderFrame);
+    document.addEventListener('visibilitychange', () => {
+      if (document.hidden) {
+        stopRenderLoop();
+      } else {
+        startRenderLoop();
+      }
+      syncMarqueeLoop();
+    });
+    startRenderLoop();
   }
   bootstrapState();
 }

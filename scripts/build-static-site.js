@@ -50,11 +50,83 @@ function shortFileHash(filePath) {
   return crypto.createHash('sha1').update(bytes).digest('hex').slice(0, 10);
 }
 
-function markStaticHtmlAssets() {
+function loadEsbuild() {
+  try {
+    return require('esbuild');
+  } catch {
+    return null;
+  }
+}
+
+async function optimizeStaticAssets() {
+  const esbuild = loadEsbuild();
+  if (!esbuild) {
+    return { bundledApp: false, minified: false };
+  }
+
+  const addonsDir = path.join(PUBLIC_DIR, 'vendor', 'three', 'addons');
+  await esbuild.build({
+    entryPoints: [path.join(PUBLIC_DIR, 'app.js')],
+    outfile: path.join(DIST_DIR, 'app.js'),
+    bundle: true,
+    format: 'esm',
+    minify: true,
+    target: ['es2022'],
+    legalComments: 'none',
+    plugins: [
+      {
+        name: 'resolve-three-vendor',
+        setup(build) {
+          build.onResolve({ filter: /^three$/ }, () => ({
+            path: 'three',
+            external: true
+          }));
+          build.onResolve({ filter: /^three\/addons\/(.+)$/ }, (args) => ({
+            path: path.join(addonsDir, args.path.slice('three/addons/'.length))
+          }));
+        }
+      }
+    ]
+  });
+
+  // Remove files already bundled into dist/app.js
+  fs.rmSync(path.join(DIST_DIR, 'abyss.js'), { force: true });
+  fs.rmSync(path.join(DIST_DIR, 'vendor', 'three', 'addons'), { recursive: true, force: true });
+
+  for (const jsFile of ['vfx-engine.js', 'vfx-showcase.js']) {
+    const filePath = path.join(DIST_DIR, jsFile);
+    if (!fs.existsSync(filePath)) continue;
+    const result = esbuild.transformSync(fs.readFileSync(filePath, 'utf8'), {
+      loader: 'js',
+      sourcefile: jsFile,
+      minify: true,
+      target: 'es2022',
+      legalComments: 'none'
+    });
+    fs.writeFileSync(filePath, result.code);
+  }
+
+  for (const cssFile of ['styles.css', 'card-skins.css', 'vfx-cards.css', 'vfx-showcase.css']) {
+    const filePath = path.join(DIST_DIR, cssFile);
+    if (!fs.existsSync(filePath)) continue;
+    const result = esbuild.transformSync(fs.readFileSync(filePath, 'utf8'), {
+      loader: 'css',
+      sourcefile: cssFile,
+      minify: true,
+      legalComments: 'none'
+    });
+    fs.writeFileSync(filePath, result.code);
+  }
+
+  return { bundledApp: true, minified: true };
+}
+
+function markStaticHtmlAssets({ bundledApp = false } = {}) {
   const abyssJsPath = path.join(DIST_DIR, 'abyss.js');
   const appJsPath = path.join(DIST_DIR, 'app.js');
-  if (fs.existsSync(abyssJsPath) && fs.existsSync(appJsPath)) {
-    const abyssHash = shortFileHash(abyssJsPath);
+  let abyssHash = '';
+  if (!bundledApp && fs.existsSync(abyssJsPath) && fs.existsSync(appJsPath)) {
+    abyssHash = shortFileHash(abyssJsPath);
     const appJs = fs.readFileSync(appJsPath, 'utf8');
     fs.writeFileSync(
       appJsPath,
@@ -87,13 +159,25 @@ function markStaticHtmlAssets() {
       )
       .replace('href="styles.css"', `href="styles.css?v=${cssHash}"`)
       .replace('src="vfx-engine.js"', `src="vfx-engine.js?v=${vfxHash}"`)
+      .replace('content="vfx-engine.js"', `content="vfx-engine.js?v=${vfxHash}"`)
+      .replace('href="app.js"', `href="app.js?v=${jsHash}"`)
       .replace('src="app.js"', `src="app.js?v=${jsHash}"`);
+
+    if (bundledApp) {
+      html = html
+        .replace(/^\s*<link rel="modulepreload" href="abyss\.js" \/>\r?\n/gm, '')
+        .replace(/^\s*<link rel="modulepreload" href="vendor\/three\/addons\/[^"]+" \/>\r?\n/gm, '');
+    } else if (abyssHash) {
+      html = html.replace('href="abyss.js"', `href="abyss.js?v=${abyssHash}"`);
+    }
 
     if (showcaseCssHash) {
       html = html.replace('href="vfx-showcase.css"', `href="vfx-showcase.css?v=${showcaseCssHash}"`);
     }
     if (skinsCssHash) {
-      html = html.replace('href="card-skins.css"', `href="card-skins.css?v=${skinsCssHash}"`);
+      html = html
+        .replace('href="card-skins.css"', `href="card-skins.css?v=${skinsCssHash}"`)
+        .replace('content="card-skins.css"', `content="card-skins.css?v=${skinsCssHash}"`);
     }
     if (cardsCssHash) {
       html = html.replace('href="vfx-cards.css"', `href="vfx-cards.css?v=${cardsCssHash}"`);
@@ -122,7 +206,8 @@ async function buildStaticSite() {
 
   fs.rmSync(DIST_DIR, { recursive: true, force: true });
   copyDirectory(PUBLIC_DIR, DIST_DIR);
-  markStaticHtmlAssets();
+  const assetOpt = await optimizeStaticAssets();
+  markStaticHtmlAssets(assetOpt);
   fs.writeFileSync(
     path.join(DIST_DIR, 'contributors.json'),
     JSON.stringify({
@@ -134,6 +219,7 @@ async function buildStaticSite() {
   console.log(`Built GitHub Pages site for ${githubState.repository}`);
   console.log(`Output: ${DIST_DIR}`);
   console.log(`Profiles: ${payload.contributors.length}`);
+  console.log(`Assets: ${assetOpt.bundledApp ? 'bundled & minified (esbuild)' : 'unbundled fallback'}`);
 }
 
 buildStaticSite().catch((error) => {

@@ -22,8 +22,11 @@ test('home page is a full-viewport 3D solar system without PR board or git histo
   assert.match(html, /id="wallSearch"/);
   assert.match(html, /id="podiumViewport"/);
   assert.match(html, /<canvas id="vfxOverlay"/);
-  assert.match(html, /<link rel="stylesheet" href="card-skins\.css" \/>/);
-  assert.match(html, /<script defer src="vfx-engine\.js"><\/script>[\s\S]*<script type="module" src="app\.js">/);
+  assert.match(html, /<meta name="app-card-skins-css" content="card-skins\.css" \/>/);
+  assert.match(html, /<meta name="app-vfx-engine-js" content="vfx-engine\.js" \/>/);
+  assert.doesNotMatch(html, /<link rel="stylesheet" href="card-skins\.css"/);
+  assert.doesNotMatch(html, /<script defer src="vfx-engine\.js"><\/script>/);
+  assert.match(html, /<script type="module" src="app\.js"><\/script>/);
   assert.doesNotMatch(html, /class="brand"|id="btnConstellation"|id="toggleWallMotion"|class="camera-controls"|如何飞向恒星/);
   assert.match(html, /<dialog[^>]+id="cheersPanel"/);
   assert.match(html, /<dialog[^>]+id="activityPanel"/);
@@ -97,6 +100,8 @@ test('planet cards unlock top-tier collector skins and 16 frame-break VFX direct
   assert.match(script, /function starBadgeSvg\(/);
   assert.match(script, /function collectorCardMarkup\(/);
   assert.match(script, /data-star-vfx-tier="\$\{recipe\.vfxTier\}"/);
+  assert.match(script, /function ensureCardSkinsCss\(/);
+  assert.match(script, /function ensureVfxEngine\(/);
   assert.match(script, /new window\.PulseWallVfxEngine\(/);
   assert.match(script, /vfxEngine\.focusTriggerCard\(/);
   assert.match(script, /function leaderboardOrder\(/);
@@ -131,7 +136,8 @@ test('HUD floats on space without nested card boxes and respects reduced motion'
   assert.match(styles, /\.scrim-left/);
   assert.match(styles, /\.podium-list li \{ border-top: 1px solid var\(--hair\); \}/);
   assert.match(styles, /\.podium-viewport\.is-looping/);
-  assert.match(styles, /@property --orbit-angle/);
+  assert.doesNotMatch(styles, /@property --orbit-angle/);
+  assert.match(styles, /@keyframes orbit-sweep\s*\{\s*to\s*\{\s*transform:\s*rotate\(360deg\);\s*\}\s*\}/);
   assert.match(styles, /\.champion-label/);
   assert.match(styles, /\.orbit-label/);
   assert.match(styles, /@media \(prefers-reduced-motion: no-preference\)/);

@@ -482,3 +482,137 @@ test('worker scoring, cutoffs, rank-percentile tiering, and promotion math match
     );
   }
 });
+
+test('worker incrementally caches fileContributors across refreshes and queries GraphQL history only for new paths', async () => {
+  const workerModule = await import('../cloudflare/worker.mjs');
+  const worker = workerModule.default;
+  workerModule.resetMemoryBundleForTests();
+
+  const originalFetch = global.fetch;
+  const realDateNow = Date.now;
+  let profileCount = 60;
+  let historyQueries = [];
+
+  global.fetch = async (input, init = {}) => {
+    const url = typeof input === 'string' ? input : input.url;
+    const parsed = new URL(url);
+
+    if (parsed.pathname === '/graphql') {
+      const body = init.body ? JSON.parse(String(init.body)) : {};
+      const queryText = String(body.query || '');
+
+      if (queryText.includes('defaultBranchRef')) {
+        const pathMatches = Array.from(queryText.matchAll(/f(\d+):\s*history\([^)]*path:\s*"([^"]+)"\)/g));
+        historyQueries.push(pathMatches.map((m) => m[2]));
+
+        const target = {
+          history: { nodes: [], pageInfo: { hasNextPage: false, endCursor: null } },
+          scoringHistory: { nodes: [], pageInfo: { hasNextPage: false, endCursor: null } }
+        };
+        for (const [, idx, repoPath] of pathMatches) {
+          const stem = repoPath.replace(/^data\/profiles\//, '').replace(/\.json$/, '');
+          target[`f${idx}`] = {
+            nodes: [
+              {
+                committedDate: '2026-05-10T08:00:00Z',
+                author: { user: { login: `gh-${stem}`, avatarUrl: `https://avatars.githubusercontent.com/u/${idx}?s=160` } },
+                committer: { user: { login: 'web-flow', avatarUrl: '' } },
+                associatedPullRequests: { nodes: [] }
+              }
+            ]
+          };
+        }
+        return jsonResponse({
+          data: {
+            repository: {
+              defaultBranchRef: { target }
+            }
+          }
+        });
+      }
+
+      const entries = Array.from({ length: profileCount }, (_, i) => ({
+        name: `user-${String(i + 1).padStart(2, '0')}.json`,
+        type: 'blob',
+        object: {
+          text: JSON.stringify({
+            name: `User ${i + 1}`,
+            motto: `Motto ${i + 1}`
+          })
+        }
+      }));
+      return jsonResponse({
+        data: {
+          repository: {
+            profiles: { entries },
+            cheers: { entries: [] }
+          }
+        }
+      });
+    }
+
+    if (parsed.pathname === '/repos/acme/bigwall') {
+      return jsonResponse({
+        full_name: 'acme/bigwall',
+        stargazers_count: 60,
+        clone_url: 'https://github.com/acme/bigwall.git',
+        html_url: 'https://github.com/acme/bigwall',
+        default_branch: 'main',
+        pushed_at: '2026-05-12T07:16:15Z'
+      });
+    }
+    if (parsed.pathname === '/repos/acme/bigwall/contributors') return jsonResponse([]);
+    if (parsed.pathname === '/repos/acme/bigwall/commits') return jsonResponse([]);
+    if (parsed.pathname === '/repos/acme/bigwall/issues') return jsonResponse([]);
+    if (parsed.pathname === '/repos/acme/bigwall/pulls') return jsonResponse([]);
+    if (parsed.pathname === '/repos/acme/bigwall/stargazers') return jsonResponse([]);
+    throw new Error(`Unexpected fetch URL: ${url}`);
+  };
+
+  const env = {
+    GITHUB_REPOSITORY: 'acme/bigwall',
+    GITHUB_TOKEN: 'test-token',
+    REFRESH_COOLDOWN_MS: '180000'
+  };
+
+  try {
+    let now = realDateNow();
+    Date.now = () => now;
+
+    // Refresh #1 (cold): 60 profiles -> 3 GraphQL chunks (25 + 25 + 10)
+    const r1 = await worker.fetch(new Request('https://pulse-wall-api.yoryon.com/api/refresh', { method: 'POST' }), env);
+    assert.equal(r1.status, 200);
+    const d1 = await r1.json();
+    assert.equal(d1.state.count, 60);
+    assert.equal(d1.state.contributors[0].github, 'gh-user-01');
+    assert.equal(historyQueries.length, 3);
+    assert.equal(historyQueries.flat().length, 60);
+
+    // Refresh #2 (after cooldown, 0 new files): 1 scoringHistory-only query with 0 path: aliases
+    historyQueries = [];
+    now += 200000;
+    const r2 = await worker.fetch(new Request('https://pulse-wall-api.yoryon.com/api/refresh', { method: 'POST' }), env);
+    assert.equal(r2.status, 200);
+    const d2 = await r2.json();
+    assert.equal(d2.state.count, 60);
+    assert.equal(d2.state.contributors[0].github, 'gh-user-01');
+    assert.equal(historyQueries.length, 1);
+    assert.deepEqual(historyQueries[0], []);
+
+    // Refresh #3 (after cooldown, 1 new profile added): 1 GraphQL query for ONLY the 1 new path
+    historyQueries = [];
+    profileCount = 61;
+    now += 200000;
+    const r3 = await worker.fetch(new Request('https://pulse-wall-api.yoryon.com/api/refresh', { method: 'POST' }), env);
+    assert.equal(r3.status, 200);
+    const d3 = await r3.json();
+    assert.equal(d3.state.count, 61);
+    assert.equal(d3.state.contributors[60].github, 'gh-user-61');
+    assert.equal(historyQueries.length, 1);
+    assert.deepEqual(historyQueries[0], ['data/profiles/user-61.json']);
+  } finally {
+    Date.now = realDateNow;
+    workerModule.resetMemoryBundleForTests();
+    global.fetch = originalFetch;
+  }
+});
