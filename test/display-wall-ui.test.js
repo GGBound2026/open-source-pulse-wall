@@ -137,3 +137,166 @@ test('HUD floats on space without nested card boxes and respects reduced motion'
   assert.match(styles, /@media \(prefers-reduced-motion: no-preference\)/);
   assert.match(styles, /dialog::backdrop|\.sheet-dialog::backdrop/);
 });
+
+test('3D galaxy uses 5-orbit rank-percentile tiering and expanded deep-space scale', () => {
+  const vm = require('node:vm');
+  const script = fs.readFileSync(APP_PATH, 'utf8');
+  const styles = fs.readFileSync(STYLES_PATH, 'utf8');
+  const scoreEngine = require(path.join(ROOT, 'scripts', 'score-engine.js'));
+
+  assert.match(script, /import \{ buildAbyss \} from '\.\/abyss\.js';/);
+  const abyssPath = path.join(ROOT, 'public', 'abyss.js');
+  assert.ok(fs.existsSync(abyssPath), 'missing public/abyss.js');
+  const abyssSrc = fs.readFileSync(abyssPath, 'utf8');
+  assert.match(abyssSrc, /export function buildAbyss\(/);
+  assert.match(abyssSrc, /gl_PointCoord/);
+  assert.doesNotMatch(abyssSrc, /PointsMaterial/);
+  assert.match(abyssSrc, /SphereGeometry/);
+  assert.match(abyssSrc, /'colossus'/);
+  assert.match(abyssSrc, /'colossus-ring'/);
+  assert.match(abyssSrc, /DISTANT_GALAXIES/);
+  assert.doesNotMatch(script, /function collectorTierCaption\(body\)[\s\S]*?return `顶格专属 ·/);
+  const buildSunStart = script.indexOf('function buildSun(');
+  const setSunChampStart = script.indexOf('function setSunChampion(');
+  assert.ok(buildSunStart >= 0 && setSunChampStart > buildSunStart);
+  assert.match(script.slice(buildSunStart, setSunChampStart), /new THREE\.PointsMaterial\(\{[\s\S]*?map:\s*canvasTexture\(/);
+  assert.match(script, /const PRESET_ORDER = \['awe', 'overview', 'flyby'\];/);
+  assert.match(script, /gaze:\s*\{/);
+  assert.match(script, /followReleaseDist/);
+  assert.match(script, /nav\.recentering/);
+  assert.match(script, /const STATE_CACHE_KEY = 'pulse-wall:state:v6';/);
+  assert.match(script, /const TIER_PERCENTILE_CUTOFFS = \{ tier3: 0\.15, tier2: 0\.5 \};/);
+  assert.match(script, /const SUN_RADIUS = 1700;/);
+  assert.match(script, /const KEPLER_K = 36000;/);
+  assert.match(script, /const TOP5_SIZE = \{ 2: 615, 3: 575, 4: 535, 5: 495 \};/);
+  assert.match(script, /const PLANET_SIZE_RANGE = \{ tier3: \[285, 355\], tier2: \[165, 215\], tier1: \[84, 114\], outer: \[30, 46\] \};/);
+  assert.match(script, /incl: 0\.12[\s\S]*incl: 0\.34[\s\S]*incl: -0\.24[\s\S]*incl: 0\.42[\s\S]*incl: 0\.07/);
+  assert.match(script, /style:\s*0[\s\S]*style:\s*1[\s\S]*style:\s*2[\s\S]*style:\s*3[\s\S]*style:\s*4/);
+  assert.match(script, /lockedKey:\s*null/);
+  assert.match(script, /function lockPlanet\(/);
+  assert.match(script, /function closePlanetCard\(\{ keepFollow = true, keepLock = true/);
+  assert.match(script, /function unlockPlanet\(/);
+  const cycleStart = script.indexOf('function cyclePreset(');
+  const dollyStart = script.indexOf('function dollyBy(');
+  assert.ok(cycleStart >= 0 && dollyStart > cycleStart);
+  assert.match(script.slice(cycleStart, dollyStart), /applyPreset\(next\)/);
+  assert.doesNotMatch(script.slice(cycleStart, dollyStart), /lockedKey\s*=\s*null/);
+  const ribbonStart = script.indexOf('function renderHonorRibbon(');
+  const vfxInitStart = script.indexOf('function initVfxEngine(');
+  assert.ok(ribbonStart >= 0 && vfxInitStart > ribbonStart);
+  const ribbonSlice = script.slice(ribbonStart, vfxInitStart);
+  assert.doesNotMatch(ribbonSlice, /\.inert\s*=\s*true/);
+  assert.match(ribbonSlice, /tabIndex\s*=\s*-1/);
+  const orbitFnStart = script.indexOf('function orbitSheetMaterial(');
+  const buildOrbitsStart = script.indexOf('function buildOrbits(');
+  assert.ok(orbitFnStart >= 0 && buildOrbitsStart > orbitFnStart);
+  const orbitMatSlice = script.slice(orbitFnStart, buildOrbitsStart);
+  assert.match(orbitMatSlice, /pxWorld/);
+  assert.doesNotMatch(orbitMatSlice, /cos\(ang/);
+  assert.match(script, /new THREE\.PerspectiveCamera\([\s\S]*0\.6,\s*750000\)/);
+  assert.match(script, /new UnrealBloomPass\([\s\S]*0\.46,\s*0\.42,\s*0\.92\)/);
+  assert.match(script, /sun\.glow\.scale\.setScalar\(SUN_RADIUS \* 4\.0/);
+  assert.match(script, /const sig = `\$\{planet\.orbitId\}\|/);
+  assert.match(script, /function terrestrialCanvas\(/);
+  assert.match(script, /function iceGiantCanvas\(/);
+  assert.match(script, /function makeContributorRockMaterial\(/);
+  assert.match(script, /function planetRingMaterial\(/);
+  assert.match(script, /function planetBackAtmosphereMaterial\(/);
+  const ensureFnStart = script.indexOf('function ensurePlanetObject(');
+  const disposeFnStart = script.indexOf('function disposePlanetObject(');
+  const linkStart = script.indexOf('/* ----------------------------------------------------------------- links */');
+  assert.ok(ensureFnStart >= 0 && disposeFnStart > ensureFnStart && linkStart > disposeFnStart);
+  assert.doesNotMatch(script.slice(ensureFnStart, disposeFnStart), /SHOCK_GEO|let trail\b|\btrail\b/);
+  assert.doesNotMatch(script.slice(disposeFnStart, linkStart), /obj\.trail/);
+
+  const linkLayerStart = script.indexOf('function buildLinkLayer(');
+  const addEffectStart = script.indexOf('function addEffect(');
+  assert.ok(linkLayerStart >= 0 && addEffectStart > linkLayerStart);
+  const linkSlice = script.slice(linkLayerStart, addEffectStart);
+  assert.doesNotMatch(linkSlice, /new THREE\.Points/);
+  assert.match(linkSlice, /world\.textures\.spark\s*=\s*sparkTex/);
+
+  // Confirm 5-orbit system without legacy star-orbit / 0-tier / fixed threshold artifacts or recipe-line
+  assert.doesNotMatch(script, /0阶|star-card|resolveTierMeta|TIER_FLOORS|PLANET_BASE_SIZE|VFX_TIER_THRESHOLDS/);
+  assert.doesNotMatch(script, /recipe-line/);
+  assert.doesNotMatch(styles, /\.recipe-line|\.recipe-badge/);
+  assert.doesNotMatch(script, /\{ id: 'star',/);
+  assert.match(script, /\{ id: 'top5', r: 6200,/);
+  assert.match(script, /\{ id: 'tier3', r: 9400,/);
+  assert.match(script, /\{ id: 'tier2', r: 13600,/);
+  assert.match(script, /\{ id: 'tier1', r: 18800,/);
+  assert.match(script, /\{ id: 'outer', r: 25600,[\s\S]*belt: 2800 \}/);
+
+  // Verify runtime parity of frontend computeTierCutoffs, resolveRankTier, and buildPromotionInfo against score-engine.js
+  const tierFnStart = script.indexOf('function computeTierCutoffs(');
+  const tierFnEnd = script.indexOf('function buildFallbackScoresMap(');
+  assert.ok(tierFnStart >= 0 && tierFnEnd > tierFnStart, 'expected rank-percentile helpers in app.js');
+  const excerpt = `
+    const TOP5_LIMIT = 5;
+    const TOP5_MIN_POINTS = 1;
+    const TIER_PERCENTILE_CUTOFFS = { tier3: 0.15, tier2: 0.5 };
+    const clamp = (v, min, max) => Math.max(min, Math.min(max, v));
+    ${script.slice(tierFnStart, tierFnEnd)}
+    this.__exports = { computeTierCutoffs, resolveRankTier, buildPromotionInfo };
+  `;
+  const sandbox = {};
+  vm.runInNewContext(excerpt, sandbox);
+
+  const sameRealm = (value) => JSON.parse(JSON.stringify(value));
+
+  for (const poolSize of [0, 1, 2, 3, 10, 44]) {
+    assert.deepEqual(
+      sameRealm(sandbox.__exports.computeTierCutoffs(poolSize)),
+      scoreEngine.computeTierCutoffs(poolSize),
+      `cutoff parity mismatch for poolSize=${poolSize}`
+    );
+  }
+  for (const [starred, rank, starredCount] of [
+    [false, 4, 10],
+    [true, 1, 49],
+    [true, 3, 49],
+    [true, 6, 49],
+    [true, 12, 49],
+    [true, 13, 49],
+    [true, 27, 49],
+    [true, 28, 49],
+    [true, 49, 49],
+    [true, 6, 6],
+    [true, 6, 7],
+    [true, 7, 7]
+  ]) {
+    assert.deepEqual(
+      sameRealm(sandbox.__exports.resolveRankTier({ starred, rank, starredCount })),
+      scoreEngine.resolveRankTier({ starred, rank, starredCount }),
+      `resolveRankTier parity mismatch for starred=${starred}, rank=${rank}, starredCount=${starredCount}`
+    );
+  }
+
+  // Verify promotion parity on a realistic multi-tier cohort
+  const contributors = Array.from({ length: 12 }, (_, i) => ({
+    name: `User ${i + 1}`,
+    github: `user${i + 1}`,
+    starred: i < 10,
+    joinedAt: `2026-11-01T00:${String(i).padStart(2, '0')}:00Z`,
+    cheers: i < 10 ? Array.from({ length: (10 - i) % 4 }, (__, j) => ({ from: `user${((i + j + 1) % 10) + 1}`, message: 'nice!' })) : []
+  }));
+  const engineScored = scoreEngine.computeContributorScores({ contributors }).contributors
+    .slice()
+    .sort((a, b) => a.score.rank - b.score.rank);
+  const rankedStarred = engineScored
+    .filter((c) => c.score.starred)
+    .map((c) => ({ points: c.score.points }));
+  const cutoffs = sandbox.__exports.computeTierCutoffs(Math.max(0, rankedStarred.length - 5));
+  for (const c of engineScored) {
+    const promo = sameRealm(sandbox.__exports.buildPromotionInfo({
+      starred: c.score.starred,
+      points: c.score.points,
+      rank: c.score.rank,
+      orbitId: c.score.orbitId,
+      starredCount: rankedStarred.length,
+      rankedStarred,
+      cutoffs
+    }));
+    assert.deepEqual(promo, c.score.promotion, `promotion parity mismatch for ${c.github}`);
+  }
+});

@@ -617,28 +617,69 @@ test('100-user / 600-commit scoring stress test verifies exact points, tier prog
 
   const byHandle = new Map(scored.map((c) => [c.github, c]));
 
-  // stu001: 1 (Star) + 3 (Cheers) + 6 (3 pairs) = 10 -> Tier 3, Rank 1, Top 5
+  // stu001: 1 (Star) + 3 (Cheers) + 6 (3 pairs) = 10 -> #1 Sun, Top 5
   assert.equal(byHandle.get('stu001').score.points, 10);
   assert.equal(byHandle.get('stu001').score.vfxTier, 3);
-  assert.equal(byHandle.get('stu001').score.tierId, 'tier-3');
+  assert.equal(byHandle.get('stu001').score.orbitId, 'sun');
+  assert.equal(byHandle.get('stu001').score.tierId, 'sun');
   assert.equal(byHandle.get('stu001').score.rank, 1);
   assert.equal(byHandle.get('stu001').score.isTop5, true);
+  assert.equal(byHandle.get('stu001').score.starredTotal, 80);
+  assert.equal(byHandle.get('stu001').score.poolSize, 75);
+  assert.equal(byHandle.get('stu001').score.promotion.leadPoints, 4);
+  assert.equal(byHandle.get('stu001').score.promotion.progress, 100);
 
-  // stu003: 1 + 3 + 2 = 6 -> Tier 2
+  // stu003: 1 + 3 + 2 = 6 -> #2 Top 5 (earliest joinedAt among 6-pt students)
   assert.equal(byHandle.get('stu003').score.points, 6);
-  assert.equal(byHandle.get('stu003').score.vfxTier, 2);
-  assert.equal(byHandle.get('stu003').score.tierId, 'tier-2');
+  assert.equal(byHandle.get('stu003').score.vfxTier, 3);
+  assert.equal(byHandle.get('stu003').score.orbitId, 'top5');
+  assert.equal(byHandle.get('stu003').score.tierId, 'top-5');
+  assert.equal(byHandle.get('stu003').score.rank, 2);
+  assert.equal(byHandle.get('stu003').score.isTop5, true);
+  assert.equal(byHandle.get('stu003').score.promotion.targetOrbitId, 'sun');
+  assert.equal(byHandle.get('stu003').score.promotion.pointsToTie, 4);
+  assert.equal(byHandle.get('stu003').score.promotion.pointsToPass, 5);
 
-  // stu002: farming blocked -> 1 + 3 + 0 = 4 -> Tier 1
+  // stu040: 1 + 3 + 2 = 6 -> #6 (last 6-pt student), poolRank 1 <= tier3End (12) -> Tier 3
+  assert.equal(byHandle.get('stu040').score.points, 6);
+  assert.equal(byHandle.get('stu040').score.rank, 6);
+  assert.equal(byHandle.get('stu040').score.poolRank, 1);
+  assert.equal(byHandle.get('stu040').score.orbitId, 'tier3');
+  assert.equal(byHandle.get('stu040').score.tierId, 'tier-3');
+  assert.equal(byHandle.get('stu040').score.vfxTier, 3);
+  assert.equal(byHandle.get('stu040').score.isTop5, false);
+
+  // stu002: farming blocked -> 1 + 3 + 0 = 4 -> #7 (earliest 4-pt student), poolRank 2 <= 12 -> Tier 3
   assert.equal(byHandle.get('stu002').score.points, 4);
-  assert.equal(byHandle.get('stu002').score.vfxTier, 1);
-  assert.equal(byHandle.get('stu002').score.tierId, 'tier-1');
+  assert.equal(byHandle.get('stu002').score.rank, 7);
+  assert.equal(byHandle.get('stu002').score.vfxTier, 3);
+  assert.equal(byHandle.get('stu002').score.orbitId, 'tier3');
+  assert.equal(byHandle.get('stu002').score.tierId, 'tier-3');
 
-  // stu081 (unstarred): 0 + 3 + 0 = 3 pts, but Star hard gate keeps it locked (vfxTier 0, not Top 5)
+  // stu022: 4 pts, rank 20, poolRank 15 (12 < 15 <= 38) -> Tier 2
+  assert.equal(byHandle.get('stu022').score.orbitId, 'tier2');
+  assert.equal(byHandle.get('stu022').score.tierId, 'tier-2');
+  assert.equal(byHandle.get('stu022').score.vfxTier, 2);
+
+  // stu060: 4 pts, rank 60, poolRank 55 (> 38) -> Tier 1
+  assert.equal(byHandle.get('stu060').score.orbitId, 'tier1');
+  assert.equal(byHandle.get('stu060').score.tierId, 'tier-1');
+  assert.equal(byHandle.get('stu060').score.vfxTier, 1);
+
+  // stu081 (unstarred): 0 + 3 + 0 = 3 pts, but Star hard gate keeps it locked (outer belt, vfxTier 0, not Top 5)
   assert.equal(byHandle.get('stu081').score.points, 3);
   assert.equal(byHandle.get('stu081').score.vfxTier, 0);
+  assert.equal(byHandle.get('stu081').score.orbitId, 'outer');
   assert.equal(byHandle.get('stu081').score.tierId, 'locked');
   assert.equal(byHandle.get('stu081').score.isTop5, false);
+  assert.equal(byHandle.get('stu081').score.promotion.targetOrbitId, 'tier1');
+
+  // Verify exact rank-percentile orbit distribution across 80 starred (poolSize=75: tier3End=12, tier2End=38) + 20 unstarred
+  const orbitCounts = { sun: 0, top5: 0, tier3: 0, tier2: 0, tier1: 0, outer: 0 };
+  for (const c of scored) {
+    orbitCounts[c.score.orbitId] += 1;
+  }
+  assert.deepEqual(orbitCounts, { sun: 1, top5: 4, tier3: 12, tier2: 26, tier1: 37, outer: 20 });
 
   // Exactly 5 Top 5 slots
   assert.equal(scored.filter((c) => c.score.isTop5).length, 5);

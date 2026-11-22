@@ -17,7 +17,7 @@ import { buildAbyss } from './abyss.js';
 const MAX_FEED_ITEMS = 30;
 const VISIBLE_FEED_ITEMS = 3;
 const REFRESH_LABEL_DEFAULT = '立即刷新';
-const STATE_CACHE_KEY = 'pulse-wall:state:v5';
+const STATE_CACHE_KEY = 'pulse-wall:state:v6';
 const REFRESH_COOLDOWN_STORAGE_KEY = 'pulse-wall:refresh-cooldown-until';
 const MOTION_PREF_STORAGE_KEY = 'pulse-wall:orbit-paused';
 const FRESH_WINDOW_MS = 20 * 60 * 1000;
@@ -37,16 +37,16 @@ const STAR_THEMES = [
   { id: 'obsidian', label: '黑曜紫晶', tone: 'dark', color: '#c084fc', ring: '#f0abfc' }
 ];
 
-// Dimension 2: planetary ring system
+// Dimension 2: astronomically coherent single-plane equatorial ring systems
 const STAR_RING_STYLES = [
-  { id: 'single', label: '单轨光环', inner: 1.45, outer: 2.05, tilt: 0.45 },
-  { id: 'double', label: '双层星环', inner: 1.35, outer: 2.5, tilt: -0.5 },
-  { id: 'steep', label: '倾角极环', inner: 1.5, outer: 2.1, tilt: 1.05 },
-  { id: 'halo', label: '赤道宽环', inner: 1.3, outer: 2.8, tilt: 0.22 },
-  { id: 'crossed', label: '交叉双轨', inner: 1.55, outer: 2.3, tilt: 0.75 },
-  { id: 'subtle', label: '微光细环', inner: 1.7, outer: 1.95, tilt: -0.3 },
-  { id: 'elliptic', label: '斜轴星带', inner: 1.4, outer: 2.6, tilt: -0.85 },
-  { id: 'corona', label: '三重日冕环', inner: 1.25, outer: 3.0, tilt: 0.35 }
+  { id: 'single', label: '卡西尼典藏环', tilt: 0.34, bands: [[1.38, 2.24]], outer: 2.24, opacity: 0.82, dust: 0 },
+  { id: 'double', label: '双带离析环', tilt: -0.30, bands: [[1.34, 1.66], [1.88, 2.28]], outer: 2.28, opacity: 0.78, dust: 0 },
+  { id: 'gossamer', label: '薄纱冰晶环', tilt: 0.24, bands: [[1.42, 1.96]], outer: 1.96, opacity: 0.44, dust: 0 },
+  { id: 'broad', label: '阔幅冰尘大环', tilt: 0.22, bands: [[1.30, 2.52]], outer: 2.52, opacity: 0.86, dust: 360 },
+  { id: 'braided', label: '牧羊共振环', tilt: -0.26, bands: [[1.36, 1.78], [1.90, 2.24]], outer: 2.24, opacity: 0.76, dust: 480 },
+  { id: 'subtle', label: '星辉微环', tilt: -0.18, bands: [[1.56, 1.86]], outer: 1.86, opacity: 0.52, dust: 0 },
+  { id: 'dusty', label: '炽尘渐变环', tilt: 0.38, bands: [[1.34, 2.34]], outer: 2.34, opacity: 0.72, dust: 420 },
+  { id: 'triple', label: '三重谐振光环', tilt: -0.36, bands: [[1.28, 1.50], [1.62, 2.02], [2.16, 2.46]], outer: 2.46, opacity: 0.84, dust: 440 }
 ];
 
 // Dimension 3: moons
@@ -121,19 +121,22 @@ const TOTAL_STAR_COMBINATIONS =
   STAR_THEMES.length * STAR_RING_STYLES.length * STAR_MOONS.length * STAR_BADGES.length *
   STAR_VFX.length * STAR_SPECTRA.length * STAR_PATTERNS.length;
 
+const TOP5_LIMIT = 5;
+const TOP5_MIN_POINTS = 1;
+const TIER_PERCENTILE_CUTOFFS = { tier3: 0.15, tier2: 0.5 };
+
 // The champion sun and its retinue. Each orbit lives in its own inclined plane
 // (inclination + ascending node) so the system reads as a true 3D gyroscope.
-const SUN_RADIUS = 140;
+const SUN_RADIUS = 1700;
 const ORBITS = [
-  { id: 'top5', r: 330, incl: 0.12, node: 0.3, label: 'TOP 2–5 内环', hint: '恒星近卫', color: '#ffd166' },
-  { id: 'tier3', r: 450, incl: 0.34, node: 1.5, label: '三阶 · 顶格传说', hint: '10+ 分', color: '#f472b6' },
-  { id: 'tier2', r: 565, incl: -0.24, node: 2.7, label: '二阶 · 觉醒进化', hint: '6–9 分', color: '#a78bfa' },
-  { id: 'tier1', r: 680, incl: 0.42, node: 3.9, label: '一阶 · 初醒破框', hint: '3–5 分', color: '#60a5fa' },
-  { id: 'star', r: 800, incl: -0.3, node: 5.1, label: '星标轨道', hint: '1–2 分', color: '#5eead4' },
-  { id: 'outer', r: 990, incl: 0.07, node: 0.9, label: '外缘星带', hint: '点 Star 开启积分', color: '#94a3b8', belt: 95 }
+  { id: 'top5', r: 6200, incl: 0.12, node: 0.3, style: 0, label: 'TOP 2–5 内环', hint: '恒星近卫', color: '#fbbf24' },
+  { id: 'tier3', r: 9400, incl: 0.34, node: 1.5, style: 1, label: '三阶 · 顶格传说', hint: 'TOP 5 后前 15%', color: '#fb7185' },
+  { id: 'tier2', r: 13600, incl: -0.24, node: 2.7, style: 2, label: '二阶 · 觉醒进化', hint: '排名 15%–50%', color: '#38bdf8' },
+  { id: 'tier1', r: 18800, incl: 0.42, node: 3.9, style: 3, label: '一阶 · 初醒破框', hint: '排名后 50%', color: '#818cf8' },
+  { id: 'outer', r: 25600, incl: 0.07, node: 0.9, style: 4, label: '外缘星带', hint: '点 Star 入轨排名', color: '#94a3b8', belt: 2800 }
 ];
 const ORBIT_BY_ID = Object.fromEntries(ORBITS.map((orbit) => [orbit.id, orbit]));
-const KEPLER_K = 470;
+const KEPLER_K = 36000;
 
 const TOP5_PALETTE = {
   1: { name: '恒星王座', halo: '#ffd166' },
@@ -143,17 +146,17 @@ const TOP5_PALETTE = {
   5: { name: '极光近卫', halo: '#86efac' }
 };
 
-const PLANET_BASE_SIZE = { top5: 20, tier3: 17, tier2: 15, tier1: 13.5, star: 12, outer: 9.5 };
-const TOP5_SIZE = { 2: 26, 3: 23.5, 4: 21.5, 5: 20 };
+const TOP5_SIZE = { 2: 615, 3: 575, 4: 535, 5: 495 };
+const PLANET_SIZE_RANGE = { tier3: [285, 355], tier2: [165, 215], tier1: [84, 114], outer: [30, 46] };
 const UNSTARRED_COLOR = '#94a3b8';
 
 const CAMERA_PRESETS = {
-  awe: { label: '仰望', position: [340, 190, 1230], target: [0, 95, 0] },
-  overview: { label: '俯瞰', position: [0, 2100, 1650], target: [0, 0, 0] },
-  flyby: { label: '掠过星带', position: [-820, 26, 830], target: [0, 160, 0] },
-  gaze: { label: '神明一瞥', position: [-7800, 3000, 15200], target: [1600, 1700, -3800] }
+  awe: { label: '仰望', position: [10200, 7200, 34500], target: [0, 650, 0] },
+  overview: { label: '俯瞰', position: [0, 54000, 39500], target: [0, 0, 0] },
+  flyby: { label: '掠过星带', position: [-21500, 1400, 19500], target: [0, 1200, 0] },
+  gaze: { label: '神明一瞥', position: [50000, 72000, 552000], target: [0, 650, 0] }
 };
-const PRESET_ORDER = ['awe', 'overview', 'flyby', 'gaze'];
+const PRESET_ORDER = ['awe', 'overview', 'flyby'];
 
 const AVATARS = Array.from({ length: 11 }, (_, index) => `avatars/avatar-${String(index + 1).padStart(2, '0')}.png`);
 
@@ -437,13 +440,208 @@ function demoTiersEnabled() {
   }
 }
 
-function resolveTierMeta(points, starred) {
-  const score = Math.max(0, Number(points) || 0);
-  if (!starred) return { vfxTier: 0, tierId: 'locked', tierLabel: '未点 Star', tierShort: '', nextTierPoints: 1 };
-  if (score >= 10) return { vfxTier: 3, tierId: 'tier-3', tierLabel: '三阶 · 顶格传说', tierShort: '三阶', nextTierPoints: null };
-  if (score >= 6) return { vfxTier: 2, tierId: 'tier-2', tierLabel: '二阶 · 觉醒进化', tierShort: '二阶', nextTierPoints: 10 };
-  if (score >= 3) return { vfxTier: 1, tierId: 'tier-1', tierLabel: '一阶 · 初醒破框', tierShort: '一阶', nextTierPoints: 6 };
-  return { vfxTier: 0, tierId: 'star-card', tierLabel: '0阶 · 星标行星', tierShort: '0阶', nextTierPoints: 3 };
+function computeTierCutoffs(poolSize) {
+  const M = Math.max(0, Math.floor(Number(poolSize) || 0));
+  if (M <= 1) return { tier3End: 0, tier2End: 0 };
+  if (M === 2) return { tier3End: 0, tier2End: 1 };
+  const tier3End = Math.max(1, Math.ceil(M * TIER_PERCENTILE_CUTOFFS.tier3));
+  const tier2End = Math.max(tier3End + 1, Math.ceil(M * TIER_PERCENTILE_CUTOFFS.tier2));
+  return { tier3End, tier2End };
+}
+
+function resolveRankTier({ starred, rank, starredCount } = {}) {
+  const totalStarred = Math.max(0, Math.floor(Number(starredCount) || 0));
+  const r = Math.floor(Number(rank) || 0);
+  const poolSize = Math.max(0, totalStarred - TOP5_LIMIT);
+  const { tier3End, tier2End } = computeTierCutoffs(poolSize);
+
+  if (!starred || r <= 0 || totalStarred <= 0) {
+    return {
+      vfxTier: 0,
+      orbitId: 'outer',
+      tierId: 'locked',
+      tierLabel: '未点 Star',
+      tierShort: '',
+      poolRank: null,
+      poolSize,
+      poolPercentile: null,
+      rankPercentile: null
+    };
+  }
+
+  const rankPercentile = Math.round((r / totalStarred) * 1000) / 10;
+  if (r === 1) {
+    return {
+      vfxTier: 3,
+      orbitId: 'sun',
+      tierId: 'sun',
+      tierLabel: '恒星王座',
+      tierShort: '王座',
+      poolRank: null,
+      poolSize,
+      poolPercentile: null,
+      rankPercentile
+    };
+  }
+  if (r <= TOP5_LIMIT) {
+    return {
+      vfxTier: 3,
+      orbitId: 'top5',
+      tierId: 'top-5',
+      tierLabel: '恒星近卫',
+      tierShort: '近卫',
+      poolRank: null,
+      poolSize,
+      poolPercentile: null,
+      rankPercentile
+    };
+  }
+
+  const poolRank = r - TOP5_LIMIT;
+  const poolPercentile = poolSize > 0 ? Math.round((poolRank / poolSize) * 1000) / 10 : null;
+  if (poolRank <= tier3End) {
+    return {
+      vfxTier: 3,
+      orbitId: 'tier3',
+      tierId: 'tier-3',
+      tierLabel: '三阶 · 顶格传说',
+      tierShort: '三阶',
+      poolRank,
+      poolSize,
+      poolPercentile,
+      rankPercentile
+    };
+  }
+  if (poolRank <= tier2End) {
+    return {
+      vfxTier: 2,
+      orbitId: 'tier2',
+      tierId: 'tier-2',
+      tierLabel: '二阶 · 觉醒进化',
+      tierShort: '二阶',
+      poolRank,
+      poolSize,
+      poolPercentile,
+      rankPercentile
+    };
+  }
+  return {
+    vfxTier: 1,
+    orbitId: 'tier1',
+    tierId: 'tier-1',
+    tierLabel: '一阶 · 初醒破框',
+    tierShort: '一阶',
+    poolRank,
+    poolSize,
+    poolPercentile,
+    rankPercentile
+  };
+}
+
+function buildPromotionInfo({ starred, points, rank, orbitId, starredCount, rankedStarred, cutoffs }) {
+  if (!starred || rank <= 0 || starredCount <= 0) {
+    return {
+      targetOrbitId: 'tier1',
+      targetLabel: '星系排名轨道',
+      targetHint: '点 Star 入轨',
+      targetRank: null,
+      ranksNeeded: null,
+      thresholdPoints: 1,
+      pointsToTie: 1,
+      pointsToPass: 1,
+      leadPoints: 0,
+      progress: 0
+    };
+  }
+
+  if (orbitId === 'sun' || rank === 1) {
+    const second = rankedStarred[1];
+    const leadPoints = second ? Math.max(0, points - second.points) : points;
+    return {
+      targetOrbitId: null,
+      targetLabel: null,
+      targetHint: null,
+      targetRank: 1,
+      ranksNeeded: 0,
+      thresholdPoints: points,
+      pointsToTie: 0,
+      pointsToPass: 0,
+      leadPoints,
+      progress: 100
+    };
+  }
+
+  let targetOrbitId = 'sun';
+  let targetRank = 1;
+  let targetLabel = '#1 恒星王座';
+  let targetHint = '榜首';
+  const top5Edge = Math.min(TOP5_LIMIT, starredCount);
+  let tierTop = 2;
+  let tierBottomSlot = top5Edge;
+  let tierBottom = top5Edge + 1;
+
+  if (orbitId === 'tier3') {
+    targetOrbitId = 'top5';
+    targetRank = TOP5_LIMIT;
+    targetLabel = 'TOP 2–5 内环';
+    targetHint = '恒星近卫';
+    tierTop = TOP5_LIMIT + 1;
+    tierBottomSlot = TOP5_LIMIT + cutoffs.tier3End;
+    tierBottom = TOP5_LIMIT + cutoffs.tier3End + 1;
+  } else if (orbitId === 'tier2') {
+    if (cutoffs.tier3End > 0) {
+      targetOrbitId = 'tier3';
+      targetRank = TOP5_LIMIT + cutoffs.tier3End;
+      targetLabel = '三阶 · 顶格传说';
+      targetHint = '前 15%';
+    } else {
+      targetOrbitId = 'top5';
+      targetRank = top5Edge;
+      targetLabel = 'TOP 2–5 内环';
+      targetHint = '恒星近卫';
+    }
+    tierTop = TOP5_LIMIT + cutoffs.tier3End + 1;
+    tierBottomSlot = TOP5_LIMIT + cutoffs.tier2End;
+    tierBottom = TOP5_LIMIT + cutoffs.tier2End + 1;
+  } else if (orbitId === 'tier1') {
+    if (cutoffs.tier2End > 0) {
+      targetOrbitId = 'tier2';
+      targetRank = TOP5_LIMIT + cutoffs.tier2End;
+      targetLabel = '二阶 · 觉醒进化';
+      targetHint = '前 50%';
+    } else {
+      targetOrbitId = 'top5';
+      targetRank = top5Edge;
+      targetLabel = 'TOP 2–5 内环';
+      targetHint = '恒星近卫';
+    }
+    tierTop = TOP5_LIMIT + cutoffs.tier2End + 1;
+    tierBottomSlot = starredCount;
+    tierBottom = starredCount;
+  }
+
+  const gatekeeper = rankedStarred[targetRank - 1];
+  const thresholdPoints = gatekeeper ? gatekeeper.points : points;
+  const ranksNeeded = Math.max(1, rank - targetRank);
+  const pointsToTie = Math.max(0, thresholdPoints - points);
+  const pointsToPass = Math.max(1, thresholdPoints - points + 1);
+  const singleSlotTier = tierTop >= tierBottomSlot;
+  const span = Math.max(1, tierBottom - targetRank);
+  const rawPct = ((tierBottom - rank) / span) * 100;
+  const progress = singleSlotTier ? 96 : Math.min(96, Math.max(8, Math.round(rawPct)));
+
+  return {
+    targetOrbitId,
+    targetLabel,
+    targetHint,
+    targetRank,
+    ranksNeeded,
+    thresholdPoints,
+    pointsToTie,
+    pointsToPass,
+    leadPoints: 0,
+    progress
+  };
 }
 
 function buildFallbackScoresMap(contributors) {
@@ -472,25 +670,72 @@ function isProfileStarred(profile) {
   return false;
 }
 
+const VALID_STARRED_ORBITS = new Set(['sun', 'top5', 'tier3', 'tier2', 'tier1']);
+const VALID_STARRED_TIER_IDS = new Set(['sun', 'top-5', 'tier-3', 'tier-2', 'tier-1']);
+
+function unrankedFallbackTier(starred) {
+  if (!starred) return resolveRankTier({ starred: false, rank: 0, starredCount: 0 });
+  return {
+    vfxTier: 1,
+    orbitId: 'tier1',
+    tierId: 'tier-1',
+    tierLabel: '一阶 · 初醒破框',
+    tierShort: '一阶',
+    poolRank: null,
+    poolSize: 0,
+    poolPercentile: null,
+    rankPercentile: null
+  };
+}
+
 function scoreForProfile(profile, fallbackCheersMap = null, demoSlot = -1) {
   const starred = isProfileStarred(profile);
   if (demoTiersEnabled() && starred && demoSlot >= 0) {
-    const demoPointsPool = [12, 10, 8, 6, 5, 4, 3, 2, 1];
+    const demoPointsPool = [16, 13, 11, 9, 8, 7, 6, 5, 4, 4, 3, 3, 2, 2, 2, 1];
     const pts = demoSlot < demoPointsPool.length ? demoPointsPool[demoSlot] : 1;
     const cheerPts = Math.min(3, Math.max(0, pts - 1));
     const pairPts = Math.floor(Math.max(0, pts - 1 - cheerPts) / 2) * 2;
+    const unranked = resolveRankTier({ starred: true, rank: demoSlot + 1, starredCount: Math.max(demoSlot + 1, demoPointsPool.length) });
     return {
       points: pts,
       starred: true,
-      ...resolveTierMeta(pts, true),
+      ...unranked,
+      nextTierPoints: null,
       rank: demoSlot + 1,
-      isTop5: demoSlot < 5,
+      isTop5: demoSlot < TOP5_LIMIT,
       breakdown: { star: 1, cheers: cheerPts, cheerTargets: [], pair: pairPts, pairPartners: [] }
     };
   }
 
   if (profile?.score && typeof profile.score.points === 'number') {
-    return { ...profile.score, starred, ...resolveTierMeta(profile.score.points, starred) };
+    const prev = profile.score;
+    const prevBreakdown = prev.breakdown || {};
+    const starPts = starred ? 1 : 0;
+    const cheersPts = Number(prevBreakdown.cheers || 0);
+    const pairPts = Number(prevBreakdown.pair || 0);
+    const hasSplit = prev.breakdown && (typeof prevBreakdown.cheers === 'number' || typeof prevBreakdown.pair === 'number');
+    const points = Boolean(prev.starred) === starred
+      ? prev.points
+      : (hasSplit ? starPts + cheersPts + pairPts : Math.max(0, prev.points + (starred ? 1 : -1)));
+    const fallbackTier = unrankedFallbackTier(starred);
+    return {
+      ...prev,
+      points,
+      starred,
+      vfxTier: starred ? (prev.vfxTier || fallbackTier.vfxTier) : 0,
+      orbitId: starred ? (VALID_STARRED_ORBITS.has(prev.orbitId) ? prev.orbitId : fallbackTier.orbitId) : 'outer',
+      tierId: starred ? (VALID_STARRED_TIER_IDS.has(prev.tierId) ? prev.tierId : fallbackTier.tierId) : 'locked',
+      tierLabel: starred ? (prev.tierLabel || fallbackTier.tierLabel) : '未点 Star',
+      tierShort: starred ? (prev.tierShort || fallbackTier.tierShort) : '',
+      nextTierPoints: null,
+      breakdown: {
+        star: starPts,
+        cheers: cheersPts,
+        cheerTargets: Array.isArray(prevBreakdown.cheerTargets) ? prevBreakdown.cheerTargets : [],
+        pair: pairPts,
+        pairPartners: Array.isArray(prevBreakdown.pairPartners) ? prevBreakdown.pairPartners : []
+      }
+    };
   }
 
   const key = profileKey(profile);
@@ -498,14 +743,77 @@ function scoreForProfile(profile, fallbackCheersMap = null, demoSlot = -1) {
   const sentTargets = fallbackCheersMap ? Array.from(fallbackCheersMap.get(key) || []) : [];
   const cheerPts = Math.min(3, sentTargets.length);
   const points = starPts + cheerPts;
+  const fallbackTier = unrankedFallbackTier(starred);
   return {
     points,
     starred,
-    ...resolveTierMeta(points, starred),
+    ...fallbackTier,
+    nextTierPoints: null,
     rank: 0,
     isTop5: false,
+    promotion: buildPromotionInfo({ starred, points, rank: 0, orbitId: fallbackTier.orbitId, starredCount: 0, rankedStarred: [], cutoffs: { tier3End: 0, tier2End: 0 } }),
     breakdown: { star: starPts, cheers: cheerPts, cheerTargets: sentTargets, pair: 0, pairPartners: [] }
   };
+}
+
+function applyRankPercentileToProfiles(profiles, scoreMap) {
+  const entries = profiles
+    .map((profile) => {
+      const key = profileKey(profile);
+      const s = key ? scoreMap.get(key) : null;
+      if (!s) return null;
+      return {
+        key,
+        profile,
+        score: s,
+        starred: s.starred ? 1 : 0,
+        points: Number(s.points || 0),
+        cheersSent: Array.isArray(s.breakdown?.cheerTargets) ? s.breakdown.cheerTargets.length : Number(s.breakdown?.cheers || 0),
+        cheersReceived: Array.isArray(profile.cheers) ? profile.cheers.length : 0,
+        joinedTs: Date.parse(profile.joinedAt || '') || Number.POSITIVE_INFINITY,
+        handle: String(profile.github || profile.name || key).toLowerCase()
+      };
+    })
+    .filter(Boolean)
+    .sort((a, b) => {
+      if (b.starred !== a.starred) return b.starred - a.starred;
+      if (b.points !== a.points) return b.points - a.points;
+      if (b.cheersSent !== a.cheersSent) return b.cheersSent - a.cheersSent;
+      if (b.cheersReceived !== a.cheersReceived) return b.cheersReceived - a.cheersReceived;
+      if (a.joinedTs !== b.joinedTs) return a.joinedTs - b.joinedTs;
+      return a.handle.localeCompare(b.handle);
+    });
+
+  const rankedStarred = entries.filter((e) => e.starred === 1);
+  const starredCount = rankedStarred.length;
+  const cutoffs = computeTierCutoffs(Math.max(0, starredCount - TOP5_LIMIT));
+
+  entries.forEach((entry, idx) => {
+    const rank = idx + 1;
+    const starred = Boolean(entry.starred);
+    const tier = resolveRankTier({ starred, rank, starredCount });
+    const isTop5 = starred && rank <= TOP5_LIMIT && entry.points >= TOP5_MIN_POINTS;
+    const promotion = buildPromotionInfo({
+      starred,
+      points: entry.points,
+      rank,
+      orbitId: tier.orbitId,
+      starredCount,
+      rankedStarred,
+      cutoffs
+    });
+    const updated = {
+      ...entry.score,
+      ...tier,
+      rank,
+      isTop5,
+      starredTotal: starredCount,
+      nextTierPoints: null,
+      promotion
+    };
+    scoreMap.set(entry.key, updated);
+    entry.score = updated;
+  });
 }
 
 function formatScoreBreakdownText(score) {
@@ -608,14 +916,25 @@ function assignStarRecipes(contributors) {
     recipes.set(key, { indices, seedKey: key });
   }
 
-  if (demoTiersEnabled()) {
-    Array.from(scores.values())
-      .filter((s) => s.starred)
-      .sort((a, b) => b.points - a.points)
-      .forEach((s, index) => {
-        s.rank = index + 1;
-        s.isTop5 = index < 5;
-      });
+  const hasCompleteBackendScores = !demoTiersEnabled() && !demoStarsEnabled() && ordered.every((profile) => {
+    const key = profileKey(profile);
+    if (!key) return true;
+    const s = profile.score;
+    const starred = isProfileStarred(profile);
+    return Boolean(
+      s &&
+      typeof s.points === 'number' &&
+      Boolean(s.starred) === starred &&
+      typeof s.orbitId === 'string' &&
+      (starred ? VALID_STARRED_ORBITS.has(s.orbitId) : s.orbitId === 'outer') &&
+      typeof s.starredTotal === 'number' &&
+      s.promotion &&
+      typeof s.rank === 'number' &&
+      s.rank > 0
+    );
+  });
+  if (!hasCompleteBackendScores) {
+    applyRankPercentileToProfiles(ordered, scores);
   }
 
   state.starRecipes = new Map(Array.from(recipes.entries()).map(([key, { indices, seedKey }]) => [key, buildRecipe(seedKey, indices, scores.get(key))]));
@@ -643,6 +962,8 @@ const scene = {
   ringPhase: Object.fromEntries(ORBITS.map((orbit, i) => [orbit.id, i * 1.3])),
   ringCounts: Object.fromEntries(ORBITS.map((orbit) => [orbit.id, 0])),
   selectedKey: null,
+  lockedKey: null,
+  lockedAt: 0,
   overviewOpen: false,
   hoveredKey: null,
   hoverSun: false,
@@ -660,6 +981,9 @@ const scene = {
 
 const nav = {
   followKey: null,
+  followReleaseDist: 0,
+  followArrived: false,
+  recentering: false,
   preset: 'awe',
   tween: null,
   lastFollowPos: null
@@ -669,10 +993,10 @@ function orbitIdForScore(score) {
   if (score?.isTop5 && Number(score.rank) === 1) return 'sun';
   if (score?.isTop5) return 'top5';
   if (!score?.starred) return 'outer';
+  if (score.orbitId === 'tier3' || score.orbitId === 'tier2' || score.orbitId === 'tier1') return score.orbitId;
   if (score.vfxTier >= 3) return 'tier3';
   if (score.vfxTier === 2) return 'tier2';
-  if (score.vfxTier === 1) return 'tier1';
-  return 'star';
+  return 'tier1';
 }
 
 function orbitLabelForPlanet(planet) {
@@ -757,7 +1081,14 @@ function syncPlanetsFromContributors(contributors) {
     if (orbit.id === 'top5') group.sort((a, b) => (a.score.rank || 99) - (b.score.rank || 99));
     else group.sort((a, b) => hashString(a.key, 0x2545f491) - hashString(b.key, 0x2545f491));
     const count = group.length;
-    const capacitySize = count ? ((TAU * orbit.r) / count) * 0.3 : Infinity;
+    const capacitySize = count ? ((TAU * orbit.r) / count) * 0.28 : Infinity;
+    const rankOrderByKey = new Map();
+    if (orbit.id === 'tier3' || orbit.id === 'tier2' || orbit.id === 'tier1') {
+      group
+        .slice()
+        .sort((a, b) => (a.score.rank || 9999) - (b.score.rank || 9999) || b.score.points - a.score.points || a.key.localeCompare(b.key))
+        .forEach((entry, rankIdx) => rankOrderByKey.set(entry.key, rankIdx));
+    }
 
     group.forEach((entry, index) => {
       const { key, profile, score, recipe } = entry;
@@ -765,9 +1096,28 @@ function syncPlanetsFromContributors(contributors) {
       const jitter = orbit.belt ? (((h % 1000) / 1000) - 0.5) * (TAU / Math.max(count, 1)) * 0.5 : 0;
       const slot = (index / Math.max(count, 1)) * TAU + jitter;
       const radialJitter = orbit.belt ? ((((h >>> 10) % 1000) / 1000) - 0.5) * orbit.belt : 0;
-      const verticalJitter = orbit.belt ? ((((h >>> 20) % 1000) / 1000) - 0.5) * 46 : 0;
+      const yFactor = (((h >>> 20) % 1000) / 1000) - 0.5;
+      const verticalJitter = orbit.belt
+        ? yFactor * 2600
+        : (orbit.id === 'tier1'
+          ? yFactor * 360
+          : (orbit.id === 'tier2'
+            ? yFactor * 240
+            : (orbit.id === 'tier3' ? yFactor * 160 : yFactor * 100)));
       const rank = score.isTop5 ? Number(score.rank || 0) : 0;
-      const baseSize = rank ? (TOP5_SIZE[rank] || PLANET_BASE_SIZE.top5) : PLANET_BASE_SIZE[orbit.id];
+      let baseSize;
+      if (rank) {
+        baseSize = TOP5_SIZE[rank] || TOP5_SIZE[5];
+      } else if (orbit.id === 'outer') {
+        const [minS, maxS] = PLANET_SIZE_RANGE.outer;
+        const sizeSeed = (hashString(key, 0x517cc1b7) % 1000) / 1000;
+        baseSize = minS + sizeSeed * (maxS - minS);
+      } else {
+        const [minS, maxS] = PLANET_SIZE_RANGE[orbit.id] || PLANET_SIZE_RANGE.tier1;
+        const rankIdx = rankOrderByKey.get(key) ?? 0;
+        const t = count > 1 ? rankIdx / (count - 1) : 0;
+        baseSize = maxS - t * (maxS - minS);
+      }
       const size = Math.max(4.5, Math.min(baseSize, capacitySize));
       const starred = Boolean(score.starred);
       const prev = prevByKey.get(key);
@@ -776,7 +1126,7 @@ function syncPlanetsFromContributors(contributors) {
       const planet = reuse || {
         key,
         angle: scene.ringPhase[orbit.id] + slot,
-        r: scene.bootstrapped ? orbit.r + radialJitter : SUN_RADIUS * 0.8,
+        r: scene.bootstrapped ? orbit.r + radialJitter : SUN_RADIUS * 1.15,
         y: 0,
         size: 0,
         alpha: 0,
@@ -797,8 +1147,34 @@ function syncPlanetsFromContributors(contributors) {
         planet.transition = 0;
       }
       if (prev?.isChampion) {
-        planet.r = SUN_RADIUS * 1.2;
+        planet.r = SUN_RADIUS * 1.45;
         planet.transition = 1;
+      }
+
+      let planetRingStyle = null;
+      let planetMoonCount = 0;
+      if (starred && recipe) {
+        const ringGate = hashString(key, 0x4b1d9c37) % 10;
+        if (orbit.id === 'top5') {
+          const baseRing = recipe.ring;
+          if (baseRing.id === 'gossamer' || baseRing.id === 'subtle') {
+            planetRingStyle = rank % 2 === 0 ? STAR_RING_STYLES[3] : STAR_RING_STYLES[7];
+          } else {
+            planetRingStyle = baseRing;
+          }
+          planetMoonCount = Math.max(1, recipe.moon.count);
+        } else if (orbit.id === 'tier3') {
+          planetRingStyle = ringGate < 7 ? recipe.ring : null;
+          planetMoonCount = Math.max(1, Math.min(2, recipe.moon.count));
+        } else if (orbit.id === 'tier2') {
+          planetRingStyle = ringGate < 4
+            ? { ...(ringGate % 2 === 0 ? STAR_RING_STYLES[2] : STAR_RING_STYLES[5]), opacity: 0.36, dust: 0 }
+            : null;
+          planetMoonCount = Math.min(2, recipe.moon.count);
+        } else if (orbit.id === 'tier1') {
+          planetRingStyle = null;
+          planetMoonCount = Math.min(1, recipe.moon.count);
+        }
       }
 
       Object.assign(planet, {
@@ -815,8 +1191,8 @@ function syncPlanetsFromContributors(contributors) {
         targetSize: size,
         color: starred && recipe ? recipe.theme.color : UNSTARRED_COLOR,
         ringColor: starred && recipe ? recipe.theme.ring : '#cbd5e1',
-        ringStyle: starred && recipe ? recipe.ring : null,
-        moonCount: starred && recipe ? recipe.moon.count : 0,
+        ringStyle: planetRingStyle,
+        moonCount: planetMoonCount,
         moonSpeed: starred && recipe ? recipe.moon.speed : 1,
         freshTag: freshTagForProfile(profile),
         avatarUrl: avatarForProfile(profile, 128),
@@ -871,7 +1247,11 @@ function syncPlanetsFromContributors(contributors) {
   scene.bootstrapped = true;
   updateOrbitEmphasis();
 
-  if (scene.selectedKey && !nextByKey.has(scene.selectedKey)) closePlanetCard();
+  if (scene.selectedKey && !nextByKey.has(scene.selectedKey)) closePlanetCard({ keepFollow: false, keepLock: false });
+  if (scene.lockedKey && !nextByKey.has(scene.lockedKey)) {
+    scene.lockedKey = null;
+    scene.lockedAt = 0;
+  }
   if (nav.followKey && !nextByKey.has(nav.followKey)) stopFollowing();
   applySearchFilter();
 }
@@ -971,51 +1351,77 @@ function canvasTexture(canvas, { srgb = true, repeat = false } = {}) {
   return texture;
 }
 
+function smoothstep01(edge0, edge1, x) {
+  const t = clamp((x - edge0) / (edge1 - edge0), 0, 1);
+  return t * t * (3 - 2 * t);
+}
+
 function gasGiantCanvas(hex, seedKey, width = 512, height = 256, opts = {}) {
   const canvas = makeCanvas(width, height);
   const g = canvas.getContext('2d');
   const img = g.createImageData(width, height);
+  const data = img.data;
   const seed = hashString(seedKey, 0x51ed270b);
   const fbm = makeValueNoise(seed);
   const rand = seededRandom(seed ^ 0x9e37);
   const base = hexToRgb(hex);
-  const dark = lighten(base, -0.55);
-  const light = lighten(base, 0.5);
-  const accent = lighten(hexToRgb(opts.accent || hex), 0.15);
-  const bands = 5 + Math.floor(rand() * 7);
+  const dark = lighten(base, -0.52);
+  const light = lighten(base, 0.46);
+  const accent = lighten(hexToRgb(opts.accent || hex), 0.16);
+  const bands = 7 + Math.floor(rand() * 7);
   const phase = rand() * TAU;
-  const turbulence = 0.6 + rand() * 0.9;
+  const turbulence = 0.65 + rand() * 0.85;
+  const dr = dark[0]; const dg = dark[1]; const db = dark[2];
+  const lr = light[0]; const lg = light[1]; const lb = light[2];
+  const ar = accent[0]; const ag = accent[1]; const ab = accent[2];
+
   for (let y = 0; y < height; y += 1) {
     const v = y / height;
+    const polar = Math.abs(v - 0.5) * 2;
+    const polarDark = Math.max(0, polar - 0.74) * 1.55;
     for (let x = 0; x < width; x += 1) {
       const u = x / width;
       const warp = fbm(u, v, 4, 4) * turbulence;
-      const t = v * bands + warp * 1.6;
+      const t = v * bands + warp * 1.65;
       const band = 0.5 + 0.5 * Math.sin(t * TAU * 0.5 + phase);
+      const eddy = 0.5 + 0.5 * Math.sin(t * TAU * 1.45 - warp * 3.2 + phase);
       const fine = fbm(u, v * 4, 16, 3);
-      let c = mixRgb(dark, light, band * 0.85 + fine * 0.15);
-      c = mixRgb(c, accent, Math.max(0, Math.sin(t * 3.1 + phase) - 0.7) * 1.2);
-      const polar = Math.abs(v - 0.5) * 2;
-      c = mixRgb(c, dark, Math.max(0, polar - 0.75) * 1.6);
+      const mixT = band * 0.72 + eddy * 0.14 + fine * 0.14;
+      let r = dr + (lr - dr) * mixT;
+      let gc = dg + (lg - dg) * mixT;
+      let b = db + (lb - db) * mixT;
+      const acc = Math.max(0, Math.sin(t * 3.1 + phase) - 0.68) * 1.15;
+      if (acc > 0) {
+        r += (ar - r) * acc;
+        gc += (ag - gc) * acc;
+        b += (ab - b) * acc;
+      }
+      if (polarDark > 0) {
+        const pd = Math.min(1, polarDark);
+        r += (dr - r) * pd;
+        gc += (dg - gc) * pd;
+        b += (db - b) * pd;
+      }
       const i = (y * width + x) * 4;
-      img.data[i] = c[0];
-      img.data[i + 1] = c[1];
-      img.data[i + 2] = c[2];
-      img.data[i + 3] = 255;
+      data[i] = r;
+      data[i + 1] = gc;
+      data[i + 2] = b;
+      data[i + 3] = 255;
     }
   }
   g.putImageData(img, 0, 0);
-  if (rand() < 0.6) {
-    const sx = rand() * width;
-    const sy = height * (0.3 + rand() * 0.4);
-    const sw = width * (0.05 + rand() * 0.06);
+  const stormCount = opts.rich ? 2 : (rand() < 0.85 ? 1 : 0);
+  for (let s = 0; s < stormCount; s += 1) {
+    const sx = (0.15 + rand() * 0.7) * width;
+    const sy = height * (0.28 + rand() * 0.44);
+    const sw = width * (0.05 + rand() * 0.05);
     const grad = g.createRadialGradient(sx, sy, 0, sx, sy, sw);
-    grad.addColorStop(0, `rgba(${light.map(Math.round).join(',')}, 0.85)`);
-    grad.addColorStop(0.6, `rgba(${base.join(',')}, 0.45)`);
+    grad.addColorStop(0, `rgba(${light.map(Math.round).join(',')}, 0.88)`);
+    grad.addColorStop(0.55, `rgba(${accent.map(Math.round).join(',')}, 0.52)`);
     grad.addColorStop(1, 'rgba(0,0,0,0)');
     g.save();
     g.translate(sx, sy);
-    g.scale(1.8, 0.7);
+    g.scale(1.85, 0.72);
     g.translate(-sx, -sy);
     g.fillStyle = grad;
     g.beginPath();
@@ -1023,6 +1429,132 @@ function gasGiantCanvas(hex, seedKey, width = 512, height = 256, opts = {}) {
     g.fill();
     g.restore();
   }
+  return canvas;
+}
+
+function terrestrialCanvas(hex, seedKey, width = 512, height = 256) {
+  const canvas = makeCanvas(width, height);
+  const g = canvas.getContext('2d');
+  const img = g.createImageData(width, height);
+  const data = img.data;
+  const seed = hashString(seedKey, 0x2c9277b5);
+  const fbm = makeValueNoise(seed);
+  const cloudFbm = makeValueNoise(seed ^ 0x4f1bbcdc);
+  const rand = seededRandom(seed ^ 0x1357);
+  const base = hexToRgb(hex);
+  const deepSea = mixRgb([12, 38, 88], base, 0.16);
+  const shallowSea = mixRgb([34, 128, 178], base, 0.22);
+  const lowland = mixRgb([62, 134, 92], base, 0.34);
+  const desert = mixRgb([178, 146, 98], base, 0.22);
+  const alpine = mixRgb([166, 162, 156], lighten(base, 0.24), 0.26);
+  const seaLevel = 0.49 + (rand() - 0.5) * 0.05;
+  const cloudDrift = rand();
+
+  for (let y = 0; y < height; y += 1) {
+    const v = y / height;
+    const polar = Math.abs(v - 0.5) * 2;
+    const aridBelt = Math.exp(-((polar - 0.32) ** 2) / 0.045);
+    for (let x = 0; x < width; x += 1) {
+      const u = x / width;
+      const elev = fbm(u, v, 5, 5) * 0.72 + fbm(u, v * 1.5, 10, 3) * 0.28;
+      let r; let gc; let b;
+      if (elev < seaLevel) {
+        const depth = smoothstep01(seaLevel - 0.2, seaLevel, elev);
+        r = deepSea[0] + (shallowSea[0] - deepSea[0]) * depth;
+        gc = deepSea[1] + (shallowSea[1] - deepSea[1]) * depth;
+        b = deepSea[2] + (shallowSea[2] - deepSea[2]) * depth;
+      } else {
+        const relief = smoothstep01(seaLevel, seaLevel + 0.26, elev);
+        const moisture = clamp(aridBelt * 0.75 * (1 - relief * 0.6), 0, 1);
+        const lr = lowland[0] + (desert[0] - lowland[0]) * moisture;
+        const lg = lowland[1] + (desert[1] - lowland[1]) * moisture;
+        const lb = lowland[2] + (desert[2] - lowland[2]) * moisture;
+        r = lr + (alpine[0] - lr) * relief;
+        gc = lg + (alpine[1] - lg) * relief;
+        b = lb + (alpine[2] - lb) * relief;
+      }
+      const ice = smoothstep01(0.76, 0.9, polar + (elev - 0.5) * 0.18);
+      if (ice > 0) {
+        r += (238 - r) * ice;
+        gc += (246 - gc) * ice;
+        b += (255 - b) * ice;
+      }
+      const cloudNoise = cloudFbm((u + cloudDrift) % 1, v * 1.4, 6, 4);
+      const clouds = clamp((cloudNoise - 0.56) * 2.1, 0, 0.62);
+      if (clouds > 0) {
+        r += (246 - r) * clouds;
+        gc += (250 - gc) * clouds;
+        b += (255 - b) * clouds;
+      }
+      const i = (y * width + x) * 4;
+      data[i] = r;
+      data[i + 1] = gc;
+      data[i + 2] = b;
+      data[i + 3] = 255;
+    }
+  }
+  g.putImageData(img, 0, 0);
+  return canvas;
+}
+
+function iceGiantCanvas(hex, seedKey, width = 512, height = 256, opts = {}) {
+  const canvas = makeCanvas(width, height);
+  const g = canvas.getContext('2d');
+  const img = g.createImageData(width, height);
+  const data = img.data;
+  const seed = hashString(seedKey, 0x6f2d9b41);
+  const fbm = makeValueNoise(seed);
+  const rand = seededRandom(seed ^ 0x7a2b);
+  const base = hexToRgb(hex);
+  const accent = hexToRgb(opts.accent || hex);
+  const cyan = mixRgb([76, 208, 238], base, 0.32);
+  const indigo = mixRgb([56, 78, 174], base, 0.34);
+  const violet = mixRgb([144, 118, 224], accent, 0.36);
+  const polarCap = mixRgb([40, 52, 128], indigo, 0.4);
+  const bands = 4 + Math.floor(rand() * 4);
+  const phase = rand() * TAU;
+
+  for (let y = 0; y < height; y += 1) {
+    const v = y / height;
+    const polar = Math.abs(v - 0.5) * 2;
+    const vortexRing = Math.exp(-((polar - 0.74) ** 2) / 0.0028) * 0.42;
+    for (let x = 0; x < width; x += 1) {
+      const u = x / width;
+      const swirl = fbm(u, v, 4, 4) * 0.4;
+      const t = v * bands + swirl;
+      const w1 = 0.5 + 0.5 * Math.sin(t * TAU * 0.5 + phase);
+      const w2 = (0.5 + 0.5 * Math.cos(t * TAU * 0.35 - phase * 0.7)) * 0.44;
+      let r = indigo[0] + (cyan[0] - indigo[0]) * w1;
+      let gc = indigo[1] + (cyan[1] - indigo[1]) * w1;
+      let b = indigo[2] + (cyan[2] - indigo[2]) * w1;
+      r += (violet[0] - r) * w2;
+      gc += (violet[1] - gc) * w2;
+      b += (violet[2] - b) * w2;
+      const wisp = smoothstep01(0.68, 0.86, fbm((u + 0.15) % 1, v * 2.2, 8, 3)) * 0.38;
+      if (wisp > 0) {
+        r += (224 - r) * wisp;
+        gc += (244 - gc) * wisp;
+        b += (255 - b) * wisp;
+      }
+      if (vortexRing > 0) {
+        r += (196 - r) * vortexRing;
+        gc += (236 - gc) * vortexRing;
+        b += (255 - b) * vortexRing;
+      }
+      const vortexCore = smoothstep01(0.76, 0.96, polar + (swirl - 0.2) * 0.22) * 0.8;
+      if (vortexCore > 0) {
+        r += (polarCap[0] - r) * vortexCore;
+        gc += (polarCap[1] - gc) * vortexCore;
+        b += (polarCap[2] - b) * vortexCore;
+      }
+      const i = (y * width + x) * 4;
+      data[i] = r;
+      data[i + 1] = gc;
+      data[i + 2] = b;
+      data[i + 3] = 255;
+    }
+  }
+  g.putImageData(img, 0, 0);
   return canvas;
 }
 
@@ -1064,28 +1596,87 @@ function rockyCanvas(seedKey, width = 256, height = 128) {
   return canvas;
 }
 
-function ringCanvas(seedKey, width = 512) {
-  const canvas = makeCanvas(width, 4);
+function ringCanvas(seedKey, styleOrWidth = 'single', bandIdx = 0, width = 1024) {
+  let styleId = 'single';
+  let w = width;
+  if (typeof styleOrWidth === 'number') w = styleOrWidth;
+  else if (typeof styleOrWidth === 'string') styleId = styleOrWidth;
+
+  const canvas = makeCanvas(w, 16);
   const g = canvas.getContext('2d');
-  const rand = seededRandom(hashString(seedKey, 0x1b873593));
-  const img = g.createImageData(width, 4);
-  let gapAt = 0.35 + rand() * 0.3;
-  for (let x = 0; x < width; x += 1) {
-    const t = x / width;
-    const edge = Math.min(1, t * 8, (1 - t) * 6);
-    let a = 0.35 + 0.65 * Math.abs(Math.sin(t * 40 + rand() * 0.4)) * (0.6 + rand() * 0.4);
-    if (Math.abs(t - gapAt) < 0.025) a *= 0.08;
-    a *= edge;
-    const l = 200 + rand() * 55;
-    for (let y = 0; y < 4; y += 1) {
-      const i = (y * width + x) * 4;
-      img.data[i] = l;
-      img.data[i + 1] = l;
-      img.data[i + 2] = l;
-      img.data[i + 3] = a * 255;
+  const rand = seededRandom(hashString(`${seedKey}:${styleId}:${bandIdx}`, 0x1b873593));
+  const img = g.createImageData(w, 16);
+  const data = img.data;
+  const finePhase = rand() * TAU;
+
+  for (let x = 0; x < w; x += 1) {
+    const t = x / w;
+    const edge = smoothstep01(0, 0.055, t) * smoothstep01(1, 0.94, t);
+    let a = 0.5;
+    let warm = 0.5;
+
+    if (styleId === 'single') {
+      const cassini = 1 - 0.94 * Math.exp(-((t - 0.58) ** 2) / 0.00055);
+      const encke = 1 - 0.85 * Math.exp(-((t - 0.84) ** 2) / 0.00018);
+      const zone = t < 0.56 ? 0.84 : 0.62;
+      const micro = 0.72 + 0.28 * Math.sin(t * 96 + finePhase) * Math.cos(t * 23);
+      a = zone * micro * cassini * encke;
+      warm = t < 0.56 ? 0.72 : 0.28;
+    } else if (styleId === 'double') {
+      const freq = bandIdx === 0 ? 78 : 112;
+      const wave = 0.6 + 0.4 * Math.sin(t * freq + finePhase);
+      const microGap = bandIdx === 0 ? 1 : (1 - 0.75 * Math.exp(-((t - 0.45) ** 2) / 0.0004));
+      a = (bandIdx === 0 ? 0.88 : 0.74) * wave * microGap;
+      warm = bandIdx === 0 ? 0.85 : 0.2;
+    } else if (styleId === 'gossamer') {
+      const r1 = Math.exp(-((t - 0.22) ** 2) / 0.00035);
+      const r2 = Math.exp(-((t - 0.48) ** 2) / 0.00028);
+      const r3 = Math.exp(-((t - 0.72) ** 2) / 0.00032);
+      const r4 = Math.exp(-((t - 0.88) ** 2) / 0.00022);
+      a = 0.14 + 0.86 * Math.min(1, r1 + r2 * 0.9 + r3 * 0.85 + r4 * 0.7);
+      warm = 0.22;
+    } else if (styleId === 'broad') {
+      const cRing = t < 0.22 ? 0.34 : 1.0;
+      const cassini = 1 - 0.95 * Math.exp(-((t - 0.62) ** 2) / 0.00065);
+      const striations = 0.72 + 0.28 * Math.sin(t * 140 + finePhase) * Math.sin(t * 34);
+      a = cRing * striations * cassini * (0.68 + 0.32 * Math.sin(t * 11));
+      warm = t < 0.6 ? 0.76 : 0.34;
+    } else if (styleId === 'braided') {
+      const edgeBright = Math.exp(-((t - 0.16) ** 2) / 0.0012) + Math.exp(-((t - 0.84) ** 2) / 0.0012);
+      const ringlets = 0.48 + 0.52 * Math.abs(Math.sin(t * 68 + finePhase));
+      a = Math.min(1, 0.38 * ringlets + 0.62 * edgeBright);
+      warm = bandIdx === 0 ? 0.62 : 0.4;
+    } else if (styleId === 'subtle') {
+      const arch = Math.sin(t * Math.PI);
+      const core = Math.exp(-((t - 0.52) ** 2) / 0.025);
+      a = (0.35 * arch + 0.65 * core) * (0.82 + 0.18 * Math.sin(t * 50 + finePhase));
+      warm = 0.3;
+    } else if (styleId === 'dusty') {
+      const velvet = (1 - t * 0.38) * (0.76 + 0.24 * Math.sin(t * 48 + finePhase));
+      const softGap = 1 - 0.65 * Math.exp(-((t - 0.52) ** 2) / 0.0015);
+      a = velvet * softGap;
+      warm = 1 - t * 0.75;
+    } else {
+      const bandProfile = bandIdx === 0 ? 0.48 : (bandIdx === 1 ? 0.92 : 0.72);
+      const micro = 0.66 + 0.34 * Math.sin(t * (70 + bandIdx * 36) + finePhase);
+      const gap = bandIdx === 1 ? (1 - 0.85 * Math.exp(-((t - 0.55) ** 2) / 0.0005)) : 1;
+      a = bandProfile * micro * gap;
+      warm = bandIdx === 0 ? 0.75 : (bandIdx === 1 ? 0.52 : 0.22);
+    }
+
+    a = clamp(a * edge, 0, 1);
+    const r = Math.round(212 + warm * 40);
+    const gc = Math.round(218 + warm * 24);
+    const b = Math.round(246 - warm * 38);
+    const alphaByte = Math.round(a * 255);
+    for (let y = 0; y < 16; y += 1) {
+      const i = (y * w + x) * 4;
+      data[i] = r;
+      data[i + 1] = gc;
+      data[i + 2] = b;
+      data[i + 3] = alphaByte;
     }
   }
-  if (rand() < 0.5) gapAt = 0;
   g.putImageData(img, 0, 0);
   return canvas;
 }
@@ -1104,16 +1695,18 @@ function coronaCanvas(size = 1024) {
   const canvas = makeCanvas(size, size);
   const c = canvas.getContext('2d');
   const rand = seededRandom(0x50de);
+  c.save();
   c.translate(size / 2, size / 2);
   c.globalCompositeOperation = 'lighter';
-  for (let i = 0; i < 60; i += 1) {
+  for (let i = 0; i < 64; i += 1) {
     const a = rand() * TAU;
-    const len = size * (0.22 + rand() * 0.28);
-    const wid = 0.012 + rand() * 0.05;
-    const grad = c.createRadialGradient(0, 0, size * 0.1, 0, 0, len);
-    grad.addColorStop(0, 'rgba(255, 214, 140, 0.32)');
-    grad.addColorStop(0.5, 'rgba(255, 170, 80, 0.08)');
-    grad.addColorStop(1, 'rgba(255, 140, 60, 0)');
+    const len = size * (0.26 + rand() * 0.24);
+    const wid = 0.012 + rand() * 0.048;
+    const grad = c.createRadialGradient(0, 0, size * 0.16, 0, 0, len);
+    grad.addColorStop(0, 'rgba(255, 190, 100, 0)');
+    grad.addColorStop(0.28, 'rgba(255, 200, 118, 0.34)');
+    grad.addColorStop(0.62, 'rgba(255, 150, 62, 0.1)');
+    grad.addColorStop(1, 'rgba(255, 120, 40, 0)');
     c.fillStyle = grad;
     c.beginPath();
     c.moveTo(0, 0);
@@ -1121,6 +1714,17 @@ function coronaCanvas(size = 1024) {
     c.closePath();
     c.fill();
   }
+  // Hollow out the center disc so additive corona rays never wash out the photosphere.
+  c.globalCompositeOperation = 'destination-out';
+  const mask = c.createRadialGradient(0, 0, 0, 0, 0, size * 0.24);
+  mask.addColorStop(0, 'rgba(0, 0, 0, 1)');
+  mask.addColorStop(0.68, 'rgba(0, 0, 0, 0.94)');
+  mask.addColorStop(1, 'rgba(0, 0, 0, 0)');
+  c.fillStyle = mask;
+  c.beginPath();
+  c.arc(0, 0, size * 0.24, 0, TAU);
+  c.fill();
+  c.restore();
   return canvas;
 }
 
@@ -1180,6 +1784,189 @@ function atmosphereMaterial(hex, intensity = 1, power = 2.6) {
   });
 }
 
+const planetAtmoVertex = `
+  varying vec3 vNormal;
+  varying vec3 vView;
+  varying vec3 vWorldNormal;
+  varying vec3 vWorldPos;
+  void main() {
+    vec4 mv = modelViewMatrix * vec4(position, 1.0);
+    vec4 wp = modelMatrix * vec4(position, 1.0);
+    vNormal = normalize(normalMatrix * normal);
+    vView = normalize(-mv.xyz);
+    vWorldNormal = normalize(mat3(modelMatrix) * normal);
+    vWorldPos = wp.xyz;
+    gl_Position = projectionMatrix * mv;
+  }
+`;
+
+function planetBackAtmosphereMaterial(hex, intensity = 0.72, power = 2.4, limbPeak = 0.36) {
+  return new THREE.ShaderMaterial({
+    uniforms: {
+      color: { value: new THREE.Color(hex) },
+      intensity: { value: intensity },
+      power: { value: power },
+      limbPeak: { value: limbPeak }
+    },
+    vertexShader: planetAtmoVertex,
+    fragmentShader: `
+      uniform vec3 color;
+      uniform float intensity;
+      uniform float power;
+      uniform float limbPeak;
+      varying vec3 vNormal;
+      varying vec3 vView;
+      varying vec3 vWorldNormal;
+      varying vec3 vWorldPos;
+      void main() {
+        float d = clamp(dot(-normalize(vNormal), normalize(vView)), 0.0, 1.0);
+        float rim = pow(clamp(d / max(0.05, limbPeak), 0.0, 1.0), power);
+        float sunDot = dot(normalize(vWorldNormal), normalize(-vWorldPos));
+        float dayLit = 0.12 + 0.88 * smoothstep(-0.35, 0.55, sunDot);
+        float alpha = rim * intensity * dayLit;
+        gl_FragColor = vec4(color * alpha, alpha);
+      }
+    `,
+    transparent: true,
+    side: THREE.BackSide,
+    blending: THREE.AdditiveBlending,
+    depthWrite: false
+  });
+}
+
+function planetFrontAtmosphereMaterial(hex, intensity = 0.28, power = 4.2) {
+  return new THREE.ShaderMaterial({
+    uniforms: {
+      color: { value: new THREE.Color(hex) },
+      intensity: { value: intensity },
+      power: { value: power }
+    },
+    vertexShader: planetAtmoVertex,
+    fragmentShader: `
+      uniform vec3 color;
+      uniform float intensity;
+      uniform float power;
+      varying vec3 vNormal;
+      varying vec3 vView;
+      varying vec3 vWorldNormal;
+      varying vec3 vWorldPos;
+      void main() {
+        float f = pow(1.0 - clamp(dot(normalize(vNormal), normalize(vView)), 0.0, 1.0), power);
+        float sunDot = dot(normalize(vWorldNormal), normalize(-vWorldPos));
+        float dayLit = 0.08 + 0.92 * smoothstep(-0.3, 0.5, sunDot);
+        float alpha = f * intensity * dayLit;
+        gl_FragColor = vec4(color * alpha, alpha);
+      }
+    `,
+    transparent: true,
+    blending: THREE.AdditiveBlending,
+    depthWrite: false
+  });
+}
+
+function planetRingMaterial(texture, colorHex, opacity = 0.78) {
+  return new THREE.ShaderMaterial({
+    uniforms: {
+      map: { value: texture },
+      color: { value: new THREE.Color(colorHex) },
+      opacity: { value: opacity },
+      uDim: { value: 1.0 },
+      uTime: { value: 0 },
+      uPlanetPos: { value: new THREE.Vector3() },
+      uPlanetRadius: { value: 100 }
+    },
+    vertexShader: `
+      varying vec2 vUv;
+      varying vec3 vWorldPos;
+      void main() {
+        vUv = uv;
+        vec4 wp = modelMatrix * vec4(position, 1.0);
+        vWorldPos = wp.xyz;
+        gl_Position = projectionMatrix * viewMatrix * wp;
+      }
+    `,
+    fragmentShader: `
+      uniform sampler2D map;
+      uniform vec3 color;
+      uniform float opacity;
+      uniform float uDim;
+      uniform float uTime;
+      uniform vec3 uPlanetPos;
+      uniform float uPlanetRadius;
+      varying vec2 vUv;
+      varying vec3 vWorldPos;
+      void main() {
+        vec4 tex = texture2D(map, vUv);
+        if (tex.a < 0.01) discard;
+        vec3 toSun = normalize(-vWorldPos);
+        vec3 toPlanet = uPlanetPos - vWorldPos;
+        float proj = dot(toPlanet, toSun);
+        float shadow = 1.0;
+        if (proj > 0.0) {
+          float perp = length(toPlanet - toSun * proj);
+          shadow = mix(0.08, 1.0, smoothstep(uPlanetRadius * 0.96, uPlanetRadius * 1.05, perp));
+        }
+        float sparkle = 1.0 + 0.06 * sin(vWorldPos.x * 0.05 + vWorldPos.z * 0.05 + uTime * 0.7);
+        vec3 sunTint = vec3(1.02, 0.99, 0.95);
+        vec3 rgb = tex.rgb * color * sunTint * (0.1 + 0.9 * shadow) * sparkle * uDim;
+        float alpha = tex.a * opacity * uDim;
+        gl_FragColor = vec4(rgb, alpha);
+      }
+    `,
+    transparent: true,
+    side: THREE.DoubleSide,
+    depthWrite: false
+  });
+}
+
+function planetRingDustMaterial(colorHex, opacity = 0.75) {
+  return new THREE.ShaderMaterial({
+    uniforms: {
+      color: { value: new THREE.Color(colorHex) },
+      opacity: { value: opacity },
+      uDim: { value: 1.0 },
+      uPlanetPos: { value: new THREE.Vector3() },
+      uPlanetRadius: { value: 100 }
+    },
+    vertexShader: `
+      attribute float aSize;
+      varying vec3 vWorldPos;
+      void main() {
+        vec4 wp = modelMatrix * vec4(position, 1.0);
+        vWorldPos = wp.xyz;
+        vec4 mv = viewMatrix * wp;
+        gl_PointSize = clamp(aSize * (1600.0 / max(1.0, -mv.z)), 1.4, 5.2);
+        gl_Position = projectionMatrix * mv;
+      }
+    `,
+    fragmentShader: `
+      uniform vec3 color;
+      uniform float opacity;
+      uniform float uDim;
+      uniform vec3 uPlanetPos;
+      uniform float uPlanetRadius;
+      varying vec3 vWorldPos;
+      void main() {
+        float dist = length(gl_PointCoord - vec2(0.5)) * 2.0;
+        if (dist > 1.0) discard;
+        float soft = pow(1.0 - dist, 1.6);
+        vec3 toSun = normalize(-vWorldPos);
+        vec3 toPlanet = uPlanetPos - vWorldPos;
+        float proj = dot(toPlanet, toSun);
+        float shadow = 1.0;
+        if (proj > 0.0) {
+          float perp = length(toPlanet - toSun * proj);
+          shadow = mix(0.08, 1.0, smoothstep(uPlanetRadius * 0.96, uPlanetRadius * 1.05, perp));
+        }
+        float alpha = soft * opacity * (0.16 + 0.84 * shadow) * uDim;
+        gl_FragColor = vec4(color * (0.2 + 0.8 * shadow) * uDim, alpha);
+      }
+    `,
+    transparent: true,
+    depthWrite: false
+  });
+}
+
 const NOISE_GLSL = `
   float hash3(vec3 p) {
     p = fract(p * 0.3183099 + 0.1);
@@ -1232,23 +2019,25 @@ function initWorld() {
   renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 1.6));
   renderer.setSize(window.innerWidth, window.innerHeight, false);
   renderer.toneMapping = THREE.ACESFilmicToneMapping;
-  renderer.toneMappingExposure = 1.05;
+  renderer.toneMappingExposure = 1.0;
   renderer.outputColorSpace = THREE.SRGBColorSpace;
 
+  const bgScene = new THREE.Scene();
+  bgScene.background = new THREE.Color(0x010207);
   const s3 = new THREE.Scene();
-  s3.background = new THREE.Color(0x010207);
-  const camera = new THREE.PerspectiveCamera(fovForAspect(window.innerWidth / window.innerHeight), window.innerWidth / window.innerHeight, 2, 90000);
+  s3.background = null;
+  const camera = new THREE.PerspectiveCamera(fovForAspect(window.innerWidth / window.innerHeight), window.innerWidth / window.innerHeight, 0.6, 750000);
   camera.position.set(...CAMERA_PRESETS.gaze.position);
 
   const controls = new OrbitControls(camera, canvas);
   controls.enableDamping = true;
-  controls.dampingFactor = 0.055;
-  controls.rotateSpeed = 0.42;
-  controls.zoomSpeed = 0.85;
-  controls.panSpeed = 0.6;
+  controls.dampingFactor = 0.065;
+  controls.rotateSpeed = 0.68;
+  controls.zoomSpeed = 1.25;
+  controls.panSpeed = 1.15;
   controls.screenSpacePanning = true;
-  controls.minDistance = 40;
-  controls.maxDistance = 26000;
+  controls.minDistance = 24;
+  controls.maxDistance = 580000;
   controls.autoRotateSpeed = 0.14;
   controls.target.set(...CAMERA_PRESETS.gaze.target);
   controls.addEventListener('start', () => {
@@ -1258,20 +2047,23 @@ function initWorld() {
     if (scene.tour) setTour(false);
   });
 
-  s3.add(new THREE.AmbientLight(0x48557e, 1.1));
-  s3.add(new THREE.HemisphereLight(0x9aa8ff, 0x1a1010, 0.45));
+  s3.add(new THREE.AmbientLight(0x404d72, 0.55));
+  s3.add(new THREE.HemisphereLight(0x8899e8, 0x120c10, 0.25));
 
   const root = new THREE.Group();
   s3.add(root);
 
   const composer = new EffectComposer(renderer);
-  composer.addPass(new RenderPass(s3, camera));
-  const bloom = new UnrealBloomPass(new THREE.Vector2(window.innerWidth / 2, window.innerHeight / 2), 0.8, 0.6, 0.86);
+  composer.addPass(new RenderPass(bgScene, camera));
+  const mainPass = new RenderPass(s3, camera);
+  mainPass.clear = false;
+  mainPass.clearDepth = true;
+  composer.addPass(mainPass);
+  const bloom = new UnrealBloomPass(new THREE.Vector2(window.innerWidth / 2, window.innerHeight / 2), 0.46, 0.42, 0.92);
   composer.addPass(bloom);
   composer.addPass(new OutputPass());
 
-  Object.assign(world, { ok: true, renderer, scene: s3, camera, controls, composer, bloom, root });
-  window.__abyssDebug = { world, CAMERA_PRESETS, THREE }; // TEMP-DEBUG
+  Object.assign(world, { ok: true, renderer, bgScene, scene: s3, camera, controls, composer, bloom, root });
 
   buildBackground();
   buildSun();
@@ -1303,20 +2095,20 @@ function resizeWorld() {
 
 function buildBackground() {
   const bg = new THREE.Group();
-  world.scene.add(bg);
+  world.bgScene.add(bg);
 
-  // Total darkness, a colossal eye, and one arm whose palm cradles the galaxy.
-  const abyss = buildAbyss(bg);
+  // Colossal ringed world and distant galaxies framing our tiny solar system.
+  const abyss = buildAbyss(bg, { gasGiantCanvas, ringCanvas, canvasTexture, remapRingUVs });
 
   // Near-field dust for parallax depth
-  const dustCount = 2600;
+  const dustCount = 3800;
   const dustPos = new Float32Array(dustCount * 3);
   const drand = seededRandom(0xd057);
   for (let i = 0; i < dustCount; i += 1) {
-    const r = 200 + drand() ** 0.6 * 2600;
+    const r = 3200 + drand() ** 0.65 * 56000;
     const th = drand() * TAU;
     dustPos[i * 3] = Math.cos(th) * r;
-    dustPos[i * 3 + 1] = (drand() - 0.5) * 900 * (0.3 + drand());
+    dustPos[i * 3 + 1] = (drand() + drand() - 1) * 9500;
     dustPos[i * 3 + 2] = Math.sin(th) * r;
   }
   const dustGeo = new THREE.BufferGeometry();
@@ -1324,7 +2116,7 @@ function buildBackground() {
   const dust = new THREE.Points(dustGeo, new THREE.PointsMaterial({
     color: 0x9fb4ff,
     map: canvasTexture(radialGlowCanvas([[0, 'rgba(255,255,255,1)'], [0.3, 'rgba(255,255,255,0.35)'], [1, 'rgba(255,255,255,0)']], 64)),
-    size: 3.2,
+    size: 38,
     sizeAttenuation: true,
     transparent: true,
     opacity: 0.4,
@@ -1381,20 +2173,24 @@ function buildSun() {
       ${NOISE_GLSL}
       void main() {
         vec3 p = vPos;
-        float n1 = fbm3(p * 3.2 + vec3(0.0, time * 0.035, time * 0.02));
-        float n2 = fbm3(p * 9.0 + n1 * 2.2 - vec3(time * 0.06));
-        float cells = smoothstep(0.35, 0.85, n2);
-        float h = clamp(n1 * 0.6 + cells * 0.5, 0.0, 1.0);
-        vec3 col = mix(vec3(0.85, 0.22, 0.02), vec3(1.0, 0.62, 0.16), h);
-        col = mix(col, vec3(1.0, 0.93, 0.72), pow(h, 3.0));
+        float n1 = fbm3(p * 4.5 + vec3(0.0, time * 0.032, time * 0.018));
+        float n2 = fbm3(p * 12.0 + n1 * 2.4 - vec3(time * 0.055));
+        float gran = fbm3(p * 24.0 - vec3(time * 0.08));
+        float cells = smoothstep(0.32, 0.84, n2 * 0.72 + gran * 0.28);
+        float lanes = smoothstep(0.18, 0.44, n2);
+        float h = clamp(n1 * 0.48 + cells * 0.52, 0.0, 1.0);
+        vec3 col = mix(vec3(0.42, 0.08, 0.01), vec3(0.96, 0.48, 0.10), lanes);
+        col = mix(col, vec3(1.0, 0.74, 0.24), h);
+        col = mix(col, vec3(1.0, 0.94, 0.74), pow(h, 3.2) * 0.85);
         float mu = clamp(vNormalView.z, 0.0, 1.0);
-        col *= 0.42 + 0.58 * pow(mu, 0.45);
+        col *= 0.26 + 0.74 * pow(mu, 0.58);
+        col += pow(1.0 - mu, 4.5) * vec3(1.15, 0.45, 0.08) * 0.65;
         vec2 auv = vNormalView.xy * 0.78 + 0.5;
         float mask = smoothstep(0.64, 0.42, length(vNormalView.xy));
         vec3 av = pow(texture2D(avatar, auv).rgb, vec3(2.2));
-        vec3 portrait = col * 0.3 + av * vec3(1.15, 0.95, 0.78);
+        vec3 portrait = col * 0.32 + av * vec3(1.05, 0.88, 0.72);
         col = mix(col, portrait, mask * avatarMix);
-        gl_FragColor = vec4(col * 1.25 * heat, 1.0);
+        gl_FragColor = vec4(col * 0.96 * heat, 1.0);
       }
     `
   });
@@ -1402,8 +2198,8 @@ function buildSun() {
   mesh.userData.isSun = true;
   group.add(mesh);
 
-  const halo = new THREE.Mesh(SPHERE_GEO, atmosphereMaterial('#ff9a3c', 1.6, 2.2));
-  halo.scale.setScalar(SUN_RADIUS * 1.22);
+  const halo = new THREE.Mesh(SPHERE_GEO, atmosphereMaterial('#ff7b24', 1.15, 3.2));
+  halo.scale.setScalar(SUN_RADIUS * 1.11);
   group.add(halo);
 
   const spriteMat = (canvas, opacity) => new THREE.SpriteMaterial({
@@ -1414,39 +2210,42 @@ function buildSun() {
     blending: THREE.AdditiveBlending
   });
   const glow = new THREE.Sprite(spriteMat(radialGlowCanvas([
-    [0, 'rgba(255, 220, 160, 1)'],
-    [0.12, 'rgba(255, 170, 80, 0.55)'],
-    [0.35, 'rgba(255, 120, 40, 0.14)'],
-    [1, 'rgba(255, 90, 30, 0)']
-  ]), 0.55));
-  glow.scale.setScalar(SUN_RADIUS * 10);
+    [0, 'rgba(255, 190, 100, 0)'],
+    [0.36, 'rgba(255, 180, 90, 0.04)'],
+    [0.5, 'rgba(255, 170, 76, 0.85)'],
+    [0.64, 'rgba(255, 124, 44, 0.34)'],
+    [0.84, 'rgba(255, 86, 26, 0.08)'],
+    [1, 'rgba(255, 70, 20, 0)']
+  ]), 0.42));
+  glow.scale.setScalar(SUN_RADIUS * 4.0);
   group.add(glow);
 
-  const corona = new THREE.Sprite(spriteMat(coronaCanvas(), 0.9));
-  corona.scale.setScalar(SUN_RADIUS * 6.4);
+  const corona = new THREE.Sprite(spriteMat(coronaCanvas(), 0.72));
+  corona.scale.setScalar(SUN_RADIUS * 3.8);
   group.add(corona);
-  const corona2 = new THREE.Sprite(spriteMat(coronaCanvas(), 0.55));
-  corona2.scale.setScalar(SUN_RADIUS * 5);
+  const corona2 = new THREE.Sprite(spriteMat(coronaCanvas(), 0.45));
+  corona2.scale.setScalar(SUN_RADIUS * 3.1);
   corona2.material.rotation = 1.3;
   group.add(corona2);
 
   const haze = new THREE.Sprite(spriteMat(radialGlowCanvas([
-    [0, 'rgba(255, 150, 70, 0.22)'],
-    [0.3, 'rgba(150, 70, 60, 0.05)'],
+    [0, 'rgba(255, 140, 60, 0.03)'],
+    [0.14, 'rgba(255, 145, 65, 0.22)'],
+    [0.38, 'rgba(150, 70, 60, 0.06)'],
     [1, 'rgba(40, 20, 30, 0)']
-  ]), 0.5));
-  haze.scale.setScalar(SUN_RADIUS * 30);
+  ]), 0.24));
+  haze.scale.setScalar(SUN_RADIUS * 9.5);
   group.add(haze);
 
-  const light = new THREE.PointLight(0xfff0d8, 3.6, 0, 0);
+  const light = new THREE.PointLight(0xfff1dc, 4.6, 0, 0);
   group.add(light);
 
   // Throne disk: golden particles + banded ring, tilted, only when a champion reigns.
   const disk = new THREE.Group();
   disk.rotation.set(0.42, 0, -0.18);
   group.add(disk);
-  const ringGeo = new THREE.RingGeometry(SUN_RADIUS * 1.42, SUN_RADIUS * 2.05, 256, 1);
-  remapRingUVs(ringGeo, SUN_RADIUS * 1.42, SUN_RADIUS * 2.05);
+  const ringGeo = new THREE.RingGeometry(SUN_RADIUS * 1.28, SUN_RADIUS * 1.66, 256, 1);
+  remapRingUVs(ringGeo, SUN_RADIUS * 1.28, SUN_RADIUS * 1.66);
   ringGeo.rotateX(-Math.PI / 2);
   const throneRing = new THREE.Mesh(ringGeo, new THREE.MeshBasicMaterial({
     map: canvasTexture(ringCanvas('throne', 1024)),
@@ -1463,7 +2262,7 @@ function buildSun() {
   const pPos = new Float32Array(pCount * 3);
   const prand = seededRandom(0x7407);
   for (let i = 0; i < pCount; i += 1) {
-    const r = SUN_RADIUS * (1.3 + prand() ** 1.4 * 0.95);
+    const r = SUN_RADIUS * (1.24 + prand() ** 1.4 * 0.54);
     const a = prand() * TAU;
     pPos[i * 3] = Math.cos(a) * r;
     pPos[i * 3 + 1] = (prand() - 0.5) * SUN_RADIUS * 0.12;
@@ -1473,10 +2272,11 @@ function buildSun() {
   pGeo.setAttribute('position', new THREE.BufferAttribute(pPos, 3));
   const particles = new THREE.Points(pGeo, new THREE.PointsMaterial({
     color: 0xffc46b,
-    size: 2.4,
+    map: canvasTexture(radialGlowCanvas([[0, 'rgba(255,255,255,1)'], [0.35, 'rgba(255,255,255,0.45)'], [1, 'rgba(255,255,255,0)']], 64)),
+    size: 26,
     sizeAttenuation: true,
     transparent: true,
-    opacity: 0.35,
+    opacity: 0.42,
     depthWrite: false,
     blending: THREE.AdditiveBlending
   }));
@@ -1514,19 +2314,28 @@ function setSunChampion(champion, changed) {
 
 /* ---------------------------------------------------------------- orbits */
 
-function orbitSheetMaterial(hex) {
+const ORBIT_BASE_CORE = { top5: 0.92, tier3: 0.78, tier2: 0.68, tier1: 0.56, outer: 0.42 };
+const ORBIT_BASE_SHEET = { top5: 0.08, tier3: 0.055, tier2: 0.045, tier1: 0.032, outer: 0.042 };
+
+function orbitSheetMaterial(hex, { corePx = 1.35, sheetVar = 260000, style = 0 } = {}) {
   return new THREE.ShaderMaterial({
     uniforms: {
       color: { value: new THREE.Color(hex) },
       radius: { value: 1 },
       core: { value: 0.5 },
-      sheet: { value: 0.05 }
+      sheet: { value: 0.05 },
+      corePx: { value: corePx },
+      sheetVar: { value: sheetVar },
+      style: { value: style }
     },
     vertexShader: `
       varying vec2 vXZ;
+      varying float vViewDist;
       void main() {
         vXZ = position.xz;
-        gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+        vec4 mv = modelViewMatrix * vec4(position, 1.0);
+        vViewDist = -mv.z;
+        gl_Position = projectionMatrix * mv;
       }
     `,
     fragmentShader: `
@@ -1534,10 +2343,34 @@ function orbitSheetMaterial(hex) {
       uniform float radius;
       uniform float core;
       uniform float sheet;
+      uniform float corePx;
+      uniform float sheetVar;
+      uniform float style;
       varying vec2 vXZ;
+      varying float vViewDist;
       void main() {
-        float d = abs(length(vXZ) - radius);
-        float a = core * exp(-d * d / 14.0) + sheet * exp(-d * d / 2200.0);
+        float signedD = length(vXZ) - radius;
+        float d = abs(signedD);
+        float nearFade = smoothstep(360.0, 3400.0, vViewDist);
+        float pxWorld = max(22.0, vViewDist * 0.00095);
+        float sigma = pxWorld * corePx;
+        float coreBand = exp(-(d * d) / (2.0 * sigma * sigma));
+        float sheetBand = exp(-(d * d) / sheetVar);
+        float pattern = coreBand;
+        if (style < 0.5) {
+          float railOffset = max(95.0, pxWorld * 4.2);
+          float railSigma = pxWorld * 0.85;
+          float rails = 0.38 * exp(-pow(abs(d - railOffset), 2.0) / (2.0 * railSigma * railSigma));
+          pattern = coreBand + rails;
+        } else if (style < 1.5) {
+          float shoulderSigma = pxWorld * 2.8;
+          pattern = coreBand + 0.24 * exp(-(d * d) / (2.0 * shoulderSigma * shoulderSigma));
+        } else if (style > 3.5) {
+          float edgeSigma = pxWorld * 1.4;
+          float edgeD = min(abs(signedD - 1150.0), abs(signedD + 1150.0));
+          pattern = 0.45 * coreBand + 0.22 * exp(-(edgeD * edgeD) / (2.0 * edgeSigma * edgeSigma));
+        }
+        float a = (core * pattern + sheet * sheetBand) * nearFade;
         gl_FragColor = vec4(color * a, a);
       }
     `,
@@ -1549,14 +2382,17 @@ function orbitSheetMaterial(hex) {
 }
 
 function buildOrbits() {
+  const corePxByStyle = [1.65, 1.45, 1.30, 1.15, 1.15];
   for (const orbit of ORBITS) {
     const group = new THREE.Group();
     const quat = orbitQuaternion(orbit);
     group.quaternion.copy(quat);
     world.root.add(group);
-    const width = orbit.belt ? 30 : 90;
+    const width = orbit.belt ? 1800 : 1400;
     const geo = new THREE.RingGeometry(orbit.r - width, orbit.r + width, 512, 1).rotateX(-Math.PI / 2);
-    const material = orbitSheetMaterial(orbit.color);
+    const corePx = corePxByStyle[orbit.style] ?? 1.3;
+    const sheetVar = orbit.belt ? 1600000 : 260000;
+    const material = orbitSheetMaterial(orbit.color, { corePx, sheetVar, style: orbit.style });
     material.uniforms.radius.value = orbit.r;
     const sheet = new THREE.Mesh(geo, material);
     sheet.renderOrder = -1;
@@ -1566,12 +2402,16 @@ function buildOrbits() {
 }
 
 function updateOrbitEmphasis() {
-  const focus = scene.planetByKey.get(scene.hoveredKey || scene.selectedKey || '');
+  const focus = scene.planetByKey.get(scene.hoveredKey || scene.selectedKey || scene.lockedKey || '');
   for (const [id, entry] of world.orbits) {
     const count = scene.ringCounts[id] || 0;
     const emphasized = focus && focus.orbitId === id;
-    entry.material.uniforms.core.value = (count ? 0.85 : 0.28) * (emphasized ? 1.9 : 1);
-    entry.material.uniforms.sheet.value = entry.orbit.belt ? 0.02 : (count ? 0.085 : 0.035) * (emphasized ? 1.8 : 1);
+    const popFactor = count ? 1 : 0.45;
+    const mul = focus ? (emphasized ? 1.65 : 0.55) : 1;
+    const baseCore = ORBIT_BASE_CORE[id] ?? 0.6;
+    const baseSheet = ORBIT_BASE_SHEET[id] ?? 0.05;
+    entry.material.uniforms.core.value = baseCore * popFactor * mul;
+    entry.material.uniforms.sheet.value = baseSheet * popFactor * mul;
   }
 }
 
@@ -1584,9 +2424,22 @@ function updateOrbitEmphasis() {
 
 const rockUniforms = {
   uTime: { value: 0 },
-  uFadeNear: { value: 14 },
-  uFadeFar: { value: 80 }
+  uFadeNear: { value: 12 },
+  uFadeFar: { value: 55 }
 };
+
+const ROCK_BUMP_GLSL = `
+  ${NOISE_GLSL}
+  vec3 rockBump(vec3 surfPos, vec3 surfNorm, vec2 dHdxy) {
+    vec3 sx = dFdx(surfPos);
+    vec3 sy = dFdy(surfPos);
+    vec3 r1 = cross(sy, surfNorm);
+    vec3 r2 = cross(surfNorm, sx);
+    float det = dot(sx, r1);
+    vec3 grad = sign(det) * (dHdxy.x * r1 + dHdxy.y * r2);
+    return normalize(abs(det) * surfNorm - grad);
+  }
+`;
 
 function makeNoise3(seed) {
   const rand = seededRandom(seed);
@@ -1637,26 +2490,35 @@ function indexedFromPositions(positions) {
   return geo;
 }
 
-function makeRockGeometry(seed, detail) {
+function makeRockGeometry(seed, detail, opts = {}) {
   const source = new THREE.IcosahedronGeometry(1, detail);
   const geo = indexedFromPositions(source.attributes.position.array);
   source.dispose();
   const noise = makeNoise3(seed);
   const rand = seededRandom(seed ^ 0x5bd1e995);
+  const lumpyAmp = opts.lumpy ?? 0.7;
+  const medAmp = opts.medium ?? 0.24;
+  const fineAmp = opts.fine ?? 0.07;
+  const craterScale = opts.craterScale ?? 1;
+  const stretchScale = opts.stretchScale ?? 1;
   const craters = Array.from({ length: 5 + Math.floor(rand() * 6) }, () => {
     const v = new THREE.Vector3(rand() * 2 - 1, rand() * 2 - 1, rand() * 2 - 1).normalize();
-    return { dir: v, radius: 0.18 + rand() * 0.32, depth: 0.05 + rand() * 0.09 };
+    return { dir: v, radius: 0.18 + rand() * 0.32, depth: (0.05 + rand() * 0.09) * craterScale };
   });
-  const stretch = new THREE.Vector3(0.75 + rand() * 0.5, 0.65 + rand() * 0.4, 0.85 + rand() * 0.35);
+  const stretch = new THREE.Vector3(
+    1 + (rand() * 0.5 - 0.25) * stretchScale,
+    1 + (rand() * 0.4 - 0.35) * stretchScale,
+    1 + (rand() * 0.35 - 0.15) * stretchScale
+  );
   const pos = geo.attributes.position;
   const v = new THREE.Vector3();
   for (let i = 0; i < pos.count; i += 1) {
     v.fromBufferAttribute(pos, i).normalize();
     let r = 1;
     // large lumpy shape + medium bumps
-    r += (noise(v.x * 1.4 + 3, v.y * 1.4 + 7, v.z * 1.4 + 11) - 0.5) * 0.7;
-    r += (noise(v.x * 3.2 + 1, v.y * 3.2 + 5, v.z * 3.2 + 9) - 0.5) * 0.24;
-    r += (noise(v.x * 7.5, v.y * 7.5, v.z * 7.5) - 0.5) * 0.07;
+    r += (noise(v.x * 1.4 + 3, v.y * 1.4 + 7, v.z * 1.4 + 11) - 0.5) * lumpyAmp;
+    r += (noise(v.x * 3.2 + 1, v.y * 3.2 + 5, v.z * 3.2 + 9) - 0.5) * medAmp;
+    r += (noise(v.x * 7.5, v.y * 7.5, v.z * 7.5) - 0.5) * fineAmp;
     // impact craters: bowl with a slightly raised rim
     for (const crater of craters) {
       const d = v.angleTo(crater.dir) / crater.radius;
@@ -1706,22 +2568,13 @@ function makeRockMaterial() {
         uniform float uFadeFar;
         varying vec3 vRockPos;
         varying float vViewDist;
-        ${NOISE_GLSL}
-        vec3 rockBump(vec3 surfPos, vec3 surfNorm, vec2 dHdxy) {
-          vec3 sx = dFdx(surfPos);
-          vec3 sy = dFdy(surfPos);
-          vec3 r1 = cross(sy, surfNorm);
-          vec3 r2 = cross(surfNorm, sx);
-          float det = dot(sx, r1);
-          vec3 grad = sign(det) * (dHdxy.x * r1 + dHdxy.y * r2);
-          return normalize(abs(det) * surfNorm - grad);
-        }`)
+        ${ROCK_BUMP_GLSL}`)
       .replace('#include <clipping_planes_fragment>', `#include <clipping_planes_fragment>
         float rockFade = smoothstep(uFadeNear, uFadeFar, vViewDist);
         float rockDither = fract(52.9829189 * fract(dot(gl_FragCoord.xy, vec2(0.06711056, 0.00583715))));
         if (rockFade < rockDither) discard;`)
       .replace('#include <color_fragment>', `#include <color_fragment>
-        float rockDetail = 1.0 - smoothstep(160.0, 900.0, vViewDist);
+        float rockDetail = 1.0 - smoothstep(450.0, 4500.0, vViewDist);
         float rockLarge = fbm3(vRockPos * 2.6 + 4.0);
         float rockFine = noise3(vRockPos * 16.0) * rockDetail;
         diffuseColor.rgb *= 0.55 + 0.7 * rockLarge + 0.1 * rockFine;
@@ -1733,7 +2586,67 @@ function makeRockMaterial() {
         float rockRim = pow(1.0 - clamp(abs(dot(normal, normalize(vViewPosition))), 0.0, 1.0), 3.0);
         totalEmissiveRadiance += vec3(0.22, 0.28, 0.42) * rockRim * 0.45 + diffuseColor.rgb * 0.05;`);
   };
-  material.customProgramCacheKey = () => 'pulse-rock-v2';
+  material.customProgramCacheKey = () => 'pulse-rock-v3';
+  return material;
+}
+
+function makeContributorRockMaterial(seedKey) {
+  const h = hashString(seedKey, 0x3c6ef372);
+  const seedOffset = new THREE.Vector3(((h & 255) / 255) * 19, (((h >>> 8) & 255) / 255) * 19, (((h >>> 16) & 255) / 255) * 19);
+  const material = new THREE.MeshStandardMaterial({
+    color: 0xffffff,
+    roughness: 0.9,
+    metalness: 0.06,
+    emissive: new THREE.Color('#64748b'),
+    emissiveIntensity: 0.02
+  });
+  material.onBeforeCompile = (shader) => {
+    shader.uniforms.uSeed = { value: seedOffset };
+    shader.vertexShader = shader.vertexShader
+      .replace('#include <common>', `#include <common>
+        varying vec3 vRockPos;
+        varying vec3 vObjNormal;
+        varying float vViewDist;`)
+      .replace('#include <begin_vertex>', `#include <begin_vertex>
+        vRockPos = position;
+        vObjNormal = normalize(objectNormal);`)
+      .replace('#include <project_vertex>', `#include <project_vertex>
+        vViewDist = -mvPosition.z;`);
+    shader.fragmentShader = shader.fragmentShader
+      .replace('#include <common>', `#include <common>
+        uniform mat3 normalMatrix;
+        uniform vec3 uSeed;
+        varying vec3 vRockPos;
+        varying vec3 vObjNormal;
+        varying float vViewDist;
+        ${NOISE_GLSL}
+        float rockSample(vec3 p, float detail) {
+          return fbm3(p * 4.5 + uSeed) * 0.72 + noise3(p * 14.0 + uSeed) * 0.28 * detail;
+        }`)
+      .replace('#include <color_fragment>', `#include <color_fragment>
+        float rockDetail = 1.0 - smoothstep(180.0, 1200.0, vViewDist);
+        float rockLarge = fbm3(vRockPos * 2.8 + uSeed);
+        float rockFine = noise3(vRockPos * 14.0 + uSeed) * rockDetail;
+        vec3 rockTint = mix(vec3(0.46, 0.5, 0.58), vec3(0.76, 0.72, 0.68), rockLarge);
+        diffuseColor.rgb *= rockTint * (0.64 + 0.56 * rockLarge + 0.14 * rockFine);`)
+      .replace('#include <normal_fragment_maps>', `#include <normal_fragment_maps>
+        vec3 smoothViewNormal = normal;
+        float eps = 0.015;
+        float h0 = rockSample(vRockPos, rockDetail);
+        vec3 gradObj = vec3(
+          rockSample(vRockPos + vec3(eps, 0.0, 0.0), rockDetail) - h0,
+          rockSample(vRockPos + vec3(0.0, eps, 0.0), rockDetail) - h0,
+          rockSample(vRockPos + vec3(0.0, 0.0, eps), rockDetail) - h0
+        ) / eps;
+        vec3 nObj = normalize(vObjNormal);
+        vec3 tangentGradObj = gradObj - nObj * dot(gradObj, nObj);
+        float bumpStrength = 0.04 + 0.04 * rockDetail;
+        normal = normalize(normalMatrix * (nObj - bumpStrength * tangentGradObj));`)
+      .replace('#include <emissivemap_fragment>', `#include <emissivemap_fragment>
+        float rockRim = pow(1.0 - clamp(abs(dot(smoothViewNormal, normalize(vViewPosition))), 0.0, 1.0), 3.0);
+        totalEmissiveRadiance += vec3(0.24, 0.32, 0.48) * rockRim * 0.42 + diffuseColor.rgb * 0.05;`);
+  };
+  material.customProgramCacheKey = () => 'pulse-contributor-rock-v2';
   return material;
 }
 
@@ -1749,14 +2662,14 @@ function buildBelt() {
     buckets.get(geo).push(entry);
   };
 
-  const count = 2400;
+  const count = 4400;
   for (let i = 0; i < count; i += 1) {
     const a = rand() * TAU;
     const gauss = (rand() + rand() + rand() - 1.5) / 1.5;
-    const r = orbit.r + gauss * orbit.belt * 1.1;
-    const y = (rand() + rand() - 1) * 34;
-    const big = rand() < 0.008;
-    const scale = big ? 6 + rand() * 7 : 0.55 + rand() ** 2.8 * 3.2;
+    const r = orbit.r + gauss * orbit.belt * 1.28;
+    const y = (rand() + rand() - 1) * 1600;
+    const big = rand() < 0.012;
+    const scale = big ? 36 + rand() * 52 : 6.0 + rand() ** 2.5 * 22.0;
     const hue = 0.58 + rand() * 0.12;
     const entry = {
       position: new THREE.Vector3(Math.cos(a) * r, y, Math.sin(a) * r),
@@ -1798,12 +2711,19 @@ function buildBelt() {
 /* --------------------------------------------------------------- planets */
 
 function planetTexture(planet) {
-  const key = planet.starred ? `gas:${planet.key}:${planet.color}` : `rock:${planet.key}`;
+  const key = `${planet.orbitId}:${planet.key}:${planet.color}:${planet.ringColor}`;
   let texture = textureCache.get(key);
   if (!texture) {
-    const canvas = planet.starred
-      ? gasGiantCanvas(planet.color, planet.key, 256, 128, { accent: planet.ringColor })
-      : rockyCanvas(planet.key);
+    let canvas;
+    if (planet.orbitId === 'tier1') {
+      canvas = terrestrialCanvas(planet.color, planet.key, 512, 256);
+    } else if (planet.orbitId === 'tier2') {
+      canvas = iceGiantCanvas(planet.color, planet.key, 512, 256, { accent: planet.ringColor });
+    } else if (planet.starred) {
+      canvas = gasGiantCanvas(planet.color, planet.key, 512, 256, { accent: planet.ringColor, rich: planet.orbitId === 'top5' });
+    } else {
+      canvas = rockyCanvas(planet.key);
+    }
     texture = canvasTexture(canvas, { repeat: true });
     textureCache.set(key, texture);
   }
@@ -1811,110 +2731,222 @@ function planetTexture(planet) {
 }
 
 function ensurePlanetObject(planet) {
-  const sig = `${planet.starred}|${planet.color}|${planet.ringStyle?.id || ''}|${planet.moonCount}|${planet.rank ? 1 : 0}`;
+  const sig = `${planet.orbitId}|${planet.starred}|${planet.color}|${planet.ringStyle?.id || ''}|${planet.ringStyle?.opacity || 0}|${planet.moonCount}|${planet.rank || 0}`;
   if (planet.obj && planet.obj.sig === sig) return;
   if (planet.obj) disposePlanetObject(planet, { keepLabel: true });
   if (!world.ok) return;
 
   const group = new THREE.Group();
-  const material = new THREE.MeshStandardMaterial({
-    map: planetTexture(planet),
-    roughness: planet.starred ? 0.78 : 0.95,
-    metalness: 0,
-    emissive: new THREE.Color(planet.color),
-    emissiveIntensity: planet.starred ? 0.05 : 0.015
-  });
-  const body = new THREE.Mesh(SPHERE_GEO, material);
-  body.rotation.z = ((hashString(planet.key) % 40) - 20) / 100;
-  group.add(body);
+  const axialGroup = new THREE.Group();
+  const tiltH = hashString(planet.key, 0x91e10da5);
+  const obliquityX = planet.ringStyle ? planet.ringStyle.tilt : ((((tiltH % 200) / 200) - 0.5) * 0.44);
+  const obliquityZ = ((((tiltH >>> 8) % 200) / 200) - 0.5) * 0.28;
+  axialGroup.rotation.set(obliquityX, 0, obliquityZ);
+  group.add(axialGroup);
 
-  const atmosphere = new THREE.Mesh(SPHERE_GEO, atmosphereMaterial(planet.color, planet.starred ? 0.75 : 0.35, planet.starred ? 2.8 : 3.4));
-  atmosphere.scale.setScalar(planet.starred ? 1.16 : 1.07);
-  group.add(atmosphere);
+  const isOuter = !planet.starred || planet.orbitId === 'outer';
+  let body;
+  let material;
+  let atmosphere = null;
+  let atmosphereBaseIntensity = 0;
+  let atmosphereSheen = null;
+  let sheenBaseIntensity = 0;
+  let glint = null;
+  let glintMeta = null;
 
-  let ring = null;
-  if (planet.ringStyle) {
-    const style = planet.ringStyle;
-    const geo = new THREE.RingGeometry(style.inner, style.outer, 128, 1);
-    remapRingUVs(geo, style.inner, style.outer);
-    ring = new THREE.Mesh(geo, new THREE.MeshBasicMaterial({
-      map: canvasTexture(ringCanvas(`${planet.key}:ring`)),
-      color: new THREE.Color(planet.ringColor).multiplyScalar(0.75),
+  const ensureBeaconTexture = () => {
+    if (!world.textures.beacon) {
+      world.textures.beacon = canvasTexture(radialGlowCanvas([
+        [0, 'rgba(224,242,254,1)'],
+        [0.2, 'rgba(147,197,253,0.72)'],
+        [0.52, 'rgba(125,211,252,0.18)'],
+        [1, 'rgba(125,211,252,0)']
+      ], 64));
+    }
+    return world.textures.beacon;
+  };
+
+  if (isOuter) {
+    const rockGeo = makeRockGeometry(hashString(planet.key, 0x3c6ef372), 4, {
+      lumpy: 0.16,
+      medium: 0.06,
+      fine: 0.02,
+      craterScale: 0.45,
+      stretchScale: 0.35
+    });
+    material = makeContributorRockMaterial(planet.key);
+    body = new THREE.Mesh(rockGeo, material);
+    axialGroup.add(body);
+
+    glint = new THREE.Sprite(new THREE.SpriteMaterial({
+      map: ensureBeaconTexture(),
+      color: 0xbae6fd,
       transparent: true,
-      opacity: 0.6,
-      side: THREE.DoubleSide,
-      depthWrite: false
-    }));
-    ring.rotation.set(-Math.PI / 2 + style.tilt, 0, style.tilt * 0.4);
-    group.add(ring);
-  }
-
-  const moons = [];
-  for (let m = 0; m < planet.moonCount; m += 1) {
-    const moon = new THREE.Mesh(SPHERE_GEO, new THREE.MeshStandardMaterial({ color: 0xd9dee8, roughness: 1 }));
-    moon.scale.setScalar(0.16 - m * 0.025);
-    moon.userData = { radius: 2.3 + m * 0.65, speed: (0.9 - m * 0.15) * planet.moonSpeed, phase: (m * TAU) / Math.max(1, planet.moonCount), tilt: 0.3 + m * 0.35 };
-    group.add(moon);
-    moons.push(moon);
-  }
-
-  let halo = null;
-  if (planet.rank) {
-    const haloColor = TOP5_PALETTE[planet.rank]?.halo || '#ffd166';
-    halo = new THREE.Mesh(SHOCK_GEO, new THREE.MeshBasicMaterial({
-      color: new THREE.Color(haloColor),
-      transparent: true,
-      opacity: 0.7,
-      side: THREE.DoubleSide,
+      opacity: 0,
       depthWrite: false,
       blending: THREE.AdditiveBlending
     }));
-    halo.scale.setScalar(1.75);
-    group.add(halo);
+    glint.scale.setScalar(3.8);
+    glintMeta = { near: 600, far: 4200, opacity: 0.62 };
+    group.add(glint);
+  } else {
+    const isIce = planet.orbitId === 'tier2';
+    const isTerrestrial = planet.orbitId === 'tier1';
+    material = new THREE.MeshStandardMaterial({
+      map: planetTexture(planet),
+      roughness: isIce ? 0.62 : (isTerrestrial ? 0.76 : 0.78),
+      metalness: isTerrestrial ? 0.05 : 0.02,
+      emissive: new THREE.Color(planet.color),
+      emissiveIntensity: planet.orbitId === 'top5' ? 0.05 : 0.035
+    });
+    body = new THREE.Mesh(SPHERE_GEO, material);
+    axialGroup.add(body);
+
+    atmosphereBaseIntensity = isIce ? 0.72 : (isTerrestrial ? 0.64 : (planet.orbitId === 'top5' ? 0.78 : 0.7));
+    const atmoPower = isIce ? 2.4 : (isTerrestrial ? 2.7 : 2.5);
+    const atmoScale = isTerrestrial ? 1.055 : 1.075;
+    const limbPeak = isTerrestrial ? 0.32 : 0.37;
+    atmosphere = new THREE.Mesh(SPHERE_GEO, planetBackAtmosphereMaterial(planet.color, atmosphereBaseIntensity, atmoPower, limbPeak));
+    atmosphere.scale.setScalar(atmoScale);
+    axialGroup.add(atmosphere);
+
+    sheenBaseIntensity = isIce ? 0.3 : (isTerrestrial ? 0.26 : 0.28);
+    atmosphereSheen = new THREE.Mesh(SPHERE_GEO, planetFrontAtmosphereMaterial(planet.color, sheenBaseIntensity, 4.2));
+    atmosphereSheen.scale.setScalar(1.006);
+    axialGroup.add(atmosphereSheen);
+
+    if (isTerrestrial || isIce) {
+      glint = new THREE.Sprite(new THREE.SpriteMaterial({
+        map: ensureBeaconTexture(),
+        color: new THREE.Color(planet.color),
+        transparent: true,
+        opacity: 0,
+        depthWrite: false,
+        blending: THREE.AdditiveBlending
+      }));
+      glint.scale.setScalar(isTerrestrial ? 3.2 : 2.6);
+      glintMeta = isTerrestrial
+        ? { near: 4000, far: 15000, opacity: 0.48 }
+        : { near: 7500, far: 22000, opacity: 0.36 };
+      group.add(glint);
+    }
   }
 
-  let trail = null;
-  if (planet.starred) {
-    const n = 48;
-    const geo = new THREE.BufferGeometry();
-    geo.setAttribute('position', new THREE.BufferAttribute(new Float32Array(n * 3), 3));
-    const colors = new Float32Array(n * 3);
-    const c = new THREE.Color(planet.color);
-    for (let i = 0; i < n; i += 1) {
-      const k = (i / (n - 1)) ** 2;
-      colors[i * 3] = c.r * k;
-      colors[i * 3 + 1] = c.g * k;
-      colors[i * 3 + 2] = c.b * k;
+  let ringGroup = null;
+  const ringMeshes = [];
+  let ringDust = null;
+  let ringOuter = 1.0;
+  if (planet.ringStyle) {
+    const style = planet.ringStyle;
+    ringGroup = new THREE.Group();
+    axialGroup.add(ringGroup);
+    ringOuter = style.outer || 1.0;
+
+    let ringTint = new THREE.Color(planet.ringColor);
+    if (planet.orbitId === 'top5' && planet.rank && TOP5_PALETTE[planet.rank]) {
+      ringTint = ringTint.clone().lerp(new THREE.Color(TOP5_PALETTE[planet.rank].halo), 0.38);
     }
-    geo.setAttribute('color', new THREE.BufferAttribute(colors, 3));
-    trail = new THREE.Line(geo, new THREE.LineBasicMaterial({ vertexColors: true, transparent: true, blending: THREE.AdditiveBlending, depthWrite: false }));
-    trail.frustumCulled = false;
-    world.root.add(trail);
+
+    const bands = Array.isArray(style.bands) ? style.bands : [[1.4, style.outer || 2.1]];
+    bands.forEach(([inner, outer], bandIdx) => {
+      const geo = new THREE.RingGeometry(inner, outer, 192, 4);
+      remapRingUVs(geo, inner, outer);
+      geo.rotateX(-Math.PI / 2);
+      const tex = canvasTexture(ringCanvas(`${planet.key}:ring:${bandIdx}`, style.id, bandIdx, 1024));
+      const mat = planetRingMaterial(tex, ringTint, style.opacity ?? 0.78);
+      const mesh = new THREE.Mesh(geo, mat);
+      ringGroup.add(mesh);
+      ringMeshes.push({ mesh, material: mat, geometry: geo, texture: tex });
+    });
+
+    if (style.dust > 0) {
+      const dustCount = style.dust;
+      const dPos = new Float32Array(dustCount * 3);
+      const dSize = new Float32Array(dustCount);
+      const drand = seededRandom(hashString(`${planet.key}:ring-dust`, 0x62b3d1));
+      for (let i = 0; i < dustCount; i += 1) {
+        const band = bands[i % bands.length];
+        const r = band[0] + drand() * (band[1] - band[0]);
+        const a = drand() * TAU;
+        dPos[i * 3] = Math.cos(a) * r;
+        dPos[i * 3 + 1] = (drand() - 0.5) * 0.024;
+        dPos[i * 3 + 2] = Math.sin(a) * r;
+        dSize[i] = 1.2 + drand() * 1.8;
+      }
+      const dustGeo = new THREE.BufferGeometry();
+      dustGeo.setAttribute('position', new THREE.BufferAttribute(dPos, 3));
+      dustGeo.setAttribute('aSize', new THREE.BufferAttribute(dSize, 1));
+      const dustMat = planetRingDustMaterial(ringTint, Math.min(0.86, (style.opacity ?? 0.78) * 0.95));
+      ringDust = new THREE.Points(dustGeo, dustMat);
+      ringGroup.add(ringDust);
+    }
+  }
+
+  const moons = [];
+  if (planet.moonCount > 0) {
+    if (!world.textures.moon) {
+      world.textures.moon = canvasTexture(rockyCanvas('moon-surface', 256, 128), { repeat: true });
+    }
+    const isTerrestrial = planet.orbitId === 'tier1';
+    for (let m = 0; m < planet.moonCount; m += 1) {
+      const moon = new THREE.Mesh(SPHERE_GEO, new THREE.MeshStandardMaterial({
+        map: world.textures.moon,
+        roughness: 0.92,
+        metalness: 0.04
+      }));
+      moon.scale.setScalar(isTerrestrial ? 0.12 - m * 0.02 : 0.13 - m * 0.02);
+      moon.userData = {
+        radius: (ringOuter > 1.0 ? ringOuter + 0.48 + m * 0.48 : 2.0 + m * 0.55),
+        speed: (0.85 - m * 0.14) * planet.moonSpeed,
+        phase: (m * TAU) / Math.max(1, planet.moonCount),
+        tilt: (m % 2 ? 1 : -1) * (0.02 + m * 0.018)
+      };
+      axialGroup.add(moon);
+      moons.push(moon);
+    }
   }
 
   group.visible = false;
   world.root.add(group);
-  planet.obj = { sig, group, body, material, atmosphere, ring, moons, halo, trail };
+  planet.obj = {
+    sig,
+    group,
+    axialGroup,
+    body,
+    material,
+    atmosphere,
+    atmosphereBaseIntensity,
+    atmosphereSheen,
+    sheenBaseIntensity,
+    glint,
+    glintMeta,
+    ringGroup,
+    ringMeshes,
+    ringDust,
+    ringOuter,
+    moons
+  };
 }
 
 function disposePlanetObject(planet, { keepLabel = false } = {}) {
   const obj = planet.obj;
   if (obj) {
     world.root.remove(obj.group);
+    if (obj.body?.geometry && obj.body.geometry !== SPHERE_GEO) obj.body.geometry.dispose();
     obj.material.dispose();
-    obj.atmosphere.material.dispose();
-    if (obj.ring) {
-      obj.ring.geometry.dispose();
-      obj.ring.material.map?.dispose();
-      obj.ring.material.dispose();
+    obj.atmosphere?.material.dispose();
+    obj.atmosphereSheen?.material.dispose();
+    obj.glint?.material.dispose();
+    for (const band of obj.ringMeshes || []) {
+      band.geometry.dispose();
+      band.texture?.dispose();
+      band.material.dispose();
+    }
+    if (obj.ringDust) {
+      obj.ringDust.geometry.dispose();
+      obj.ringDust.material.dispose();
     }
     obj.moons.forEach((moon) => moon.material.dispose());
-    obj.halo?.material.dispose();
-    if (obj.trail) {
-      world.root.remove(obj.trail);
-      obj.trail.geometry.dispose();
-      obj.trail.material.dispose();
-    }
     planet.obj = null;
   }
   if (!keepLabel && planet.labelEl) {
@@ -1937,15 +2969,8 @@ function buildLinkLayer() {
   lines.frustumCulled = false;
   world.root.add(lines);
 
-  const pGeo = new THREE.BufferGeometry();
-  pGeo.setAttribute('position', new THREE.BufferAttribute(new Float32Array(MAX_LINKS * 3 * 3), 3).setUsage(THREE.DynamicDrawUsage));
-  pGeo.setAttribute('color', new THREE.BufferAttribute(new Float32Array(MAX_LINKS * 3 * 3), 3).setUsage(THREE.DynamicDrawUsage));
-  pGeo.setDrawRange(0, 0);
   const sparkTex = canvasTexture(radialGlowCanvas([[0, 'rgba(255,255,255,1)'], [0.25, 'rgba(255,255,255,0.6)'], [1, 'rgba(255,255,255,0)']], 64));
-  const sparks = new THREE.Points(pGeo, new THREE.PointsMaterial({ size: 16, map: sparkTex, vertexColors: true, transparent: true, depthWrite: false, blending: THREE.AdditiveBlending, sizeAttenuation: true }));
-  sparks.frustumCulled = false;
-  world.root.add(sparks);
-  world.links = { lines, sparks, sparkTex };
+  world.links = { lines };
   world.textures.spark = sparkTex;
 }
 
@@ -1959,6 +2984,9 @@ const _b = new THREE.Vector3();
 const _c = new THREE.Vector3();
 const _p = new THREE.Vector3();
 const _q = new THREE.Vector3();
+const _prev = new THREE.Vector3();
+const _prevColor = new THREE.Color();
+const _curColor = new THREE.Color();
 
 function anchorFor(body, toward, out) {
   if (body.isChampion) {
@@ -1982,23 +3010,31 @@ function linkControlPoint(a, b, out) {
   out.addVectors(a, b).multiplyScalar(0.5);
   const outward = _q.copy(out).setY(0).normalize().multiplyScalar(dist * 0.12);
   out.add(outward);
-  out.y += Math.min(320, dist * 0.42) + 20;
+  out.y += Math.min(7200, dist * 0.34) + 420;
   return out;
+}
+
+function linkVertexFade(t, phase, activeMotion, isPair, intensity, breath) {
+  const arch = 0.24 + 0.58 * Math.sin(t * Math.PI);
+  let pulse = activeMotion ? Math.exp(-((t - phase) ** 2) / 0.022) : 0;
+  if (isPair && activeMotion) {
+    pulse = Math.max(pulse, Math.exp(-((t - (1 - phase)) ** 2) / 0.022) * 0.85);
+  }
+  return arch * intensity * (breath + pulse * 0.34);
 }
 
 function updateLinks() {
   const layer = world.links;
   if (!layer) return;
-  const focusKey = scene.selectedKey;
+  const focusKey = scene.selectedKey || scene.lockedKey;
   const list = focusKey ? (scene.linksByKey.get(focusKey) || []) : (scene.constellation ? scene.links : []);
   const pos = layer.lines.geometry.attributes.position;
   const col = layer.lines.geometry.attributes.color;
-  const spos = layer.sparks.geometry.attributes.position;
-  const scol = layer.sparks.geometry.attributes.color;
   const strong = Boolean(focusKey);
+  const activeMotion = !state.motionPaused && !prefersReducedMotion();
+  const intensity = strong ? 0.86 : 0.30;
+  const speed = strong ? 0.22 : 0.12;
   let v = 0;
-  let s = 0;
-  const color = new THREE.Color();
 
   for (const link of list.slice(0, MAX_LINKS)) {
     const A = scene.planetByKey.get(link.fromKey);
@@ -2008,38 +3044,30 @@ function updateLinks() {
     anchorFor(A, B.pos, _a);
     anchorFor(B, A.pos, _b);
     linkControlPoint(_a, _b, _c);
-    const base = link.type === 'pair' ? LINK_COLORS.pair : (focusKey && link.toKey === focusKey ? LINK_COLORS.received : LINK_COLORS.sent);
-    const intensity = strong ? 1 : 0.32;
-    let prev = curvePoint(_a, _c, _b, 0, _p).clone();
+    const isPair = link.type === 'pair';
+    const base = isPair ? LINK_COLORS.pair : (focusKey && link.toKey === focusKey ? LINK_COLORS.received : LINK_COLORS.sent);
+    const phase = ((scene.time * speed + link.seed) % 1) * 1.4 - 0.2;
+    const breath = activeMotion ? 0.92 + 0.08 * Math.sin(scene.time * 1.4 + link.seed * TAU) : 1;
+
+    curvePoint(_a, _c, _b, 0, _prev);
+    _prevColor.copy(base).multiplyScalar(linkVertexFade(0, phase, activeMotion, isPair, intensity, breath));
+
     for (let i = 1; i <= LINK_SEGMENTS; i += 1) {
       const t = i / LINK_SEGMENTS;
       const cur = curvePoint(_a, _c, _b, t, _p);
-      const fade = (0.35 + 0.65 * Math.sin(t * Math.PI)) * intensity;
-      color.copy(base).multiplyScalar(fade);
-      pos.setXYZ(v, prev.x, prev.y, prev.z);
-      col.setXYZ(v, color.r, color.g, color.b);
+      _curColor.copy(base).multiplyScalar(linkVertexFade(t, phase, activeMotion, isPair, intensity, breath));
+      pos.setXYZ(v, _prev.x, _prev.y, _prev.z);
+      col.setXYZ(v, _prevColor.r, _prevColor.g, _prevColor.b);
       pos.setXYZ(v + 1, cur.x, cur.y, cur.z);
-      col.setXYZ(v + 1, color.r, color.g, color.b);
+      col.setXYZ(v + 1, _curColor.r, _curColor.g, _curColor.b);
       v += 2;
-      prev.copy(cur);
-    }
-    const sparkCount = strong ? 3 : 1;
-    for (let k = 0; k < sparkCount; k += 1) {
-      let t = (scene.time * (strong ? 0.22 : 0.12) + link.seed + k / sparkCount) % 1;
-      if (link.type === 'pair' && k % 2) t = 1 - t;
-      curvePoint(_a, _c, _b, t, _p);
-      spos.setXYZ(s, _p.x, _p.y, _p.z);
-      color.copy(base).multiplyScalar(strong ? 1.4 : 0.6);
-      scol.setXYZ(s, color.r, color.g, color.b);
-      s += 1;
+      _prev.copy(cur);
+      _prevColor.copy(_curColor);
     }
   }
   layer.lines.geometry.setDrawRange(0, v);
-  layer.sparks.geometry.setDrawRange(0, s);
   pos.needsUpdate = true;
   col.needsUpdate = true;
-  spos.needsUpdate = true;
-  scol.needsUpdate = true;
 }
 
 /* --------------------------------------------------------------- effects */
@@ -2096,7 +3124,7 @@ function updateEffects() {
       if (fx.type === 'sunpulse') {
         fx.obj.position.set(0, 0, 0);
         fx.obj.quaternion.copy(world.orbits.get(fx.orbitId || 'top5')?.quat || new THREE.Quaternion());
-        fx.obj.scale.setScalar(SUN_RADIUS + e * 1100);
+        fx.obj.scale.setScalar(SUN_RADIUS + e * 26000);
         fx.obj.material.opacity = 0.65 * (1 - k);
       } else {
         const body = scene.planetByKey.get(fx.key);
@@ -2114,7 +3142,7 @@ function updateEffects() {
       if (!fx.obj) {
         const group = new THREE.Group();
         const head = new THREE.Sprite(new THREE.SpriteMaterial({ map: world.textures.spark, color: effectColor(fx.color), transparent: true, depthWrite: false, blending: THREE.AdditiveBlending }));
-        head.scale.setScalar(fx.type === 'meteor' ? 60 : 42);
+        head.scale.setScalar(fx.type === 'meteor' ? 780 : 520);
         group.add(head);
         const n = 40;
         const tGeo = new THREE.BufferGeometry();
@@ -2175,7 +3203,7 @@ function updateSun(dt) {
   sun.corona.material.rotation += dt * 0.012;
   sun.corona2.material.rotation -= dt * 0.008;
   const breathe = 1 + 0.03 * Math.sin(scene.time * 0.8);
-  sun.glow.scale.setScalar(SUN_RADIUS * 10 * breathe * (1 + sun.heatPulse * 0.4));
+  sun.glow.scale.setScalar(SUN_RADIUS * 4.0 * breathe * (1 + sun.heatPulse * 0.4));
   sun.throneRing.material.opacity += ((sun.targetRing || 0) - sun.throneRing.material.opacity) * Math.min(1, dt * 1.2);
   sun.particles.material.opacity += ((sun.targetParticles ?? 0.3) - sun.particles.material.opacity) * Math.min(1, dt * 1.2);
   if (!state.motionPaused) sun.disk.rotation.y += dt * 0.05 * (prefersReducedMotion() ? 0.3 : 1);
@@ -2190,7 +3218,8 @@ function updatePlanets(dt) {
   const kAngle = 1 - Math.exp(-dt * 1.8);
   const kRadius = 1 - Math.exp(-dt * 1.1);
   const kSize = 1 - Math.exp(-dt * 2.4);
-  const selectedLinks = scene.selectedKey ? linkedKeysOf(scene.selectedKey) : null;
+  const activeKey = scene.selectedKey || scene.lockedKey;
+  const selectedLinks = activeKey ? linkedKeysOf(activeKey) : null;
 
   for (const planet of scene.planets) {
     const obj = planet.obj;
@@ -2214,50 +3243,61 @@ function updatePlanets(dt) {
       orbitPosition(planet.prevOrbitId, planet.angle, planet.r, planet.y, _tmp);
       orbitPosition(planet.orbitId, planet.angle, planet.r, planet.y, _tmp2);
       planet.pos.lerpVectors(_tmp, _tmp2, t);
-      planet.pos.y += Math.sin(t * Math.PI) * 120;
+      planet.pos.y += Math.sin(t * Math.PI) * 2500;
     } else {
       orbitPosition(planet.orbitId, planet.angle, planet.r, planet.y, planet.pos);
     }
 
     let dim = 1;
     if (scene.matchKeys && !scene.matchKeys.has(planet.key)) dim = 0.22;
-    else if (scene.selectedKey && scene.selectedKey !== planet.key && !selectedLinks?.has(planet.key)) dim = 0.4;
+    else if (activeKey && activeKey !== planet.key && !selectedLinks?.has(planet.key)) dim = 0.4;
     planet.dim += (dim - planet.dim) * kSize;
 
     if (!obj) continue;
+    const renderRadius = Math.max(0.01, planet.size * easeOutCubic(planet.alpha));
     obj.group.visible = planet.visible;
     obj.group.position.copy(planet.pos);
-    obj.group.scale.setScalar(Math.max(0.01, planet.size * easeOutCubic(planet.alpha)));
+    obj.group.scale.setScalar(renderRadius);
     if (speed) obj.body.rotation.y += dt * 0.18;
     obj.material.color.setScalar(planet.dim);
-    obj.atmosphere.material.uniforms.intensity.value = (planet.starred ? 0.75 : 0.35) * planet.dim * (scene.hoveredKey === planet.key ? 1.6 : 1);
-    if (obj.halo) {
-      obj.halo.rotation.y += dt * 0.6;
-      obj.halo.material.opacity = 0.7 * planet.dim;
+    const hoverBoost = scene.hoveredKey === planet.key ? 1.45 : 1;
+    if (obj.atmosphere) {
+      obj.atmosphere.material.uniforms.intensity.value = (obj.atmosphereBaseIntensity || 0.7) * planet.dim * hoverBoost;
+    }
+    if (obj.atmosphereSheen) {
+      obj.atmosphereSheen.material.uniforms.intensity.value = (obj.sheenBaseIntensity || 0.28) * planet.dim * hoverBoost;
+    }
+    if (obj.glint && obj.glintMeta) {
+      const camDist = world.camera ? world.camera.position.distanceTo(planet.pos) : obj.glintMeta.far;
+      const farAlpha = smoothstep01(obj.glintMeta.near, obj.glintMeta.far, camDist);
+      obj.glint.visible = farAlpha > 0.005 && planet.dim > 0.1;
+      obj.glint.material.opacity = farAlpha * obj.glintMeta.opacity * planet.dim * (scene.hoveredKey === planet.key ? 1.5 : 1);
+    }
+    if (obj.ringGroup && speed) {
+      obj.ringGroup.rotation.y += dt * 0.04;
+    }
+    for (const band of obj.ringMeshes || []) {
+      const ru = band.material.uniforms;
+      ru.uPlanetPos.value.copy(planet.pos);
+      ru.uPlanetRadius.value = renderRadius;
+      ru.uDim.value = planet.dim;
+      ru.uTime.value = scene.time;
+    }
+    if (obj.ringDust) {
+      const du = obj.ringDust.material.uniforms;
+      du.uPlanetPos.value.copy(planet.pos);
+      du.uPlanetRadius.value = renderRadius;
+      du.uDim.value = planet.dim;
     }
     obj.moons.forEach((moon) => {
       const d = moon.userData;
       const a = scene.time * d.speed + d.phase;
       moon.position.set(Math.cos(a) * d.radius, Math.sin(a) * d.radius * Math.sin(d.tilt), Math.sin(a) * d.radius * Math.cos(d.tilt));
     });
-    if (obj.trail) {
-      obj.trail.visible = planet.visible && planet.transition >= 1 && planet.dim > 0.3;
-      if (obj.trail.visible) {
-        const tp = obj.trail.geometry.attributes.position;
-        const span = planet.rank ? 0.75 : 0.5;
-        for (let i = 0; i < tp.count; i += 1) {
-          const a = planet.angle - span * (1 - i / (tp.count - 1));
-          orbitPosition(planet.orbitId, a, planet.r, planet.y, _tmp);
-          tp.setXYZ(i, _tmp.x, _tmp.y, _tmp.z);
-        }
-        tp.needsUpdate = true;
-        obj.trail.material.opacity = planet.dim;
-      }
-    }
   }
 }
 
-function tweenCamera(position, target, duration = 2.2, onDone = null) {
+function tweenCamera(position, target, duration = 2.2, onDone = null, { logZoom = false } = {}) {
   if (!world.ok) return;
   nav.tween = {
     fromPos: world.camera.position.clone(),
@@ -2266,9 +3306,16 @@ function tweenCamera(position, target, duration = 2.2, onDone = null) {
     toTarget: target.clone(),
     t: 0,
     duration: prefersReducedMotion() ? Math.min(duration, 0.6) : duration,
+    logZoom,
     onDone
   };
 }
+
+const _origin = new THREE.Vector3(0, 0, 0);
+const _panX = new THREE.Vector3();
+const _panY = new THREE.Vector3();
+const _tweenFromOff = new THREE.Vector3();
+const _tweenToOff = new THREE.Vector3();
 
 function updateCamera(dt) {
   const { camera, controls } = world;
@@ -2279,14 +3326,27 @@ function updateCamera(dt) {
     tw.t = Math.min(1, tw.t + dt / tw.duration);
     const e = easeInOutCubic(tw.t);
     if (follow && !follow.isChampion) {
-      // keep tween aimed at the moving planet
+      // Keep both tween endpoints anchored to the orbiting planet
       const delta = _tmp.copy(follow.pos).sub(nav.lastFollowPos || follow.pos);
+      tw.fromPos.add(delta);
+      tw.fromTarget.add(delta);
       tw.toPos.add(delta);
       tw.toTarget.add(delta);
       nav.lastFollowPos = follow.pos.clone();
     }
-    camera.position.lerpVectors(tw.fromPos, tw.toPos, e);
-    controls.target.lerpVectors(tw.fromTarget, tw.toTarget, e);
+    if (tw.logZoom && (!follow || follow.isChampion)) {
+      controls.target.lerpVectors(tw.fromTarget, tw.toTarget, e);
+      _tweenFromOff.copy(tw.fromPos).sub(tw.fromTarget);
+      _tweenToOff.copy(tw.toPos).sub(tw.toTarget);
+      const fromR = Math.max(1, _tweenFromOff.length());
+      const toR = Math.max(1, _tweenToOff.length());
+      const r = fromR * (toR / fromR) ** e;
+      _tweenFromOff.divideScalar(fromR).lerp(_tweenToOff.divideScalar(toR), e).normalize();
+      camera.position.copy(controls.target).addScaledVector(_tweenFromOff, r);
+    } else {
+      camera.position.lerpVectors(tw.fromPos, tw.toPos, e);
+      controls.target.lerpVectors(tw.fromTarget, tw.toTarget, e);
+    }
     if (tw.t >= 1) {
       nav.tween = null;
       tw.onDone?.();
@@ -2298,6 +3358,25 @@ function updateCamera(dt) {
     nav.lastFollowPos.copy(follow.pos);
   }
 
+  if (follow && !follow.isChampion && !nav.tween && nav.followReleaseDist > 0) {
+    const followDist = camera.position.distanceTo(controls.target);
+    if (!nav.followArrived && followDist < nav.followReleaseDist * 0.9) {
+      nav.followArrived = true;
+    }
+    if (nav.followArrived && followDist > nav.followReleaseDist) {
+      stopFollowing({ recenter: true });
+    }
+  }
+
+  if (nav.recentering && !nav.tween && !nav.followKey) {
+    const k = 1 - Math.exp(-dt * 4.5);
+    controls.target.lerp(_origin, k);
+    if (controls.target.lengthSq() < 64) {
+      controls.target.set(0, 0, 0);
+      nav.recentering = false;
+    }
+  }
+
   const wantShift = document.body.classList.contains('has-card') && window.innerWidth > 900 ? Math.min(220, window.innerWidth * 0.12) : 0;
   nav.viewShift = (nav.viewShift || 0) + (wantShift - (nav.viewShift || 0)) * Math.min(1, dt * 4);
   if (Math.abs(nav.viewShift) > 0.5) {
@@ -2307,8 +3386,15 @@ function updateCamera(dt) {
   }
 
   const idle = scene.time - scene.lastInteractionAt;
-  controls.autoRotate = !nav.tween && !follow && idle > 16 && !state.motionPaused && !prefersReducedMotion();
+  controls.autoRotate = !nav.tween && !nav.followKey && idle > 16 && !state.motionPaused && !prefersReducedMotion();
   controls.update();
+
+  const distToTarget = camera.position.distanceTo(controls.target);
+  const desiredNear = clamp(distToTarget * 0.015, 0.6, 95);
+  if (Math.abs(desiredNear - camera.near) / camera.near > 0.08) {
+    camera.near = desiredNear;
+    camera.updateProjectionMatrix();
+  }
 }
 
 function renderFrame() {
@@ -2369,10 +3455,11 @@ function ensureLabel(body) {
     body.labelW = 0;
     if (body.isChampion) {
       body.labelEl.className = 'champion-label';
+      const tierSuffix = body.score.tierShort ? ` · ${htmlEscape(body.score.tierShort)}` : '';
       body.labelEl.innerHTML = `
         <span class="champion-kicker">#1 · 恒星王座</span>
         <span class="champion-name">${htmlEscape(displayName(body.profile))}</span>
-        <span class="champion-meta">@${htmlEscape(body.profile.github || body.key)} · ${body.score.points} 分 · ${htmlEscape(body.score.tierShort || '0阶')}</span>`;
+        <span class="champion-meta">@${htmlEscape(body.profile.github || body.key)} · ${body.score.points} 分${tierSuffix}</span>`;
     } else {
       body.labelEl.className = `planet-label${body.rank ? ' is-top' : ''}`;
       body.labelEl.innerHTML = labelMarkup(body);
@@ -2405,9 +3492,26 @@ const orbitLabelEls = new Map();
 function updateLabels() {
   const layer = elements.labelLayer;
   if (!layer) return;
+  const camDist = world.camera.position.length();
+  const labelFade = clamp((320000 - camDist) / 100000, 0, 1);
+  layer.style.opacity = labelFade < 0.999 ? labelFade.toFixed(3) : '';
   const sunScreen = screenOf(_tmp.set(0, 0, 0), SUN_RADIUS);
   const placed = hudRects();
-  const selectedLinks = scene.selectedKey ? linkedKeysOf(scene.selectedKey) : null;
+  const activeKey = scene.selectedKey || scene.lockedKey;
+  const selectedLinks = activeKey ? linkedKeysOf(activeKey) : null;
+  const focusBody = nav.followKey ? scene.planetByKey.get(nav.followKey) : null;
+  const focusScreen = focusBody && !focusBody.isChampion && focusBody.visible && focusBody.obj
+    ? screenOf(focusBody.pos, focusBody.size * 1.12)
+    : null;
+  const zoomIsolate = Boolean(focusScreen && !focusScreen.behind && focusScreen.r > 55);
+  if (focusScreen && !focusScreen.behind) {
+    placed.push({
+      x: focusScreen.x - focusScreen.r,
+      y: focusScreen.y - focusScreen.r,
+      w: focusScreen.r * 2,
+      h: focusScreen.r * 2
+    });
+  }
   const candidates = [];
 
   for (const planet of scene.planets) {
@@ -2418,15 +3522,24 @@ function updateLabels() {
     const sp = screenOf(planet.pos, planet.size);
     planet.screen = sp;
     const occluded = sp.dist > sunScreen.dist && Math.hypot(sp.x - sunScreen.x, sp.y - sunScreen.y) < sunScreen.r * 0.98;
+    const focusOccluded = Boolean(
+      focusBody &&
+      planet.key !== focusBody.key &&
+      focusScreen &&
+      !focusScreen.behind &&
+      sp.dist > focusScreen.dist &&
+      Math.hypot(sp.x - focusScreen.x, sp.y - focusScreen.y) < focusScreen.r * 1.15
+    );
+    const suppressedByZoom = zoomIsolate && planet.key !== focusBody.key && scene.hoveredKey !== planet.key && !selectedLinks?.has(planet.key);
     let priority = 0;
-    if (scene.selectedKey === planet.key) priority = 100;
+    if (activeKey === planet.key) priority = 100;
     else if (scene.hoveredKey === planet.key) priority = 95;
     else if (planet.rank) priority = 80 - planet.rank;
     else if (selectedLinks?.has(planet.key)) priority = 70;
     else if (scene.matchKeys?.has(planet.key) && scene.matchKeys.size <= 14) priority = 66;
     else if (planet.freshTag) priority = 60;
     else if (sp.r > 9 && planet.dim > 0.5) priority = 10 + Math.min(40, sp.r);
-    if (sp.behind || occluded || sp.x < -50 || sp.x > window.innerWidth + 50 || sp.y < -50 || sp.y > window.innerHeight + 50) priority = 0;
+    if (sp.behind || occluded || focusOccluded || suppressedByZoom || sp.x < -50 || sp.x > window.innerWidth + 50 || sp.y < -50 || sp.y > window.innerHeight + 50) priority = 0;
     if (!priority) {
       if (planet.labelEl) planet.labelEl.classList.remove('is-visible');
       continue;
@@ -2506,25 +3619,39 @@ function updateOrbitLabels(placed) {
       el.classList.remove('is-visible');
       continue;
     }
-    // anchor at the right-most visible point of the inclined orbit
-    let best = null;
+    // Collect multiple viewport-safe points along the inclined orbit so labels don't drop on steep inclinations
+    const samplePts = [];
     for (let i = 0; i < 48; i += 1) {
       orbitPosition(orbit.id, (i / 48) * TAU, orbit.r + (orbit.belt ? orbit.belt * 0.9 : 0), 0, _tmp);
       const sp = screenOf(_tmp, 1);
-      if (sp.behind || sp.y < 90 || sp.y > window.innerHeight - 120 || sp.x > window.innerWidth - 200) continue;
-      if (!best || sp.x > best.x) best = sp;
+      if (sp.behind || sp.y < 90 || sp.y > window.innerHeight - 120 || sp.x < 40 || sp.x > window.innerWidth - 180) continue;
+      samplePts.push(sp);
     }
-    if (!best) {
+    if (!samplePts.length) {
       el.classList.remove('is-visible');
       continue;
     }
-    const rect = { x: best.x + 8, y: best.y - 10, w: 130, h: 30 };
-    const overlaps = placed.some((o) => rect.x < o.x + o.w && rect.x + rect.w > o.x && rect.y < o.y + o.h && rect.y + rect.h > o.y);
-    el.classList.toggle('is-visible', !overlaps);
+    const pickExtreme = (scoreFn) => samplePts.reduce((acc, p) => (scoreFn(p) > scoreFn(acc) ? p : acc), samplePts[0]);
+    const anchors = [
+      pickExtreme((p) => p.x),
+      pickExtreme((p) => p.x - p.y * 0.75),
+      pickExtreme((p) => p.x + p.y * 0.75),
+      pickExtreme((p) => -p.x)
+    ];
+    let chosenRect = null;
+    for (const anchor of anchors) {
+      const rect = { x: anchor.x + 8, y: anchor.y - 10, w: 130, h: 30 };
+      const overlaps = placed.some((o) => rect.x < o.x + o.w && rect.x + rect.w > o.x && rect.y < o.y + o.h && rect.y + rect.h > o.y);
+      if (!overlaps) {
+        chosenRect = rect;
+        break;
+      }
+    }
+    el.classList.toggle('is-visible', Boolean(chosenRect));
     el.classList.toggle('is-empty', !count);
-    if (!overlaps) {
-      placed.push(rect);
-      el.style.transform = `translate3d(${rect.x.toFixed(1)}px, ${rect.y.toFixed(1)}px, 0)`;
+    if (chosenRect) {
+      placed.push(chosenRect);
+      el.style.transform = `translate3d(${chosenRect.x.toFixed(1)}px, ${chosenRect.y.toFixed(1)}px, 0)`;
     }
   }
 }
@@ -2534,20 +3661,26 @@ function updateOrbitLabels(placed) {
 function pickAt(x, y) {
   if (!world.ok) return null;
   let best = null;
-  let bestDist = Infinity;
+  let bestScore = Infinity;
+  let bestDepth = Infinity;
   for (const planet of scene.planets) {
     if (!planet.visible || !planet.obj || planet.dim < 0.3) continue;
     const sp = screenOf(planet.pos, planet.size * 1.1);
     if (sp.behind) continue;
-    const hitR = Math.max(sp.r + 8, 18);
+    const minHit = planet.starred ? 20 : 22;
+    const hitR = Math.max(sp.r + 10, minHit);
     const d = Math.hypot(x - sp.x, y - sp.y);
-    if (d <= hitR && sp.dist < bestDist) {
+    if (d > hitR) continue;
+    const direct = d <= Math.max(sp.r + 2, 4);
+    const score = (direct ? 0 : 1000) + (d / hitR) * 100 + sp.dist * 0.0003;
+    if (score < bestScore) {
       best = { planet };
-      bestDist = sp.dist;
+      bestScore = score;
+      bestDepth = sp.dist;
     }
   }
   const sun = screenOf(_tmp.set(0, 0, 0), SUN_RADIUS);
-  if (!sun.behind && Math.hypot(x - sun.x, y - sun.y) <= sun.r && sun.dist - SUN_RADIUS < bestDist) {
+  if (!sun.behind && Math.hypot(x - sun.x, y - sun.y) <= sun.r && sun.dist - SUN_RADIUS < bestDepth) {
     return { sun: true };
   }
   return best;
@@ -2562,15 +3695,21 @@ function markInteraction() {
 function applyPreset(name, duration = 2.6) {
   const preset = CAMERA_PRESETS[name] || CAMERA_PRESETS.awe;
   nav.preset = name in CAMERA_PRESETS ? name : 'awe';
-  stopFollowing();
+  stopFollowing({ recenter: false });
   tweenCamera(new THREE.Vector3(...preset.position), new THREE.Vector3(...preset.target), duration);
   if (elements.btnZoomReset) elements.btnZoomReset.textContent = `视角 · ${preset.label}`;
+  updateOrbitEmphasis();
   markInteraction();
 }
 
 function cyclePreset() {
-  const next = PRESET_ORDER[(PRESET_ORDER.indexOf(nav.preset) + 1) % PRESET_ORDER.length];
+  const idx = PRESET_ORDER.indexOf(nav.preset);
+  const next = PRESET_ORDER[(idx + 1) % PRESET_ORDER.length];
   applyPreset(next);
+  const lockedBody = scene.lockedKey ? scene.planetByKey.get(scene.lockedKey) : null;
+  if (lockedBody) {
+    toast(`视角 · ${CAMERA_PRESETS[next].label}（持续锁定「${displayName(lockedBody.profile)}」）`, 2000);
+  }
 }
 
 function resetView() {
@@ -2599,35 +3738,96 @@ function orbitCameraBy(dTheta, dPhi) {
   markInteraction();
 }
 
+function lockPlanet(key) {
+  if (!key) return;
+  if (scene.lockedKey !== key) {
+    scene.lockedKey = key;
+    scene.lockedAt = performance.now();
+  }
+  updateOrbitEmphasis();
+}
+
 function followPlanet(key) {
   const body = scene.planetByKey.get(key);
   if (!body || !world.ok) return;
+  lockPlanet(key);
   nav.followKey = key;
+  nav.recentering = false;
+  nav.followArrived = false;
+  nav.followReleaseDist = 0;
   if (body.isChampion) {
-    const dir = _tmp2.copy(world.camera.position).normalize();
-    tweenCamera(dir.multiplyScalar(SUN_RADIUS * 5.2).add(new THREE.Vector3(0, SUN_RADIUS * 0.6, 0)), new THREE.Vector3(0, 0, 0), 2.2);
+    const dir = _tmp2.set(world.camera.position.x, 0, world.camera.position.z);
+    if (dir.lengthSq() < 1e-6) dir.set(0, 0, 1);
+    dir.normalize();
+    world.controls.minDistance = Math.max(24, SUN_RADIUS * 1.65);
+    tweenCamera(
+      dir.multiplyScalar(SUN_RADIUS * 3.8).add(new THREE.Vector3(0, SUN_RADIUS * 0.45, 0)),
+      new THREE.Vector3(0, 0, 0),
+      2.2,
+      () => { if (nav.followKey === key) nav.followArrived = true; }
+    );
     markInteraction();
+    updateOrbitEmphasis();
     return;
   }
-  const outward = _tmp2.copy(body.pos).normalize();
-  const tangent = new THREE.Vector3(-outward.z, 0, outward.x);
-  const dist = body.size * (body.rank ? 7 : 9);
-  const end = body.pos.clone()
-    .add(outward.clone().multiplyScalar(dist))
-    .add(tangent.multiplyScalar(dist * 0.55))
-    .add(new THREE.Vector3(0, dist * 0.42, 0));
+  const r = Math.max(body.targetSize || body.size || 18, 12);
+  const ringOuter = body.obj?.ringOuter || (body.ringStyle ? body.ringStyle.outer : 1.0);
+  const dist = body.starred ? r * Math.max(4.8, ringOuter * 2.35) : r * 4.8;
+  world.controls.minDistance = Math.max(24, r * 2.1);
+
+  const outward = body.pos.clone();
+  if (outward.lengthSq() < 1e-6) outward.set(0, 0, 1);
+  else outward.normalize();
+  const tangent = new THREE.Vector3(0, 1, 0).cross(outward);
+  if (tangent.lengthSq() < 1e-6) tangent.set(1, 0, 0);
+  else tangent.normalize();
+  const camUp = outward.clone().cross(tangent).normalize();
+  const offset = outward.multiplyScalar(dist * 0.96)
+    .add(tangent.multiplyScalar(dist * 0.13))
+    .add(camUp.multiplyScalar(dist * 0.15));
+
   nav.lastFollowPos = body.pos.clone();
-  tweenCamera(end, body.pos.clone(), 2.1);
+  tweenCamera(
+    body.pos.clone().add(offset),
+    body.pos.clone(),
+    2.1,
+    () => { if (nav.followKey === key) nav.followArrived = true; }
+  );
   markInteraction();
+  updateOrbitEmphasis();
 }
 
-function stopFollowing() {
+function stopFollowing({ recenter = false } = {}) {
   nav.followKey = null;
   nav.lastFollowPos = null;
+  nav.followReleaseDist = 0;
+  nav.followArrived = false;
+  nav.recentering = Boolean(recenter);
+  if (world.controls) world.controls.minDistance = 24;
+}
+
+function unlockPlanet({ recenter = true, notify = true } = {}) {
+  clearPendingClick();
+  const prevKey = scene.lockedKey || nav.followKey;
+  const prevBody = prevKey ? scene.planetByKey.get(prevKey) : null;
+  scene.lockedKey = null;
+  scene.lockedAt = 0;
+  const wasFollowing = Boolean(nav.followKey);
+  if (wasFollowing) stopFollowing({ recenter: Boolean(recenter && !prevBody?.isChampion) });
+  if (scene.selectedKey) {
+    closePlanetCard({ keepFollow: false, keepLock: false });
+  } else {
+    updateOrbitEmphasis();
+  }
+  if (notify && prevBody) {
+    toast(`已取消锁定「${displayName(prevBody.profile)}」`, 2000);
+  }
 }
 
 function selectPlanet(planet, { follow = false } = {}) {
   if (!planet) return;
+  clearPendingClick();
+  lockPlanet(planet.key);
   scene.selectedKey = planet.key;
   scene.overviewOpen = false;
   if (follow) followPlanet(planet.key);
@@ -2636,7 +3836,14 @@ function selectPlanet(planet, { follow = false } = {}) {
   hideTooltip();
 }
 
-const pointer = { downX: 0, downY: 0, down: false, moved: false };
+const pointer = { downX: 0, downY: 0, down: false, moved: false, clickTimer: null };
+
+function clearPendingClick() {
+  if (pointer.clickTimer !== null) {
+    window.clearTimeout(pointer.clickTimer);
+    pointer.clickTimer = null;
+  }
+}
 
 function bindCanvasInteractions() {
   const canvas = elements.canvas;
@@ -2646,12 +3853,17 @@ function bindCanvasInteractions() {
     pointer.moved = false;
     pointer.downX = event.clientX;
     pointer.downY = event.clientY;
+    if (event.button === 2 || event.button === 1 || event.shiftKey || event.metaKey || event.ctrlKey || event.altKey) {
+      stopFollowing({ recenter: false });
+      nav.tween = null;
+    }
     markInteraction();
   });
   canvas.addEventListener('pointermove', (event) => {
     if (pointer.down) {
       if (Math.hypot(event.clientX - pointer.downX, event.clientY - pointer.downY) > 5) {
         pointer.moved = true;
+        nav.tween = null;
         hideTooltip();
       }
       return;
@@ -2666,27 +3878,64 @@ function bindCanvasInteractions() {
   canvas.addEventListener('pointercancel', () => { pointer.down = false; });
   canvas.addEventListener('pointerleave', () => updateHover(null));
   canvas.addEventListener('dblclick', (event) => {
+    clearPendingClick();
     const hit = pickAt(event.clientX, event.clientY);
-    if (hit?.planet) selectPlanet(hit.planet, { follow: true });
-    else if (hit?.sun && scene.champion) selectPlanet(scene.champion, { follow: true });
-    else resetView();
+    const hitBody = hit?.planet || (hit?.sun ? scene.champion : null);
+    if (hitBody) {
+      if (scene.lockedKey === hitBody.key) {
+        if (performance.now() - scene.lockedAt >= 420) {
+          unlockPlanet({ recenter: Boolean(nav.followKey), notify: true });
+        }
+      } else {
+        selectPlanet(hitBody, { follow: true });
+      }
+    } else {
+      resetView();
+    }
   });
-  canvas.addEventListener('wheel', () => {
+  canvas.addEventListener('wheel', (event) => {
+    if (event.shiftKey && !event.ctrlKey && world.ok) {
+      event.preventDefault();
+      event.stopImmediatePropagation();
+      nav.tween = null;
+      stopFollowing({ recenter: false });
+      world.controls.autoRotate = false;
+      markInteraction();
+      const dist = world.camera.position.distanceTo(world.controls.target);
+      const refDist = Math.max(dist, 1200);
+      const worldPerPx = (2 * refDist * Math.tan((world.camera.fov * Math.PI) / 360)) / Math.max(1, window.innerHeight);
+      _panX.setFromMatrixColumn(world.camera.matrix, 0).multiplyScalar(event.deltaX * worldPerPx * 0.85);
+      _panY.setFromMatrixColumn(world.camera.matrix, 1).multiplyScalar(-event.deltaY * worldPerPx * 0.85);
+      world.camera.position.add(_panX).add(_panY);
+      world.controls.target.add(_panX).add(_panY);
+      return;
+    }
     nav.tween = null;
     markInteraction();
-  }, { passive: true });
+  }, { passive: false, capture: true });
 }
 
 function handleSceneClick(hit) {
   markInteraction();
-  if (hit?.planet) {
-    if (scene.selectedKey === hit.planet.key) selectPlanet(hit.planet, { follow: true });
-    else selectPlanet(hit.planet);
+  clearPendingClick();
+  const hitBody = hit?.planet || (hit?.sun ? scene.champion : null);
+  if (hitBody) {
+    if (scene.lockedKey === hitBody.key) {
+      if (scene.selectedKey !== hitBody.key) {
+        pointer.clickTimer = window.setTimeout(() => {
+          pointer.clickTimer = null;
+          if (scene.lockedKey === hitBody.key && !scene.selectedKey) {
+            selectPlanet(hitBody, { follow: nav.followKey !== hitBody.key });
+          }
+        }, 240);
+      }
+    } else {
+      selectPlanet(hitBody, { follow: true });
+    }
   } else if (hit?.sun) {
-    if (scene.champion) selectPlanet(scene.champion);
-    else openOverviewCard();
+    openOverviewCard();
   } else if (scene.selectedKey || scene.overviewOpen) {
-    closePlanetCard();
+    closePlanetCard({ keepFollow: true, keepLock: true });
   }
 }
 
@@ -2709,10 +3958,15 @@ function showTooltip(body) {
     hideTooltip();
     return;
   }
-  const meta = body.starred ? `${body.score.points} 分 · ${htmlEscape(body.score.tierShort || '0阶')}` : '未点 Star';
+  const lockedNote = scene.lockedKey === body.key ? ' · 已锁定（单击查看名片 · 双击取消）' : '';
+  const rankText = body.score.rank && body.score.starredTotal ? `第 ${body.score.rank}/${body.score.starredTotal} 名` : '';
+  const pctText = body.score.poolPercentile != null ? `TOP 5 后前 ${body.score.poolPercentile}%` : '';
+  const meta = body.starred
+    ? [`${body.score.points} 分`, body.score.tierShort || '', rankText, pctText].filter(Boolean).map(htmlEscape).join(' · ')
+    : '未点 Star';
   tip.innerHTML = `
     <strong>${htmlEscape(displayName(body.profile))}</strong>
-    <span>@${htmlEscape(body.profile.github || body.key)}${body.profile.city ? ` · ${htmlEscape(body.profile.city)}` : ''}</span>
+    <span>@${htmlEscape(body.profile.github || body.key)}${body.profile.city ? ` · ${htmlEscape(body.profile.city)}` : ''}${htmlEscape(lockedNote)}</span>
     <em style="--tip-color:${htmlEscape(body.color)}">${htmlEscape(orbitLabelForPlanet(body))} · ${meta}</em>`;
   tip.dataset.anchor = body.key;
   tip.hidden = false;
@@ -2720,9 +3974,13 @@ function showTooltip(body) {
 
 function showSunTooltip() {
   const tip = elements.planetTooltip;
-  if (!tip) return;
+  if (!tip || (scene.champion && scene.selectedKey === scene.champion.key)) {
+    hideTooltip();
+    return;
+  }
+  const locked = Boolean(scene.champion && scene.lockedKey === scene.champion.key);
   tip.innerHTML = scene.champion
-    ? `<strong>👑 ${htmlEscape(displayName(scene.champion.profile))}</strong><span>第一名化身恒星 · 点击查看名片</span>`
+    ? `<strong>👑 ${htmlEscape(displayName(scene.champion.profile))}</strong><span>${locked ? '已锁定 · 单击查看名片 · 双击取消' : '第一名化身恒星 · 点击锁定并查看名片'}</span>`
     : '<strong>恒星王座 · 虚位以待</strong><span>点击查看课堂全貌</span>';
   tip.dataset.anchor = '__sun__';
   tip.hidden = false;
@@ -2768,8 +4026,8 @@ function bindKeyboard() {
         else elements.wallSearch.blur();
         return;
       }
-      if (scene.selectedKey || scene.overviewOpen) closePlanetCard();
-      else if (nav.followKey) resetView();
+      if (scene.selectedKey || scene.overviewOpen) closePlanetCard({ keepFollow: true, keepLock: true });
+      else if (scene.lockedKey || nav.followKey) unlockPlanet({ recenter: Boolean(nav.followKey), notify: true });
       else if (scene.tour) setTour(false);
       return;
     }
@@ -2863,7 +4121,7 @@ function focusPlanetByKey(key) {
   if (scene.tour) setTour(false);
   selectPlanet(body, { follow: true });
   if (body.rank) {
-    addEffect({ type: 'shock', key: body.key, dur: 1.6, color: '255, 209, 102', maxR: 70 });
+    addEffect({ type: 'shock', key: body.key, dur: 1.6, color: '255, 209, 102', maxR: 160 });
   }
 }
 
@@ -2895,7 +4153,7 @@ function bindHudControls() {
       return;
     }
     if (event.target.closest('[data-close-card]')) {
-      closePlanetCard();
+      closePlanetCard({ keepFollow: true, keepLock: true, notify: true });
       return;
     }
     const cheersTrigger = event.target.closest('[data-cheers-trigger]');
@@ -2912,7 +4170,7 @@ function bindHudControls() {
     const follow = event.target.closest('[data-follow]');
     if (follow) {
       const key = follow.getAttribute('data-follow');
-      if (nav.followKey === key) resetView();
+      if (nav.followKey === key) applyPreset(nav.preset);
       else followPlanet(key);
       const body = scene.planetByKey.get(key);
       if (body) renderPlanetCard(body);
@@ -2951,7 +4209,7 @@ function renderSearchResults() {
   }
   const matches = scene.planets
     .filter((p) => scene.matchKeys?.has(p.key))
-    .sort((a, b) => (a.rank || 99) - (b.rank || 99) || b.score.points - a.score.points);
+    .sort((a, b) => (a.score?.rank || 9999) - (b.score?.rank || 9999) || b.score.points - a.score.points);
   search.results = matches.slice(0, 8);
   if (search.activeIndex >= search.results.length) search.activeIndex = search.results.length - 1;
 
@@ -3310,8 +4568,9 @@ function collectorCardMarkup(body) {
   const starData = isStarred
     ? ` data-star-theme="${recipe.theme.id}" data-star-vfx="${recipe.vfx.id}" data-star-vfx-tier="${recipe.vfxTier}" data-star-spectrum="${recipe.spectrum.id}" data-star-pattern="${recipe.pattern.id}" data-star-badge="${recipe.badge.id}" style="--star-hue-shift:${recipe.hueShift}deg;--sheen-delay:-${((recipe.sparkSeed * 7.2) / 100).toFixed(2)}s"`
     : '';
+  const tierSuffix = score.tierShort ? ` · ${htmlEscape(score.tierShort)}` : '';
   const scoreMeta = score.starred
-    ? `<span class="meta-dot" aria-hidden="true">·</span><span class="meta-score is-tier-${score.vfxTier}${score.isTop5 ? ' is-top5' : ''}" title="${htmlEscape(`${score.points} 分（${score.tierLabel}）｜${breakdown}｜${nextHint}`)}">${score.isTop5 ? `TOP ${score.rank} ` : ''}${score.points}分 · ${htmlEscape(score.tierShort || '0阶')}</span>`
+    ? `<span class="meta-dot" aria-hidden="true">·</span><span class="meta-score is-tier-${score.vfxTier}${score.isTop5 ? ' is-top5' : ''}" title="${htmlEscape(`${score.points} 分（${score.tierLabel}）｜${breakdown}｜${nextHint}`)}">${score.isTop5 ? `TOP ${score.rank} ` : ''}${score.points}分${tierSuffix}</span>`
     : `<span class="meta-dot" aria-hidden="true">·</span><span class="meta-score is-unstarred" title="${htmlEscape(nextHint)}">点star开放积分系统</span>`;
   const layers = isStarred
     ? `
@@ -3347,12 +4606,10 @@ function collectorCardMarkup(body) {
 function collectorTierCaption(body) {
   const recipe = body.recipe;
   if (!recipe) return '默认卡片 · 点亮 Star 即享顶格专属皮肤与破框特效';
-  return `顶格专属 · ${recipe.vfx.lineage}「${recipe.vfx.label}」`;
+  return `${recipe.vfx.lineage}「${recipe.vfx.label}」`;
 }
 
 /* ================================================================== panels */
-
-const TIER_FLOORS = [1, 3, 6, 10];
 
 function chipsForKeys(keys, emptyText) {
   if (!keys.length) return `<span class="chip-empty">${htmlEscape(emptyText)}</span>`;
@@ -3392,27 +4649,42 @@ function renderPlanetCard(body) {
   const breakdown = score.breakdown || {};
 
   let progress = '';
+  const promo = score.promotion;
   if (body.starred) {
-    const next = score.nextTierPoints;
-    if (next) {
-      const floor = [...TIER_FLOORS].reverse().find((f) => score.points >= f) || 0;
-      const pct = clamp(((score.points - floor) / Math.max(1, next - floor)) * 100, 4, 100);
+    if (body.isChampion || body.orbitId === 'sun') {
+      const lead = Number(promo?.leadPoints || 0);
+      const leadCopy = lead > 0
+        ? `已登顶恒星王座 · 领先第 2 名 <b>${lead}</b> 分`
+        : ((score.starredTotal || 0) > 1 ? '已登顶恒星王座 · 与第 2 名同分领先' : '已登顶恒星王座 · 第一名化身中央恒星');
+      progress = `
+        <div class="tier-progress">
+          <div class="tier-progress-bar"><span style="width:100%"></span></div>
+          <p>${leadCopy}</p>
+        </div>`;
+    } else if (promo && promo.targetLabel) {
+      const pct = clamp(Number(promo.progress) || 0, 0, 100);
+      const hintCopy = promo.pointsToTie === 0
+        ? `距升入「${htmlEscape(promo.targetLabel)}」（${htmlEscape(promo.targetHint || '')}）仅差 <b>${promo.ranksNeeded}</b> 名（与第 ${promo.targetRank} 名同为 ${promo.thresholdPoints} 分，再得 <b>1</b> 分即可反超）`
+        : `距升入「${htmlEscape(promo.targetLabel)}」（${htmlEscape(promo.targetHint || '')}）还差 <b>${promo.ranksNeeded}</b> 名 · 第 ${promo.targetRank} 名门槛 ${promo.thresholdPoints} 分（再得 <b>${promo.pointsToPass}</b> 分即可反超）`;
       progress = `
         <div class="tier-progress">
           <div class="tier-progress-bar"><span style="width:${pct.toFixed(1)}%"></span></div>
-          <p>再得 <b>${next - score.points}</b> 分，跃迁至「${htmlEscape(resolveTierMeta(next, true).tierLabel)}」</p>
+          <p>${hintCopy}</p>
         </div>`;
     } else {
-      progress = '<div class="tier-progress"><p>已抵达三阶顶格轨道 · 继续结对冲击恒星王座</p></div>';
+      progress = '<div class="tier-progress"><p>继续送出寄语与结对编程，提升星系排名</p></div>';
     }
   } else {
     progress = `
       <a class="star-cta" href="${htmlEscape(repoUrl)}" target="_blank" rel="noreferrer">
         <b>点亮 Star →</b>
-        <span>岩质星球将化为彩色气态巨星，获得星环与卫星，并跃迁进积分轨道</span>
+        <span>小行星将跃迁进入星系排名轨道，解锁专属星环、卫星与顶格藏品卡</span>
       </a>`;
   }
 
+  const rankSub = body.starred && score.rank && score.starredTotal
+    ? `第 ${score.rank}/${score.starredTotal} 名${score.poolPercentile != null ? ` · TOP 5 后前 ${score.poolPercentile}%` : (score.rankPercentile != null ? ` · 全站前 ${score.rankPercentile}%` : '')}`
+    : '';
   const rankClass = body.isChampion ? ' is-champion' : (body.rank ? ` is-top5 rank-${body.rank}` : '');
   openCard(`
     <article class="planet-flashcard${body.starred ? ' is-starred' : ''}${rankClass}" style="--planet-color:${htmlEscape(body.color)};--planet-ring:${htmlEscape(body.ringColor)}" ${recipe ? `data-star-theme="${htmlEscape(recipe.theme.id)}"` : ''}>
@@ -3428,7 +4700,7 @@ function renderPlanetCard(body) {
       <section class="card-section card-score">
         <div class="score-big">
           <strong>${body.starred ? score.points : '—'}</strong>
-          <span>${body.starred ? `分 · ${htmlEscape(score.tierShort || '0阶')}` : '积分未开启'}</span>
+          <span>${body.starred ? (score.tierShort ? `分 · ${htmlEscape(score.tierShort)}` : '分') : '积分未开启'}</span>
         </div>
         ${body.starred ? `
         <dl class="score-split">
@@ -3436,9 +4708,9 @@ function renderPlanetCard(body) {
           <div><dt>寄语</dt><dd>+${breakdown.cheers || 0}</dd></div>
           <div><dt>结对</dt><dd>+${breakdown.pair || 0}</dd></div>
         </dl>` : ''}
+        ${rankSub ? `<p class="score-rank-meta">${htmlEscape(rankSub)}</p>` : ''}
       </section>
       ${progress}
-      ${recipe ? `<p class="recipe-line" title="${TOTAL_STAR_COMBINATIONS} 种行星配方之一"><span class="recipe-badge">${htmlEscape(recipe.badge.icon)}</span>行星配方 <code>#${htmlEscape(recipe.serial)}</code> ${htmlEscape(recipe.summary)}</p>` : ''}
 
       <section class="card-section">
         <h3><i class="dot dot-sent"></i>送出寄语 <span>${sent.length}</span></h3>
@@ -3526,8 +4798,15 @@ function openOverviewCard() {
   `);
 }
 
-function closePlanetCard() {
+function closePlanetCard({ keepFollow = true, keepLock = true, notify = false } = {}) {
   stopCollectorFx();
+  const lockRefKey = scene.lockedKey || nav.followKey;
+  const lockedBody = keepLock && lockRefKey ? scene.planetByKey.get(lockRefKey) : null;
+  if (!keepLock) {
+    scene.lockedKey = null;
+    scene.lockedAt = 0;
+  }
+  if (!keepFollow) stopFollowing({ recenter: false });
   scene.selectedKey = null;
   scene.overviewOpen = false;
   if (elements.planetCardHost) {
@@ -3536,13 +4815,16 @@ function closePlanetCard() {
   }
   document.body.classList.remove('has-card');
   updateOrbitEmphasis();
+  if (notify && lockedBody) {
+    toast(`已收起名片 · 仍锁定「${displayName(lockedBody.profile)}」，按 V 可切全景查看位置，双击取消`, 2600);
+  }
 }
 
 function refreshOpenCard() {
   if (scene.selectedKey) {
     const body = scene.planetByKey.get(scene.selectedKey);
     if (body) renderPlanetCard(body);
-    else closePlanetCard();
+    else closePlanetCard({ keepFollow: false, keepLock: false });
   } else if (scene.overviewOpen) {
     openOverviewCard();
   }
@@ -3563,9 +4845,10 @@ function leaderboardOrder() {
 function leaderboardRow(body, position) {
   const top = body.rank && position <= 5;
   const halo = top ? (TOP5_PALETTE[body.rank]?.halo || '#ffd166') : (body.starred ? body.color : '#64748b');
+  const pctNote = body.score.poolPercentile != null ? ` · TOP 5 后前 ${body.score.poolPercentile}%` : '';
   const title = body.starred
-    ? `#${position} @${body.profile.github || body.key} · ${body.score.points}分（${body.score.tierLabel}）｜${formatScoreBreakdownText(body.score)}｜点击飞向`
-    : `#${position} @${body.profile.github || body.key} · 尚未点 Star｜点击飞向这颗外缘星球`;
+    ? `#${position} @${body.profile.github || body.key} · ${body.score.points}分（${body.score.tierLabel}${pctNote}）｜${formatScoreBreakdownText(body.score)}｜点击飞向`
+    : `#${position} @${body.profile.github || body.key} · 尚未点 Star｜点击飞向这颗外缘小行星`;
   const classes = [body.isChampion ? 'is-champion' : '', top ? 'is-top' : '', body.starred ? '' : 'is-unstarred'].filter(Boolean).join(' ');
   return `
     <li class="${classes}">
@@ -3578,7 +4861,7 @@ function leaderboardRow(body, position) {
           <small>@${htmlEscape(body.profile.github || body.key)}</small>
         </span>
         <span class="podium-pts">${body.starred
-          ? `<strong>${body.score.points}</strong><small>${htmlEscape(body.score.tierShort || '0阶')}</small>`
+          ? `<strong>${body.score.points}</strong><small>${htmlEscape(body.score.tierShort || '')}</small>`
           : '<strong>—</strong><small>未点 Star</small>'}</span>
       </button>
     </li>`;
@@ -3610,7 +4893,7 @@ function renderHonorRibbon() {
       clone.removeAttribute('id');
       clone.classList.add('is-clone');
       clone.setAttribute('aria-hidden', 'true');
-      clone.inert = true;
+      clone.querySelectorAll('button, a, [tabindex]').forEach((el) => { el.tabIndex = -1; });
       track.append(clone);
     }
     viewport.scrollTop = marquee.loop ? prevScroll % Math.max(1, marquee.height) : 0;
@@ -3620,6 +4903,9 @@ function renderHonorRibbon() {
 function bindLeaderboard() {
   const viewport = elements.podiumViewport;
   if (!viewport) return;
+  viewport.addEventListener('mousedown', (event) => {
+    if (event.target.closest('.podium-list.is-clone')) event.preventDefault();
+  });
   viewport.addEventListener('click', (event) => {
     const button = event.target.closest('[data-focus-planet]');
     if (button) focusPlanetByKey(button.getAttribute('data-focus-planet'));
@@ -3632,9 +4918,11 @@ function bindLeaderboard() {
   viewport.addEventListener('wheel', hold, { passive: true });
   viewport.addEventListener('touchstart', hold, { passive: true });
   viewport.addEventListener('scroll', () => {
+    const loopHeight = elements.honorRibbonList?.offsetHeight || marquee.height;
+    if (loopHeight > 0) marquee.height = loopHeight;
     if (!marquee.loop || marquee.height < 1) return;
     if (viewport.scrollTop >= marquee.height) viewport.scrollTop -= marquee.height;
-    else if (viewport.scrollTop <= 0 && marquee.pausedUntil > performance.now()) viewport.scrollTop += marquee.height;
+    else if (viewport.scrollTop <= 0 && (marquee.hover || marquee.pausedUntil > performance.now())) viewport.scrollTop += marquee.height;
   }, { passive: true });
 
   const step = (now) => {
@@ -3990,7 +5278,7 @@ function detectNewStars(payload) {
     if (state.knownStarredHandles.has(key)) continue;
     state.knownStarredHandles.add(key);
     markProfileFresh(key, '点亮 Star');
-    queueEffect({ kind: 'star', key, message: `⭐ @${display} 点亮 Star，行星获得星环并跃迁进星标轨道！` });
+    queueEffect({ kind: 'star', key, message: `⭐ @${display} 点亮 Star，行星获得星环并跃迁入轨！` });
     addFeed(`@${display} 点亮了 Star，解锁行星星环`, payload.generatedAt, 'star');
   }
 }
@@ -4020,7 +5308,7 @@ function detectTierEvolutions(payload) {
     if (info.rank && (!prev.rank || info.rank < prev.rank)) {
       markProfileFresh(key, '跃迁内环');
       queueEffect({ kind: 'tier', key, message: info.rank === 1 ? `👑 @${info.display} 以 ${info.points} 分登顶，化身中央恒星！` : `🚀 @${info.display} 跃迁进入 TOP ${info.rank} 内环（${info.points} 分）` });
-    } else if (info.tier > prev.tier) {
+    } else if (prev.tier > 0 && info.tier > prev.tier) {
       markProfileFresh(key, '刚进化');
       queueEffect({ kind: 'tier', key, message: `✦ @${info.display} 升阶「${info.tierLabel}」，行星飞向更内侧轨道` });
       addFeed(`@${info.display} 升阶至「${info.tierLabel}」`, payload.generatedAt, 'star');
@@ -4045,14 +5333,14 @@ function flushPendingEffects() {
       addEffect({
         type: 'meteor',
         toKey: planet.key,
-        from: { x: Math.cos(a) * 3200, y: 900, z: Math.sin(a) * 3200 },
+        from: { x: Math.cos(a) * 56000, y: 14000, z: Math.sin(a) * 56000 },
         dur: 2.4,
         t0: scene.time + delay,
         color: '186, 230, 253',
         onDone: () => {
           planet.hidden = false;
           planet.alpha = 0.4;
-          addEffect({ type: 'shock', key: planet.key, dur: 1.6, color: '186, 230, 253', maxR: 80 });
+          addEffect({ type: 'shock', key: planet.key, dur: 1.6, color: '186, 230, 253', maxR: 180 });
         }
       });
       bannerMessage = bannerMessage || `🌠 新星 @${planet.profile.github || planet.key} 加入星系！`;
@@ -4068,15 +5356,15 @@ function flushPendingEffects() {
           dur: 1.8,
           t0: scene.time + delay,
           color: '244, 114, 182',
-          onDone: () => addEffect({ type: 'shock', key: to.key, dur: 1.2, color: '244, 114, 182', maxR: 50 })
+          onDone: () => addEffect({ type: 'shock', key: to.key, dur: 1.2, color: '244, 114, 182', maxR: 120 })
         });
       } else {
-        addEffect({ type: 'shock', key: to.key, dur: 1.2, t0: scene.time + delay, color: '244, 114, 182', maxR: 50 });
+        addEffect({ type: 'shock', key: to.key, dur: 1.2, t0: scene.time + delay, color: '244, 114, 182', maxR: 120 });
       }
     } else if (effect.kind === 'star' || effect.kind === 'tier') {
       const planet = scene.planetByKey.get(effect.key);
       if (!planet) return;
-      addEffect({ type: 'shock', key: planet.key, dur: 1.8, t0: scene.time + delay, color: '255, 209, 102', maxR: 110 });
+      addEffect({ type: 'shock', key: planet.key, dur: 1.8, t0: scene.time + delay, color: '255, 209, 102', maxR: 200 });
       bannerMessage = effect.message || bannerMessage;
     }
   });
@@ -4095,52 +5383,40 @@ function preserveStargazersWhenDegraded(payload) {
   if (!degraded || !Array.isArray(payload?.contributors)) return payload;
 
   const preservedLogins = Array.from(state.stargazerSet);
+  const hydratedScores = new Map();
   const hydrated = payload.contributors.map((profile) => {
+    const key = profileKey(profile);
     const handleKey = String(profile?.github || '').trim().toLowerCase();
     const isStarred = Boolean(profile?.starred) || (Boolean(handleKey) && state.stargazerSet.has(handleKey));
-    if (!isStarred) return profile;
     const prevScore = profile.score || {};
     const prevBreakdown = prevScore.breakdown || {};
-    const points = 1 + Number(prevBreakdown.cheers || 0) + Number(prevBreakdown.pair || 0);
-    const tier = resolveTierMeta(points, true);
+    const cheersPts = Number(prevBreakdown.cheers || 0);
+    const pairPts = Number(prevBreakdown.pair || 0);
+    const starPts = isStarred ? 1 : 0;
+    const points = isStarred ? starPts + cheersPts + pairPts : Number(prevScore.points || cheersPts + pairPts);
+    const score = {
+      ...prevScore,
+      points,
+      starred: isStarred,
+      breakdown: {
+        ...prevBreakdown,
+        star: starPts,
+        cheers: cheersPts,
+        pair: pairPts
+      }
+    };
+    if (key) hydratedScores.set(key, score);
     return {
       ...profile,
-      starred: true,
-      score: {
-        ...prevScore,
-        points,
-        starred: true,
-        vfxTier: tier.vfxTier,
-        tierId: tier.tierId,
-        tierLabel: tier.tierLabel,
-        nextTierPoints: tier.nextTierPoints,
-        breakdown: { ...prevBreakdown, star: 1 }
-      }
+      starred: isStarred,
+      score
     };
   });
 
-  const ranked = hydrated
-    .map((profile, idx) => ({
-      idx,
-      starred: Boolean(profile.starred),
-      points: Number(profile.score?.points || 0),
-      joinedTs: Date.parse(profile.joinedAt || '') || Number.MAX_SAFE_INTEGER,
-      handle: String(profile.github || profile.name || '').toLowerCase()
-    }))
-    .sort((a, b) => {
-      if (Number(b.starred) !== Number(a.starred)) return Number(b.starred) - Number(a.starred);
-      if (b.points !== a.points) return b.points - a.points;
-      if (a.joinedTs !== b.joinedTs) return a.joinedTs - b.joinedTs;
-      return a.handle.localeCompare(b.handle);
-    });
-
-  let top5Assigned = 0;
-  ranked.forEach((entry, rankIdx) => {
-    const target = hydrated[entry.idx];
-    if (!target.score) return;
-    const eligible = entry.starred && entry.points >= 1 && top5Assigned < 5;
-    if (eligible) top5Assigned += 1;
-    target.score = { ...target.score, rank: rankIdx + 1, isTop5: eligible };
+  applyRankPercentileToProfiles(hydrated, hydratedScores);
+  hydrated.forEach((profile) => {
+    const key = profileKey(profile);
+    if (key && hydratedScores.has(key)) profile.score = hydratedScores.get(key);
   });
 
   return { ...payload, contributors: hydrated, github: { ...github, stargazers: preservedLogins } };
@@ -4189,7 +5465,7 @@ function applyState(rawPayload) {
     addFeed(payload.message || '收到一次数据刷新', payload.generatedAt, 'pulse');
   }
   if (firstLoad || (fp && fp !== state.lastFingerprint)) {
-    ['top5', 'tier2', 'star'].forEach((orbitId, i) => addEffect({ type: 'sunpulse', orbitId, dur: 4.2, t0: scene.time + (firstLoad ? 2 : 0) + i * 0.35 }));
+    ['top5', 'tier2', 'tier1'].forEach((orbitId, i) => addEffect({ type: 'sunpulse', orbitId, dur: 4.2, t0: scene.time + (firstLoad ? 2 : 0) + i * 0.35 }));
   }
 
   state.lastOk = payload.ok;
@@ -4503,7 +5779,7 @@ function init() {
   if (ok) {
     // Cinematic reveal: open on the god's-eye view of the palm, then dive into the galaxy.
     const preset = CAMERA_PRESETS.awe;
-    tweenCamera(new THREE.Vector3(...preset.position), new THREE.Vector3(...preset.target), prefersReducedMotion() ? 0.6 : 7.5);
+    tweenCamera(new THREE.Vector3(...preset.position), new THREE.Vector3(...preset.target), prefersReducedMotion() ? 0.6 : 8.5, null, { logZoom: true });
     if (elements.btnZoomReset) elements.btnZoomReset.textContent = `视角 · ${preset.label}`;
     window.requestAnimationFrame(renderFrame);
   }

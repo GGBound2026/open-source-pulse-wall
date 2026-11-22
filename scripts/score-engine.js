@@ -7,11 +7,28 @@ const MAX_COAUTHORS_PER_COMMIT = 2;
 const TOP5_LIMIT = 5;
 const TOP5_MIN_POINTS = 1;
 
-const VFX_TIER_THRESHOLDS = {
-  starCard: 1,
-  tier1: 3,
-  tier2: 6,
-  tier3: 10
+const TIER_PERCENTILE_CUTOFFS = {
+  tier3: 0.15,
+  tier2: 0.5
+};
+
+const PROMOTION_TARGETS = {
+  unstarred: {
+    targetOrbitId: 'tier1',
+    targetLabel: '星系排名轨道',
+    targetHint: '点 Star 入轨',
+    targetRank: null,
+    ranksNeeded: null,
+    thresholdPoints: 1,
+    pointsToTie: 1,
+    pointsToPass: 1,
+    leadPoints: 0,
+    progress: 0
+  },
+  tier2: { targetOrbitId: 'tier2', targetLabel: '二阶 · 觉醒进化', targetHint: '前 50%' },
+  tier3: { targetOrbitId: 'tier3', targetLabel: '三阶 · 顶格传说', targetHint: '前 15%' },
+  top5: { targetOrbitId: 'top5', targetLabel: 'TOP 2–5 内环', targetHint: '恒星近卫' },
+  sun: { targetOrbitId: 'sun', targetLabel: '#1 恒星王座', targetHint: '榜首' }
 };
 
 function extractGithubLoginFromEmail(email) {
@@ -59,45 +76,207 @@ function resolveHandleFromIdentity(identity, { handleSet, uniqueNameMap }) {
   return '';
 }
 
-function resolveVfxTier(points, starred) {
-  const score = Math.max(0, Number(points) || 0);
-  if (!starred) {
+/**
+ * Compute post-Top5 pool rank cutoffs for Tier 3 and Tier 2.
+ * Falls back cleanly on small pools (M <= 2) so no tier is skipped and last place isn't Tier 3.
+ */
+function computeTierCutoffs(poolSize) {
+  const M = Math.max(0, Math.floor(Number(poolSize) || 0));
+  if (M <= 1) {
+    return { tier3End: 0, tier2End: 0 };
+  }
+  if (M === 2) {
+    return { tier3End: 0, tier2End: 1 };
+  }
+  const tier3End = Math.max(1, Math.ceil(M * TIER_PERCENTILE_CUTOFFS.tier3));
+  const tier2End = Math.max(tier3End + 1, Math.ceil(M * TIER_PERCENTILE_CUTOFFS.tier2));
+  return { tier3End, tier2End };
+}
+
+/**
+ * Resolve orbit and VFX tier metadata from a contributor's starred status and leaderboard rank.
+ */
+function resolveRankTier({ starred = false, rank = 0, starredCount = 0 } = {}) {
+  const safeRank = Math.floor(Number(rank) || 0);
+  const safeStarredCount = Math.max(0, Math.floor(Number(starredCount) || 0));
+  const poolSize = Math.max(0, safeStarredCount - TOP5_LIMIT);
+
+  if (!starred || safeRank <= 0 || safeStarredCount <= 0) {
     return {
       vfxTier: 0,
+      orbitId: 'outer',
       tierId: 'locked',
-      tierLabel: '普通卡片',
-      nextTierPoints: VFX_TIER_THRESHOLDS.starCard
+      tierLabel: '未点 Star',
+      tierShort: '',
+      poolRank: null,
+      poolSize,
+      poolPercentile: null,
+      rankPercentile: null
     };
   }
-  if (score >= VFX_TIER_THRESHOLDS.tier3) {
+
+  const rankPercentile = Math.round((safeRank / safeStarredCount) * 1000) / 10;
+
+  if (safeRank === 1) {
     return {
       vfxTier: 3,
-      tierId: 'tier-3',
-      tierLabel: '顶格传说',
-      nextTierPoints: null
+      orbitId: 'sun',
+      tierId: 'sun',
+      tierLabel: '恒星王座',
+      tierShort: '王座',
+      poolRank: null,
+      poolSize,
+      poolPercentile: null,
+      rankPercentile
     };
   }
-  if (score >= VFX_TIER_THRESHOLDS.tier2) {
+
+  if (safeRank >= 2 && safeRank <= TOP5_LIMIT) {
+    return {
+      vfxTier: 3,
+      orbitId: 'top5',
+      tierId: 'top-5',
+      tierLabel: '恒星近卫',
+      tierShort: '近卫',
+      poolRank: null,
+      poolSize,
+      poolPercentile: null,
+      rankPercentile
+    };
+  }
+
+  const { tier3End, tier2End } = computeTierCutoffs(poolSize);
+  const poolRank = safeRank - TOP5_LIMIT;
+  const poolPercentile = poolSize > 0 ? Math.round((poolRank / poolSize) * 1000) / 10 : null;
+
+  if (poolRank <= tier3End) {
+    return {
+      vfxTier: 3,
+      orbitId: 'tier3',
+      tierId: 'tier-3',
+      tierLabel: '三阶 · 顶格传说',
+      tierShort: '三阶',
+      poolRank,
+      poolSize,
+      poolPercentile,
+      rankPercentile
+    };
+  }
+
+  if (poolRank <= tier2End) {
     return {
       vfxTier: 2,
+      orbitId: 'tier2',
       tierId: 'tier-2',
-      tierLabel: '二阶觉醒',
-      nextTierPoints: VFX_TIER_THRESHOLDS.tier3
+      tierLabel: '二阶 · 觉醒进化',
+      tierShort: '二阶',
+      poolRank,
+      poolSize,
+      poolPercentile,
+      rankPercentile
     };
   }
-  if (score >= VFX_TIER_THRESHOLDS.tier1) {
-    return {
-      vfxTier: 1,
-      tierId: 'tier-1',
-      tierLabel: '一阶破框',
-      nextTierPoints: VFX_TIER_THRESHOLDS.tier2
-    };
-  }
+
   return {
-    vfxTier: 0,
-    tierId: 'star-card',
-    tierLabel: '星标闪卡',
-    nextTierPoints: VFX_TIER_THRESHOLDS.tier1
+    vfxTier: 1,
+    orbitId: 'tier1',
+    tierId: 'tier-1',
+    tierLabel: '一阶 · 初醒破框',
+    tierShort: '一阶',
+    poolRank,
+    poolSize,
+    poolPercentile,
+    rankPercentile
+  };
+}
+
+/**
+ * Compute next-orbit promotion targets, rank/point gaps, and smooth tier progress [0..100].
+ */
+function computePromotion({ starred, rank, points, orbitId, starredCount, cutoffs, rankedStarred }) {
+  if (!starred || rank <= 0 || starredCount <= 0) {
+    return { ...PROMOTION_TARGETS.unstarred };
+  }
+
+  if (orbitId === 'sun') {
+    const runnerUp = rankedStarred[1];
+    return {
+      targetOrbitId: null,
+      targetLabel: null,
+      targetHint: null,
+      targetRank: 1,
+      ranksNeeded: 0,
+      thresholdPoints: points,
+      pointsToTie: 0,
+      pointsToPass: 0,
+      leadPoints: runnerUp ? Math.max(0, points - runnerUp.score.points) : points,
+      progress: 100
+    };
+  }
+
+  const { tier3End, tier2End } = cutoffs;
+  const top5Edge = Math.min(TOP5_LIMIT, starredCount);
+  let descriptor;
+
+  if (orbitId === 'tier1') {
+    const targetMeta = tier2End > 0 ? PROMOTION_TARGETS.tier2 : PROMOTION_TARGETS.top5;
+    const targetRank = tier2End > 0 ? TOP5_LIMIT + tier2End : top5Edge;
+    descriptor = {
+      ...targetMeta,
+      targetRank,
+      tierTop: TOP5_LIMIT + tier2End + 1,
+      tierBottomSlot: starredCount,
+      tierBottom: starredCount
+    };
+  } else if (orbitId === 'tier2') {
+    const targetMeta = tier3End > 0 ? PROMOTION_TARGETS.tier3 : PROMOTION_TARGETS.top5;
+    const targetRank = tier3End > 0 ? TOP5_LIMIT + tier3End : top5Edge;
+    descriptor = {
+      ...targetMeta,
+      targetRank,
+      tierTop: TOP5_LIMIT + tier3End + 1,
+      tierBottomSlot: TOP5_LIMIT + tier2End,
+      tierBottom: TOP5_LIMIT + tier2End + 1
+    };
+  } else if (orbitId === 'tier3') {
+    descriptor = {
+      ...PROMOTION_TARGETS.top5,
+      targetRank: TOP5_LIMIT,
+      tierTop: TOP5_LIMIT + 1,
+      tierBottomSlot: TOP5_LIMIT + tier3End,
+      tierBottom: TOP5_LIMIT + tier3End + 1
+    };
+  } else {
+    descriptor = {
+      ...PROMOTION_TARGETS.sun,
+      targetRank: 1,
+      tierTop: 2,
+      tierBottomSlot: top5Edge,
+      tierBottom: top5Edge + 1
+    };
+  }
+
+  const gatekeeper = rankedStarred[descriptor.targetRank - 1];
+  const thresholdPoints = gatekeeper ? gatekeeper.score.points : points;
+  const ranksNeeded = Math.max(1, rank - descriptor.targetRank);
+  const pointsToTie = Math.max(0, thresholdPoints - points);
+  const pointsToPass = Math.max(1, thresholdPoints - points + 1);
+  const singleSlotTier = descriptor.tierTop >= descriptor.tierBottomSlot;
+  const span = Math.max(1, descriptor.tierBottom - descriptor.targetRank);
+  const rawPct = ((descriptor.tierBottom - rank) / span) * 100;
+  const progress = singleSlotTier ? 96 : Math.min(96, Math.max(8, Math.round(rawPct)));
+
+  return {
+    targetOrbitId: descriptor.targetOrbitId,
+    targetLabel: descriptor.targetLabel,
+    targetHint: descriptor.targetHint,
+    targetRank: descriptor.targetRank,
+    ranksNeeded,
+    thresholdPoints,
+    pointsToTie,
+    pointsToPass,
+    leadPoints: 0,
+    progress
   };
 }
 
@@ -217,14 +396,12 @@ function computeContributorScores({
     const pairPts = pairPartners.length * PAIR_POINTS_PER_PARTNER;
 
     const points = starPts + cheerPts + pairPts;
-    const tier = resolveVfxTier(points, starred);
 
     return {
       ...profile,
       score: {
         points,
         starred,
-        ...tier,
         rank: 0,
         isTop5: false,
         breakdown: {
@@ -258,11 +435,44 @@ function computeContributorScores({
       return a.handle.localeCompare(b.handle);
     });
 
+  const rankedStarred = [];
+  rankedIndices.forEach((entry) => {
+    const target = scored[entry.idx];
+    if (target.score.starred) rankedStarred.push(target);
+  });
+
+  const starredCount = rankedStarred.length;
+  const poolSize = Math.max(0, starredCount - TOP5_LIMIT);
+  const cutoffs = computeTierCutoffs(poolSize);
+
   rankedIndices.forEach((entry, position) => {
     const rank = position + 1;
     const target = scored[entry.idx];
-    target.score.rank = rank;
-    target.score.isTop5 = Boolean(target.score.starred) && rank <= TOP5_LIMIT && target.score.points >= TOP5_MIN_POINTS;
+    const isTop5 = Boolean(target.score.starred) && rank <= TOP5_LIMIT && target.score.points >= TOP5_MIN_POINTS;
+    const tier = resolveRankTier({
+      starred: target.score.starred,
+      rank,
+      starredCount
+    });
+    const promotion = computePromotion({
+      starred: target.score.starred,
+      rank,
+      points: target.score.points,
+      orbitId: tier.orbitId,
+      starredCount,
+      cutoffs,
+      rankedStarred
+    });
+
+    target.score = {
+      ...target.score,
+      ...tier,
+      starredTotal: starredCount,
+      nextTierPoints: null,
+      rank,
+      isTop5,
+      promotion
+    };
   });
 
   return {
@@ -277,8 +487,9 @@ module.exports = {
   MAX_COAUTHORS_PER_COMMIT,
   TOP5_LIMIT,
   TOP5_MIN_POINTS,
-  VFX_TIER_THRESHOLDS,
+  TIER_PERCENTILE_CUTOFFS,
   parseCoAuthorsFromMessage,
-  resolveVfxTier,
+  computeTierCutoffs,
+  resolveRankTier,
   computeContributorScores
 };
