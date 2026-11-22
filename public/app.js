@@ -93,6 +93,11 @@ const STAR_VFX = [
   { id: 'shadow-eminence', lineage: '影之实力者', label: '雨夜武心祭 · I AM ATOMIC' }
 ];
 
+// Explicit per-handle VFX lineage pins (lowercase GitHub handle -> STAR_VFX id)
+const PINNED_STAR_VFX = {
+  nanzhi84: 'shadow-eminence'
+};
+
 // Dimension 3: VFX Energy Spectrum Palette (8 high-contrast light/dark-paper spectra)
 const STAR_SPECTRA = [
   { id: 'cyan-volt', label: '星蓝雷电' },
@@ -888,6 +893,18 @@ function assignStarRecipes(contributors) {
   ];
   const dimCounts = sizes.map((size) => new Array(size).fill(0));
   const ordered = contributors.slice().sort((a, b) => profileKey(a).localeCompare(profileKey(b)));
+  const pinnedVfxByKey = new Map();
+  for (const profile of ordered) {
+    const key = profileKey(profile);
+    if (!key || !isProfileStarred(profile)) continue;
+    const pinnedId = PINNED_STAR_VFX[key];
+    if (!pinnedId) continue;
+    const pinnedIdx = STAR_VFX.findIndex((item) => item.id === pinnedId);
+    if (pinnedIdx >= 0) {
+      pinnedVfxByKey.set(key, pinnedIdx);
+      dimCounts[4][pinnedIdx] += 1;
+    }
+  }
 
   let demoStarSlot = 0;
   for (const profile of ordered) {
@@ -903,16 +920,25 @@ function assignStarRecipes(contributors) {
     const h3 = hashString(`wall:${key}:aura`, 0x85ebca6b);
     const preferred = [h1 % sizes[0], (h1 >>> 8) % sizes[1], h2 % sizes[2], (h2 >>> 10) % sizes[3], (h1 >>> 8) % sizes[4], h3 % sizes[5], (h3 >>> 10) % sizes[6]];
     const steps = [h1 >>> 16, h2 >>> 16, h1 >>> 24, h2 >>> 24, h3 >>> 16, h3 >>> 8, h3 >>> 24];
-    let indices = preferred.map((pref, dim) => pickLeastUsedIndex(pref, sizes[dim], steps[dim], dimCounts[dim]));
+    const pinnedVfxIdx = pinnedVfxByKey.has(key) ? pinnedVfxByKey.get(key) : -1;
+    let indices = preferred.map((pref, dim) => (
+      dim === 4 && pinnedVfxIdx >= 0
+        ? pinnedVfxIdx
+        : pickLeastUsedIndex(pref, sizes[dim], steps[dim], dimCounts[dim])
+    ));
     let attempt = 0;
     while (usedCombos.has(indices.join(':')) && attempt < 256) {
       attempt += 1;
-      const dim = attempt % sizes.length;
+      let dim = attempt % sizes.length;
+      if (pinnedVfxIdx >= 0 && dim === 4) dim = (dim + 1) % sizes.length;
       indices = indices.slice();
       indices[dim] = (indices[dim] + 1) % sizes[dim];
     }
     usedCombos.add(indices.join(':'));
-    indices.forEach((value, dim) => { dimCounts[dim][value] += 1; });
+    indices.forEach((value, dim) => {
+      if (dim === 4 && pinnedVfxIdx >= 0) return;
+      dimCounts[dim][value] += 1;
+    });
     recipes.set(key, { indices, seedKey: key });
   }
 

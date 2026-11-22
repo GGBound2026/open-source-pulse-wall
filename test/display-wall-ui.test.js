@@ -93,6 +93,7 @@ test('planet cards unlock top-tier collector skins and 16 frame-break VFX direct
   const showcaseHtml = fs.readFileSync(path.join(ROOT, 'public', 'vfx-showcase.html'), 'utf8');
 
   assert.match(script, /const STAR_VFX = \[/);
+  assert.match(script, /const PINNED_STAR_VFX = \{[\s\S]*nanzhi84:\s*'shadow-eminence'/);
   assert.doesNotMatch(script, /STAR_VFX_BY_TIER/);
   assert.match(script, /const STAR_SPECTRA = \[/);
   assert.match(script, /const STAR_PATTERNS = \[/);
