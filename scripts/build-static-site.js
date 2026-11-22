@@ -51,9 +51,20 @@ function shortFileHash(filePath) {
 }
 
 function markStaticHtmlAssets() {
+  const abyssJsPath = path.join(DIST_DIR, 'abyss.js');
+  const appJsPath = path.join(DIST_DIR, 'app.js');
+  if (fs.existsSync(abyssJsPath) && fs.existsSync(appJsPath)) {
+    const abyssHash = shortFileHash(abyssJsPath);
+    const appJs = fs.readFileSync(appJsPath, 'utf8');
+    fs.writeFileSync(
+      appJsPath,
+      appJs.replace(/from\s+['"]\.\/abyss\.js['"]/, `from './abyss.js?v=${abyssHash}'`)
+    );
+  }
+
   const cssHash = shortFileHash(path.join(DIST_DIR, 'styles.css'));
   const vfxHash = shortFileHash(path.join(DIST_DIR, 'vfx-engine.js'));
-  const jsHash = shortFileHash(path.join(DIST_DIR, 'app.js'));
+  const jsHash = shortFileHash(appJsPath);
   const showcaseCssPath = path.join(DIST_DIR, 'vfx-showcase.css');
   const showcaseJsPath = path.join(DIST_DIR, 'vfx-showcase.js');
   const cardsCssPath = path.join(DIST_DIR, 'vfx-cards.css');
