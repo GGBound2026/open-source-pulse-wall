@@ -5,7 +5,7 @@
 - **在线协作展示墙**：<https://pulse-wall.yoryon.com/>
 - **课堂贡献教程**：[docs/CONTRIBUTING.md](./docs/CONTRIBUTING.md)
 - **进阶积分玩法**：[docs/SCORING.md](./docs/SCORING.md)
-- **Git 课程课件**：[docs/git-course-slides.html](./docs/git-course-slides.html)（下载或克隆后用浏览器打开）
+- **Git 课程课件**：[docs/git-course-slides.html](./docs/git-course-slides.html)
 - **拓展阅读 · 从零理解 Git 底层原理**：<https://yoryon.com/c/git-from-scratch/>
 
 ## 课堂三项任务
@@ -13,8 +13,6 @@
 1. **上墙个人卡片**：在 `data/profiles/` 下创建自己的 JSON 卡片，完成第一个开源 PR。
 2. **给同学写寄语**：在 `data/cheers/<同学用户名全小写>/` 下留下一句鼓励，互相点亮寄语角标。
 3. **提一个 Issue**：遇到真实问题、Bug 或有改进想法时，用仓库内置模板提交 Issue。
-
-> **可选趣味玩法**：完成以上三项即可跑通完整 Git 协作流程。如果还想解锁专属卡面皮肤、16 种顶格破框特效并参与星系排行，可以点一下仓库 **Star** 并通过 `Co-authored-by` 结对提交攒分，详见 [docs/SCORING.md](./docs/SCORING.md)。
 
 ## 贡献步骤指南
 
